@@ -1,3 +1,21 @@
+# Dependencies
+node_modules/
+*/node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+*.test
+
+# Next.js build output
+.next/
+*/.next/
+out/
+*/out/
+build/
+*/build/
+
 # Binaries
 bin/
 */bin/
@@ -6,11 +24,6 @@ bin/
 *.dll
 *.so
 *.dylib
-
-# Test binary, built with `go test -c`
-*.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
 # Go workspace
@@ -30,3 +43,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Cache
+.npm/
+.eslintcache

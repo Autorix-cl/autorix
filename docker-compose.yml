@@ -114,5 +114,26 @@ services:
       - nexus
       - janus
 
+  console:
+    build:
+      context: ./console
+      dockerfile: Dockerfile
+    container_name: autorix-console
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_NEXUS_URL: "http://localhost:50051"
+      NEXT_PUBLIC_EGO_URL: "http://localhost:4433"
+      NEXT_PUBLIC_JANUS_URL: "http://localhost:4444"
+      NEXT_PUBLIC_AEGIS_URL: "http://localhost:4455"
+      NEXT_PUBLIC_VULCAN_URL: "http://localhost:4466"
+      NEXT_PUBLIC_HERMES_URL: "http://localhost:4477"
+    depends_on:
+      - ego
+      - janus
+      - vulcan
+      - hermes
+
 volumes:
   postgres_data:
