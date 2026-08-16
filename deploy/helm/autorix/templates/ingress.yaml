@@ -1,0 +1,57 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "autorix.fullname" . }}-ingress
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - "auth.{{ .Values.global.domain }}"
+        - "console.{{ .Values.global.domain }}"
+        - "api.{{ .Values.global.domain }}"
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    # 1. Aegis Zero Trust Edge Gateway
+    - host: "api.{{ .Values.global.domain }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "autorix.fullname" . }}-aegis
+                port:
+                  number: 4455
+
+    # 2. Janus OAuth2 & OIDC Issuer
+    - host: "auth.{{ .Values.global.domain }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "autorix.fullname" . }}-janus
+                port:
+                  number: 4444
+
+    # 3. Autorix Console UI
+    - host: "console.{{ .Values.global.domain }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "autorix.fullname" . }}-console
+                port:
+                  number: 3000
+{{- end }}

@@ -1,0 +1,40 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: autorix-alerts
+  labels:
+    role: alert-rules
+    app: autorix
+spec:
+  groups:
+    - name: autorix.rules
+      rules:
+        # 1. High ReBAC Latency Alert
+        - alert: AutorixHighNexusLatency
+          expr: histogram_quantile(0.99, sum(rate(autorix_nexus_check_duration_seconds_bucket[5m])) by (le)) > 0.02
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Autorix Nexus ReBAC P99 latency > 20ms"
+            description: "Nexus graph evaluation latency is unusually high ({{ $value }}s)."
+
+        # 2. Aegis Rate of 403 Forbidden Access
+        - alert: AutorixHighUnauthorizedRate
+          expr: sum(rate(autorix_aegis_requests_total{status="403"}[5m])) / sum(rate(autorix_aegis_requests_total[5m])) > 0.1
+          for: 3m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Autorix Aegis experiencing high 403 Forbidden rejection rate (> 10%)"
+            description: "Possible brute force or misconfigured access policy."
+
+        # 3. Microservice Pod Restart Alert
+        - alert: AutorixServiceCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total{container=~"nexus|ego|janus|aegis|vulcan|hermes"}[5m]) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Autorix engine {{ $labels.container }} is restarting"
+            description: "Pod is crash looping."

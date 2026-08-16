@@ -1,0 +1,66 @@
+{{- if .Values.ego.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "autorix.fullname" . }}-ego
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ego
+spec:
+  replicas: {{ .Values.ego.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "autorix.name" . }}
+      app.kubernetes.io/component: ego
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "autorix.name" . }}
+        app.kubernetes.io/component: ego
+    spec:
+      containers:
+        - name: ego
+          image: "{{ .Values.ego.image.repository }}:{{ .Values.ego.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: 4433
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "4433"
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.global.postgresql.user }}:password@{{ .Values.global.postgresql.host }}:{{ .Values.global.postgresql.port }}/autorix_ego?sslmode=disable"
+          resources:
+            {{- toYaml .Values.ego.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health/alive
+              port: 4433
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/alive
+              port: 4433
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "autorix.fullname" . }}-ego
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ego
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4433
+      targetPort: 4433
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "autorix.name" . }}
+    app.kubernetes.io/component: ego
+{{- end }}

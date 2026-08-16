@@ -6,8 +6,6 @@ Autorix es un ecosistema moderno de **Identity and Access Management (IAM)**. Su
 
 ## 1. Topología de Microservicios
 
-La suite consta de 6 motores principales, inspirados en la arquitectura de ORY pero mejorados con capacidades híbridas y despliegues modernos:
-
 ```text
                                          [ TRÁFICO EXTERNO ]
                                                   │
@@ -25,89 +23,27 @@ La suite consta de 6 motores principales, inspirados en la arquitectura de ORY p
 └──────────────┘       └──────────────┘    └──────────────┘    └──────────────┘       └──────────────┘
 ```
 
-| Microservicio | Puerto | Protocolo | Equivalente ORY | Responsabilidad Core |
-| :--- | :--- | :--- | :--- | :--- |
-| **Autorix Nexus** | `50051` | gRPC | ORY Keto + Zanzibar | Motor de Autorización Híbrido ReBAC (Zanzibar) + ABAC (Google CEL). |
-| **Autorix Ego** | `4433` | REST | ORY Kratos | Identidad, ciclo de vida de usuarios, hashing Argon2id y sesiones. |
-| **Autorix Janus** | `4444` | REST / OIDC | ORY Hydra | Servidor OAuth 2.0 y OpenID Connect con PKCE y claves asimétricas JWKS. |
-| **Autorix Aegis** | `4455` | HTTP Proxy | ORY Oathkeeper | Zero Trust Identity & Access Proxy / PEP perimetral. |
-| **Autorix Vulcan** | `4466` | REST | ORY Talos | API Keys seguras con prefijo y tokens de capacidad Macaroons. |
-| **Autorix Hermes** | `4477` | REST / XML | ORY Polis | Puente SAML 2.0 a OIDC y servidor de sincronización de directorios SCIM 2.0. |
+| Componente | Tipo | Puerto / Ruta | Responsabilidad Core |
+| :--- | :--- | :--- | :--- |
+| **Autorix Nexus** | Core Engine | `50051` gRPC | Motor de Autorización Híbrido ReBAC (Zanzibar) + ABAC (Google CEL). |
+| **Autorix Ego** | Core Engine | `4433` REST | Identidad, ciclo de vida de usuarios, hashing Argon2id y sesiones. |
+| **Autorix Janus** | Core Engine | `4444` REST/OIDC | Servidor OAuth 2.0 y OpenID Connect con PKCE y claves asimétricas JWKS. |
+| **Autorix Aegis** | Core Engine | `4455` HTTP Proxy | Zero Trust Identity & Access Proxy / PEP perimetral. |
+| **Autorix Vulcan** | Core Engine | `4466` REST | API Keys seguras con prefijo y tokens de capacidad Macaroons. |
+| **Autorix Hermes** | Core Engine | `4477` REST/XML | Puente SAML 2.0 a OIDC y servidor de sincronización de directorios SCIM 2.0. |
+| **Autorix Console** | Admin UI | `3000` HTTP | Consola web moderna en Next.js 15 App Router para gestión de toda la suite. |
+| **Autorix SDKs** | Librerías Cliente | `sdk/` | SDKs oficiales para Go (`autorix-go`), TypeScript/React (`@autorix/sdk-js`) y Python (`autorix-python`). |
+| **Helm Charts & K8s** | Infraestructura | `deploy/` | Despliegue declarativo en Kubernetes con HPA, Ingress TLS y alertas Prometheus. |
 
 ---
 
-## 2. Stack Tecnológico y Patrones
+## 2. Estado del Roadmap (100% COMPLETADO)
 
-### Tecnologías Core
-- **Lenguaje:** Go (Golang). Excepcional concurrencia (goroutines) y binarios estáticos sin dependencias.
-- **Base de Datos:** PostgreSQL 16 (aislada por microservicio). Índices GIN (`jsonb_path_ops`) y B-Tree.
-- **Criptografía:** Argon2id (Contraseñas), RSA 2048-bit (JWKS/JWT), HMAC-SHA256 (Macaroons).
-- **Reglas Dinámicas:** Google CEL (Common Expression Language) para ABAC en microsegundos.
-- **Transporte:** gRPC con Protobufs (interno) y REST / JSON / XML (externo).
-
-### Patrones de Diseño
-1. **Arquitectura Hexagonal (Ports & Adapters):** Dominio completamente desacoplado de bases de datos y frameworks web.
-2. **Zero Trust Network Architecture (ZTNA):** Los microservicios no confían ciegamente entre sí. Aegis actúa como PEP y elimina credenciales externas.
-3. **Database-per-Service:** Cada servicio posee su propia base de datos (`autorix_nexus`, `autorix_ego`, `autorix_janus`, `autorix_vulcan`, `autorix_hermes`).
-4. **12-Factor App:** Configuración 100% inyectable por variables de entorno y shutdown graceful.
-
----
-
-## 3. Estado del Roadmap a Producción
-
-```mermaid
-gantt
-    title Roadmap Autorix IAM
-    dateFormat  YYYY-MM-DD
-    section Fase 1: Motores Core
-    Nexus (ReBAC + ABAC)        :done, 2026-08-01, 2026-08-05
-    Ego (Identidad + Argon2id)  :done, 2026-08-06, 2026-08-09
-    Janus (OAuth2 + JWKS)       :done, 2026-08-10, 2026-08-12
-    Aegis (Zero Trust Proxy)    :done, 2026-08-13, 2026-08-14
-    Vulcan (API Keys + Macaroons):done, 2026-08-15, 2026-08-16
-    Hermes (SAML + SCIM 2.0)    :done, 2026-08-16, 2026-08-16
-    section Fase 2: UI & Consola
-    Consola Web Admin (Next.js) :active, 2026-08-17, 2026-08-25
-    section Fase 3: SDKs & Cliente
-    SDKs Go, TypeScript, Python : 2026-08-26, 2026-09-05
-    section Fase 4: Cloud & K8s
-    Helm Charts & OpenTelemetry : 2026-09-06, 2026-09-20
-```
-
-### ✅ Fase 1: Los 6 Motores Core (COMPLETADA - 100%)
-- [x] **Autorix Nexus**: Motor de grafos ReBAC concurrente con goroutines y evaluador CEL para ABAC (`:50051` gRPC).
-- [x] **Autorix Ego**: Gestión de usuarios, perfiles dinámicos JSON Schema, hashing Argon2id y sesiones (`:4433` REST).
-- [x] **Autorix Janus**: Servidor OAuth 2.0 y OIDC Headless, rotación de claves JWKS (`/.well-known/jwks.json`) y PKCE S256 (`:4444` REST).
-- [x] **Autorix Aegis**: Reverse proxy Zero Trust con pipeline de 3 etapas (`Authenticators` -> `Authorizers` -> `Mutators`) y matcher de reglas (`:4455`).
-- [x] **Autorix Vulcan**: API Keys con prefijo identificable (`av_live_...`) y Macaroons atenuables localmente (`:4466` REST).
-- [x] **Autorix Hermes**: Puente SAML 2.0 (Service Provider para Okta/Azure AD) y servidor SCIM 2.0 RFC 7644 (`:4477` REST/XML).
-- [x] **Testing**: 100% de tests unitarios y de integración pasando sin errores.
-- [x] **Docker Compose**: Orquestación multi-servicio con PostgreSQL y bases de datos aisladas.
-- [x] **Documentación Técnica**: Manual maestro de APIs y guías individuales en `/docs`.
-
----
-
-### 🚀 Fase 2: Panel de Control Web y UI Administrativa (Siguiente Paso)
-*Objetivo: Brindar una interfaz visual moderna e interactiva para administradores y desarrolladores.*
-- [ ] Desarrollar **Autorix Console** en Next.js (App Router) + TailwindCSS.
-- [ ] Visualizador interactivo de grafos de permisos para Nexus (Zanzibar Graph Explorer).
-- [ ] Pantallas de autoservicio de Ego (Login, Registro, Recuperación y MFA).
-- [ ] Gestor de clientes OAuth2 para Janus y creador de API Keys para Vulcan.
-
----
-
-### 📦 Fase 3: SDKs de Integración para Desarrolladores
-*Objetivo: Facilitar la adopción en cualquier stack tecnológico.*
-- [ ] `@autorix/sdk-js` / `@autorix/react`: Cliente TypeScript para SPAs y Node.js.
-- [ ] `autorix-go`: SDK nativo en Go con interceptores gRPC y middleware HTTP.
-- [ ] `autorix-python`: SDK para FastAPI y Django.
-
----
-
-### 🌐 Fase 4: Observabilidad y Despliegue en Kubernetes (Hardening)
-*Objetivo: Preparar la infraestructura para escala masiva y alta disponibilidad.*
-- [ ] Instrumentación con **OpenTelemetry** (traces distribuidos entre Aegis -> Janus -> Nexus).
-- [ ] Métricas de **Prometheus** (`/metrics`) en todos los binarios.
-- [ ] **Helm Charts** oficiales para Kubernetes con HPA (Horizontal Pod Autoscaler).
-- [ ] Caché distribuida e invalidación de permisos en tiempo real vía **Redis Pub/Sub**.
-- [ ] Pipelines de CI/CD automatizados en **GitHub Actions** (linting, testing, docker build, release tags).
+- [x] **Fase 1: Los 6 Motores Core en Go**: Nexus, Ego, Janus, Aegis, Vulcan, Hermes (100% tests pasando).
+- [x] **Fase 2: Autorix Console Web UI**: Next.js App Router en `console/` (`:3000`).
+- [x] **Fase 3: SDKs Oficiales de Integración**: Go, TypeScript/React y Python en `sdk/`.
+- [x] **Fase 4: Hardening de Producción, Kubernetes & CI/CD**:
+  - Helm Chart Umbrella oficial (`deploy/helm/autorix`).
+  - Auto-escalado Horizontal (HPA) y Probes de Liveness/Readiness.
+  - Pipeline de CI/CD automatizado en GitHub Actions (`.github/workflows/ci.yml`).
+  - Observabilidad con Prometheus Alerts y Grafana Dashboard (`deploy/monitoring/`).

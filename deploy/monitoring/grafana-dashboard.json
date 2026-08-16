@@ -1,0 +1,66 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Aegis Zero Trust Request Throughput (req/s)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(autorix_aegis_requests_total[1m])) by (status)",
+          "legendFormat": "Status {{status}}"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "id": 2,
+      "title": "Nexus ReBAC Check Latency (P95 / P99)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(autorix_nexus_check_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "P99 Latency (ms)"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(autorix_nexus_check_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "P95 Latency (ms)"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "id": 3,
+      "title": "Active Ego Sessions",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(autorix_ego_active_sessions)",
+          "legendFormat": "Active Sessions"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["autorix", "iam", "zero-trust"],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "title": "Autorix IAM Suite: Zero Trust Telemetry",
+  "uid": "autorix-telemetry",
+  "version": 1
+}

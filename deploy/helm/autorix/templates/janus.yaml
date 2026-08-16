@@ -1,0 +1,68 @@
+{{- if .Values.janus.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "autorix.fullname" . }}-janus
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+    app.kubernetes.io/component: janus
+spec:
+  replicas: {{ .Values.janus.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "autorix.name" . }}
+      app.kubernetes.io/component: janus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "autorix.name" . }}
+        app.kubernetes.io/component: janus
+    spec:
+      containers:
+        - name: janus
+          image: "{{ .Values.janus.image.repository }}:{{ .Values.janus.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: 4444
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "4444"
+            - name: ISSUER_URL
+              value: "https://auth.{{ .Values.global.domain }}"
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.global.postgresql.user }}:password@{{ .Values.global.postgresql.host }}:{{ .Values.global.postgresql.port }}/autorix_janus?sslmode=disable"
+          resources:
+            {{- toYaml .Values.janus.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /.well-known/openid-configuration
+              port: 4444
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /.well-known/jwks.json
+              port: 4444
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "autorix.fullname" . }}-janus
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+    app.kubernetes.io/component: janus
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4444
+      targetPort: 4444
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "autorix.name" . }}
+    app.kubernetes.io/component: janus
+{{- end }}

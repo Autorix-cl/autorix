@@ -1,0 +1,103 @@
+global:
+  environment: "production"
+  domain: "autorix.local"
+  imagePullPolicy: IfNotPresent
+  postgresql:
+    host: "postgres-postgresql.default.svc.cluster.local"
+    port: 5432
+    user: "autorix"
+    existingSecret: "autorix-db-credentials"
+
+nexus:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: "ghcr.io/autorix-cl/nexus"
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+ego:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: "ghcr.io/autorix-cl/ego"
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+janus:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: "ghcr.io/autorix-cl/janus"
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+aegis:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: "ghcr.io/autorix-cl/aegis"
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 65
+
+vulcan:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: "ghcr.io/autorix-cl/vulcan"
+    tag: "latest"
+
+hermes:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: "ghcr.io/autorix-cl/hermes"
+    tag: "latest"
+
+console:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: "ghcr.io/autorix-cl/console"
+    tag: "latest"
+
+ingress:
+  enabled: true
+  className: "nginx"
+  tls:
+    enabled: true
+    secretName: "autorix-tls-cert"
