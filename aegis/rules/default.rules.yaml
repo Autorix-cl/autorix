@@ -1,0 +1,30 @@
+- id: "rule-public-health"
+  description: "Allow health checks without authentication"
+  match:
+    url: "/health"
+    methods: ["GET"]
+  authenticators:
+    - handler: "anonymous"
+  authorizer:
+    handler: "allow"
+  mutators:
+    - handler: "noop"
+  upstream:
+    url: "http://localhost:8080"
+
+- id: "rule-api-protected"
+  description: "Protect API endpoints using JWT and forward with X-User-ID"
+  match:
+    url: "/api/<.*>"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+  authenticators:
+    - handler: "jwt"
+  authorizer:
+    handler: "nexus_rebac"
+  mutators:
+    - handler: "header"
+      config:
+        headers:
+          X-User-ID: "{{ .Subject }}"
+  upstream:
+    url: "http://localhost:8080"

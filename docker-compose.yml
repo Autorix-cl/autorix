@@ -1,0 +1,118 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: autorix-postgres
+    environment:
+      POSTGRES_USER: autorix
+      POSTGRES_PASSWORD: autorix_password
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-databases.sh:/docker-entrypoint-initdb.d/00-init.sh:ro
+      - ./nexus/migrations:/docker-entrypoint-initdb.d/01-nexus:ro
+      - ./ego/migrations:/docker-entrypoint-initdb.d/02-ego:ro
+      - ./janus/migrations:/docker-entrypoint-initdb.d/03-janus:ro
+      - ./vulcan/migrations:/docker-entrypoint-initdb.d/04-vulcan:ro
+      - ./hermes/migrations:/docker-entrypoint-initdb.d/05-hermes:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autorix -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  nexus:
+    build:
+      context: ./nexus
+      dockerfile: Dockerfile
+    container_name: autorix-nexus
+    restart: unless-stopped
+    ports:
+      - "50051:50051"
+    environment:
+      PORT: "50051"
+      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_nexus?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ego:
+    build:
+      context: ./ego
+      dockerfile: Dockerfile
+    container_name: autorix-ego
+    restart: unless-stopped
+    ports:
+      - "4433:4433"
+    environment:
+      PORT: "4433"
+      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_ego?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  janus:
+    build:
+      context: ./janus
+      dockerfile: Dockerfile
+    container_name: autorix-janus
+    restart: unless-stopped
+    ports:
+      - "4444:4444"
+    environment:
+      PORT: "4444"
+      ISSUER_URL: "http://localhost:4444"
+      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_janus?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  vulcan:
+    build:
+      context: ./vulcan
+      dockerfile: Dockerfile
+    container_name: autorix-vulcan
+    restart: unless-stopped
+    ports:
+      - "4466:4466"
+    environment:
+      PORT: "4466"
+      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_vulcan?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  hermes:
+    build:
+      context: ./hermes
+      dockerfile: Dockerfile
+    container_name: autorix-hermes
+    restart: unless-stopped
+    ports:
+      - "4477:4477"
+    environment:
+      PORT: "4477"
+      BASE_URL: "http://localhost:4477"
+      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_hermes?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  aegis:
+    build:
+      context: ./aegis
+      dockerfile: Dockerfile
+    container_name: autorix-aegis
+    restart: unless-stopped
+    ports:
+      - "4455:4455"
+    environment:
+      PORT: "4455"
+      RULES_PATH: "/app/rules/default.rules.yaml"
+    depends_on:
+      - nexus
+      - janus
+
+volumes:
+  postgres_data:

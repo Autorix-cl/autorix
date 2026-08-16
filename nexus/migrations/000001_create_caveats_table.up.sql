@@ -1,0 +1,5 @@
+CREATE TABLE caveats (
+    name VARCHAR(128) PRIMARY KEY,
+    cel_expression TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

@@ -1,0 +1,97 @@
+syntax = "proto3";
+package autorix.nexus.v1;
+
+option go_package = "github.com/autorix/nexus/api/autorix/nexus/v1;nexusv1";
+
+import "google/protobuf/struct.proto";
+
+// RelationTuple represents a Zanzibar tuple with optional ABAC conditions (Caveats)
+message RelationTuple {
+  string namespace = 1;
+  string object = 2;
+  string relation = 3;
+  
+  string subject_id = 4;
+  string subject_namespace = 5;
+  string subject_relation = 6;
+  
+  // ABAC Condition
+  string caveat_name = 7;
+  google.protobuf.Struct caveat_context = 8;
+}
+
+message CaveatDefinition {
+  string name = 1;
+  string cel_expression = 2;
+}
+
+message WriteTuplesRequest {
+  repeated RelationTuple tuples = 1;
+}
+
+message WriteTuplesResponse {
+  string resolution_token = 1;
+}
+
+message WriteCaveatsRequest {
+  repeated CaveatDefinition caveats = 1;
+}
+
+message WriteCaveatsResponse {}
+
+message DeleteTuplesRequest {
+  repeated RelationTuple tuples = 1;
+}
+
+message DeleteTuplesResponse {
+  string resolution_token = 1;
+}
+
+message CheckRequest {
+  string namespace = 1;
+  string object = 2;
+  string relation = 3;
+  
+  string subject_id = 4;
+  string subject_namespace = 5;
+  string subject_relation = 6;
+  
+  // Dynamic context for ABAC evaluation provided by the caller
+  google.protobuf.Struct request_context = 7;
+  
+  string resolution_token = 8;
+}
+
+message CheckResponse {
+  bool allowed = 1;
+  string resolution_token = 2;
+  string reason = 3; // Debugging info if denied due to caveats
+}
+
+message ExpandRequest {
+  string namespace = 1;
+  string object = 2;
+  string relation = 3;
+  
+  string resolution_token = 4;
+}
+
+message ExpandResponse {
+  message TreeNode {
+    string type = 1;
+    RelationTuple tuple = 2;
+    repeated TreeNode children = 3;
+  }
+  
+  TreeNode tree = 1;
+}
+
+service NexusService {
+  rpc WriteTuples(WriteTuplesRequest) returns (WriteTuplesResponse);
+  rpc DeleteTuples(DeleteTuplesRequest) returns (DeleteTuplesResponse);
+  
+  rpc WriteCaveats(WriteCaveatsRequest) returns (WriteCaveatsResponse);
+  
+  rpc Check(CheckRequest) returns (CheckResponse);
+  rpc Expand(ExpandRequest) returns (ExpandResponse);
+}
