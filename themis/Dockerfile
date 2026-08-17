@@ -13,28 +13,28 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Compile static binary
+# Compile static binary with optimizations
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-s -w -extldflags '-static'" \
-    -o /build/vulcand ./cmd/vulcand/main.go
+    -o /build/themisd ./cmd/themisd/main.go
 
 # Production runtime stage
 FROM alpine:3.20
 
-# Non-root user for Zero Trust security
+# Create non-root user for Zero Trust security
 RUN addgroup -S autorix && adduser -S autorix -G autorix
 
 WORKDIR /app
 
 # Copy certificates and compiled binary
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /build/vulcand /app/vulcand
+COPY --from=builder /build/themisd /app/themisd
 COPY --from=builder /build/migrations /app/migrations
 
-# Expose Vulcan HTTP port
-EXPOSE 4466
+# Expose gRPC port
+EXPOSE 50052
 
 # Run as non-root
 USER autorix:autorix
 
-ENTRYPOINT ["/app/vulcand"]
+ENTRYPOINT ["/app/themisd"]

@@ -16,6 +16,7 @@ services:
       - ./janus/migrations:/docker-entrypoint-initdb.d/03-janus:ro
       - ./vulcan/migrations:/docker-entrypoint-initdb.d/04-vulcan:ro
       - ./hermes/migrations:/docker-entrypoint-initdb.d/05-hermes:ro
+      - ./themis/migrations:/docker-entrypoint-initdb.d/06-themis:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U autorix -d postgres"]
       interval: 5s
@@ -99,6 +100,21 @@ services:
       postgres:
         condition: service_healthy
 
+  themis:
+    build:
+      context: ./themis
+      dockerfile: Dockerfile
+    container_name: autorix-themis
+    restart: unless-stopped
+    ports:
+      - "50052:50052"
+    environment:
+      PORT: "50052"
+      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_themis?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   aegis:
     build:
       context: ./aegis
@@ -129,11 +145,13 @@ services:
       NEXT_PUBLIC_AEGIS_URL: "http://localhost:4455"
       NEXT_PUBLIC_VULCAN_URL: "http://localhost:4466"
       NEXT_PUBLIC_HERMES_URL: "http://localhost:4477"
+      NEXT_PUBLIC_THEMIS_URL: "http://localhost:50052"
     depends_on:
       - ego
       - janus
       - vulcan
       - hermes
+      - themis
 
 volumes:
   postgres_data:

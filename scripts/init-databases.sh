@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
@@ -7,9 +7,11 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE DATABASE autorix_janus;
     CREATE DATABASE autorix_vulcan;
     CREATE DATABASE autorix_hermes;
+    CREATE DATABASE autorix_themis;
     GRANT ALL PRIVILEGES ON DATABASE autorix_nexus TO autorix;
     GRANT ALL PRIVILEGES ON DATABASE autorix_ego TO autorix;
     GRANT ALL PRIVILEGES ON DATABASE autorix_janus TO autorix;
     GRANT ALL PRIVILEGES ON DATABASE autorix_vulcan TO autorix;
     GRANT ALL PRIVILEGES ON DATABASE autorix_hermes TO autorix;
+    GRANT ALL PRIVILEGES ON DATABASE autorix_themis TO autorix;
 EOSQL

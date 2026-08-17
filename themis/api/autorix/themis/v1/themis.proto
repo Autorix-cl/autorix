@@ -1,0 +1,145 @@
+syntax = "proto3";
+package autorix.themis.v1;
+
+option go_package = "github.com/autorix/themis/api/autorix/themis/v1;themisv1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// Policy represents a business rule owned by a specific Tenant.
+// The expression field contains a Google CEL expression that evaluates
+// against a dynamic JSON payload provided at evaluation time.
+message Policy {
+  string id = 1;
+  string tenant_id = 2;
+  string name = 3;
+  string description = 4;
+  string expression = 5;       // CEL expression, e.g. "amount < budget && status == 'active'"
+  int32  priority = 6;         // Lower number = higher priority
+  bool   enabled = 7;
+  map<string, string> labels = 8;  // Arbitrary key-value metadata for filtering
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// CRUD Operations
+// ────────────────────────────────────────────────────────────────────────
+
+message CreatePolicyRequest {
+  string tenant_id = 1;
+  string name = 2;
+  string description = 3;
+  string expression = 4;
+  int32  priority = 5;
+  bool   enabled = 6;
+  map<string, string> labels = 7;
+}
+
+message CreatePolicyResponse {
+  Policy policy = 1;
+}
+
+message GetPolicyRequest {
+  string tenant_id = 1;
+  string policy_id = 2;
+}
+
+message GetPolicyResponse {
+  Policy policy = 1;
+}
+
+message ListPoliciesRequest {
+  string tenant_id = 1;
+  bool   enabled_only = 2;           // Filter: return only enabled policies
+  map<string, string> label_filter = 3; // Filter: match all specified labels
+}
+
+message ListPoliciesResponse {
+  repeated Policy policies = 1;
+}
+
+message UpdatePolicyRequest {
+  string tenant_id = 1;
+  string policy_id = 2;
+  string name = 3;
+  string description = 4;
+  string expression = 5;
+  int32  priority = 6;
+  bool   enabled = 7;
+  map<string, string> labels = 8;
+}
+
+message UpdatePolicyResponse {
+  Policy policy = 1;
+}
+
+message DeletePolicyRequest {
+  string tenant_id = 1;
+  string policy_id = 2;
+}
+
+message DeletePolicyResponse {}
+
+// ────────────────────────────────────────────────────────────────────────
+// Evaluation Operations
+// ────────────────────────────────────────────────────────────────────────
+
+// EvaluatePolicyRequest evaluates a single policy by ID or all matching
+// policies for a tenant against the provided payload.
+message EvaluatePolicyRequest {
+  string tenant_id = 1;
+  
+  // Evaluate a single policy by ID. If empty, evaluates ALL enabled
+  // policies for the tenant (optionally filtered by labels).
+  string policy_id = 2;
+  
+  // The transactional payload to evaluate against (e.g. {"amount": 5000, "status": "active"})
+  google.protobuf.Struct payload = 3;
+  
+  // Optional label filter when evaluating multiple policies
+  map<string, string> label_filter = 4;
+}
+
+message PolicyResult {
+  string policy_id = 1;
+  string policy_name = 2;
+  bool   passed = 3;           // true if the CEL expression evaluated to true
+  string error = 4;            // Non-empty if evaluation failed (type error, etc.)
+  string expression = 5;       // The evaluated expression (for audit trail)
+}
+
+message EvaluatePolicyResponse {
+  bool all_passed = 1;                    // true only if ALL evaluated policies passed
+  repeated PolicyResult results = 2;      // Individual result per policy
+  int32 total_evaluated = 3;
+}
+
+// BatchEvaluateRequest evaluates the same set of policies against
+// multiple payloads in a single round-trip.
+message BatchEvaluateRequest {
+  string tenant_id = 1;
+  map<string, string> label_filter = 2;
+  repeated google.protobuf.Struct payloads = 3;
+}
+
+message BatchEvaluateResponse {
+  repeated EvaluatePolicyResponse evaluations = 1;
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Service Definition
+// ────────────────────────────────────────────────────────────────────────
+
+service ThemisService {
+  // Policy CRUD
+  rpc CreatePolicy(CreatePolicyRequest) returns (CreatePolicyResponse);
+  rpc GetPolicy(GetPolicyRequest) returns (GetPolicyResponse);
+  rpc ListPolicies(ListPoliciesRequest) returns (ListPoliciesResponse);
+  rpc UpdatePolicy(UpdatePolicyRequest) returns (UpdatePolicyResponse);
+  rpc DeletePolicy(DeletePolicyRequest) returns (DeletePolicyResponse);
+  
+  // Evaluation
+  rpc EvaluatePolicy(EvaluatePolicyRequest) returns (EvaluatePolicyResponse);
+  rpc BatchEvaluate(BatchEvaluateRequest) returns (BatchEvaluateResponse);
+}
