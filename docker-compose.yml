@@ -31,8 +31,10 @@ services:
     restart: unless-stopped
     ports:
       - "50051:50051"
+      - "8080:8080"
     environment:
       PORT: "50051"
+      HTTP_PORT: "8080"
       DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_nexus?sslmode=disable"
     depends_on:
       postgres:
@@ -139,14 +141,16 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_NEXUS_URL: "http://localhost:50051"
+      NEXT_PUBLIC_NEXUS_URL: "http://localhost:8080"
       NEXT_PUBLIC_EGO_URL: "http://localhost:4433"
       NEXT_PUBLIC_JANUS_URL: "http://localhost:4444"
       NEXT_PUBLIC_AEGIS_URL: "http://localhost:4455"
       NEXT_PUBLIC_VULCAN_URL: "http://localhost:4466"
       NEXT_PUBLIC_HERMES_URL: "http://localhost:4477"
       NEXT_PUBLIC_THEMIS_URL: "http://localhost:50052"
+      NEXUS_INTERNAL_URL: "http://nexus:8080"
     depends_on:
+      - nexus
       - ego
       - janus
       - vulcan

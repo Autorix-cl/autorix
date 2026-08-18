@@ -4,13 +4,15 @@ import (
 	"context"
 	"log"
 	"net"
+	"net/http"
 	"os"
 
 	pb "github.com/autorix/nexus/api/autorix/nexus/v1"
 	"github.com/autorix/nexus/internal/engine/caveat"
 	"github.com/autorix/nexus/internal/engine/graph"
 	"github.com/autorix/nexus/internal/storage/postgres"
-	transport "github.com/autorix/nexus/internal/transport/grpc"
+	grpcTransport "github.com/autorix/nexus/internal/transport/grpc"
+	httpTransport "github.com/autorix/nexus/internal/transport/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
@@ -45,16 +47,33 @@ func main() {
 
 	resolver := graph.NewResolver(repo, celEvaluator)
 
-	// 4. Initialize Transport Layer (gRPC Server)
+	// 4. Initialize Transport Layer (gRPC Server) — canonical service-to-service transport
 	grpcServer := grpc.NewServer()
-	nexusServer := transport.NewServer(resolver)
+	nexusServer := grpcTransport.NewServer(resolver)
 
 	pb.RegisterNexusServiceServer(grpcServer, nexusServer)
-	
+
 	// Enable reflection for tools like grpcurl
 	reflection.Register(grpcServer)
 
-	// 5. Start listening
+	// 5. Initialize Transport Layer (REST admin API) — used by the console;
+	// talks directly to the resolver/repo rather than through gRPC, since the
+	// gRPC WriteTuples/WriteCaveats/Expand handlers are not yet implemented.
+	restServer := httpTransport.NewServer(resolver, repo)
+
+	httpPort := os.Getenv("HTTP_PORT")
+	if httpPort == "" {
+		httpPort = "8080"
+	}
+
+	go func() {
+		log.Printf("Nexus listening on :%s (REST admin API)\n", httpPort)
+		if err := http.ListenAndServe(":"+httpPort, restServer.Routes()); err != nil {
+			log.Fatalf("REST server error: %v\n", err)
+		}
+	}()
+
+	// 6. Start listening (gRPC)
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "50051"
