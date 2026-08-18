@@ -26,6 +26,18 @@ func NewMatcherFromYAML(data []byte) (*Matcher, error) {
 		return nil, fmt.Errorf("failed to parse rules YAML: %w", err)
 	}
 
+	return compileRules(rawRules)
+}
+
+// NewMatcher compiles an already-parsed rule set (used by Store when rules
+// come from the admin API rather than a YAML file on disk).
+func NewMatcher(rawRules []core.Rule) (*Matcher, error) {
+	return compileRules(rawRules)
+}
+
+// compileRules builds the regex-matched lookup table shared by
+// NewMatcherFromYAML and NewMatcher.
+func compileRules(rawRules []core.Rule) (*Matcher, error) {
 	matcher := &Matcher{}
 	for _, r := range rawRules {
 		// Convert URL template like <.*> or <[0-9]+> to valid regex

@@ -125,8 +125,10 @@ services:
     restart: unless-stopped
     ports:
       - "4455:4455"
+      - "4456:4456"
     environment:
       PORT: "4455"
+      ADMIN_PORT: "4456"
       RULES_PATH: "/app/rules/default.rules.yaml"
     depends_on:
       - nexus
@@ -149,8 +151,10 @@ services:
       NEXT_PUBLIC_HERMES_URL: "http://localhost:4477"
       NEXT_PUBLIC_THEMIS_URL: "http://localhost:50052"
       NEXUS_INTERNAL_URL: "http://nexus:8080"
+      AEGIS_INTERNAL_URL: "http://aegis:4456"
     depends_on:
       - nexus
+      - aegis
       - ego
       - janus
       - vulcan

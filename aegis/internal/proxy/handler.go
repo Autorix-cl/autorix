@@ -8,18 +8,24 @@ import (
 	"net/url"
 
 	"github.com/autorix/aegis/internal/core"
-	"github.com/autorix/aegis/internal/rule"
 )
 
+// RuleMatcher is satisfied by both *rule.Matcher (static, YAML-only) and
+// *rule.Store (hot-reloadable, backs the admin API), so the proxy pipeline
+// doesn't care which one is wired up in main.go.
+type RuleMatcher interface {
+	Match(r *http.Request) (*core.Rule, error)
+}
+
 type PipelineProxy struct {
-	matcher        *rule.Matcher
+	matcher        RuleMatcher
 	authenticators map[string]core.Authenticator
 	authorizers    map[string]core.Authorizer
 	mutators       map[string]core.Mutator
 }
 
 func NewPipelineProxy(
-	matcher *rule.Matcher,
+	matcher RuleMatcher,
 	auths []core.Authenticator,
 	authz []core.Authorizer,
 	muts []core.Mutator,

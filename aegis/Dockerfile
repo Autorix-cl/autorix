@@ -29,10 +29,12 @@ WORKDIR /app
 # Copy certificates and compiled binary
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /build/aegisd /app/aegisd
-COPY --from=builder /build/rules /app/rules
+# --chown so the non-root user can persist rule changes made through the
+# admin API back to this file (see internal/rule.Store).
+COPY --chown=autorix:autorix --from=builder /build/rules /app/rules
 
-# Expose Proxy HTTP port
-EXPOSE 4455
+# Expose Proxy HTTP port and Admin REST API port
+EXPOSE 4455 4456
 
 # Run as non-root
 USER autorix:autorix

@@ -15,6 +15,7 @@ import (
 	"github.com/autorix/aegis/internal/mutator"
 	"github.com/autorix/aegis/internal/proxy"
 	"github.com/autorix/aegis/internal/rule"
+	httpTransport "github.com/autorix/aegis/internal/transport/http"
 )
 
 func main() {
@@ -29,14 +30,13 @@ func main() {
 		rulesPath = "rules/default.rules.yaml"
 	}
 
-	rulesData, err := os.ReadFile(rulesPath)
+	// The Store owns the rules file end-to-end: it loads and compiles it at
+	// boot, serves Match() to the proxy pipeline, and is the read/write
+	// backend for the admin API below — every mutation there hot-reloads
+	// the pipeline and persists back to this same file.
+	store, err := rule.NewStore(rulesPath)
 	if err != nil {
-		log.Fatalf("Failed to read rules file at %s: %v\n", rulesPath, err)
-	}
-
-	matcher, err := rule.NewMatcherFromYAML(rulesData)
-	if err != nil {
-		log.Fatalf("Failed to parse rules: %v\n", err)
+		log.Fatalf("Failed to load rules: %v\n", err)
 	}
 
 	// 2. Initialize Pipeline Handlers
@@ -58,7 +58,30 @@ func main() {
 	}
 
 	// 3. Create Pipeline Proxy Handler
-	pipelineProxy := proxy.NewPipelineProxy(matcher, authenticators, authorizers, mutators)
+	pipelineProxy := proxy.NewPipelineProxy(store, authenticators, authorizers, mutators)
+
+	// 3b. Admin REST API (console rule management) — separate port from the
+	// proxy pipeline, since the proxy's mux is a catch-all reverse proxy.
+	adminServer := httpTransport.NewServer(store)
+	adminPort := os.Getenv("ADMIN_PORT")
+	if adminPort == "" {
+		adminPort = "4456"
+	}
+
+	adminHTTPServer := &http.Server{
+		Addr:         ":" + adminPort,
+		Handler:      adminServer.Routes(),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	go func() {
+		log.Printf("Autorix Aegis admin API listening on :%s\n", adminPort)
+		if err := adminHTTPServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Admin server error: %v\n", err)
+		}
+	}()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -88,6 +111,9 @@ func main() {
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Forced shutdown error: %v\n", err)
+	}
+	if err := adminHTTPServer.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Forced admin server shutdown error: %v\n", err)
 	}
 	log.Println("Autorix Aegis stopped.")
 }

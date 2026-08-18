@@ -1,7 +1,32 @@
 "use client";
 
-import { useState } from "react";
-import { Shield, Play, ArrowRight, CheckCircle2, Lock } from "lucide-react";
+import * as React from "react";
+import { 
+  Shield, 
+  Play, 
+  ArrowRight, 
+  CheckCircle2, 
+  Lock, 
+  FileCode, 
+  Globe,
+  Sliders,
+  Sparkles,
+  Server
+} from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
+import { CodeBlock } from "@/components/ui/code-block";
 
 interface RuleItem {
   id: string;
@@ -15,169 +40,249 @@ interface RuleItem {
   upstream: string;
 }
 
+// apiRule mirrors aegis's core.Rule JSON shape (GET /rules).
+interface ApiHandlerConfig {
+  handler: string;
+  config?: Record<string, unknown>;
+}
+interface ApiRule {
+  id: string;
+  description?: string;
+  match: { url: string; methods: string[] };
+  authenticators: ApiHandlerConfig[];
+  authorizer: ApiHandlerConfig;
+  mutators: ApiHandlerConfig[];
+  upstream: { url: string };
+}
+
+function toRuleItem(r: ApiRule): RuleItem {
+  return {
+    id: r.id,
+    match: { methods: r.match.methods, url: r.match.url },
+    authenticator: r.authenticators.map((a) => a.handler).join(", ") || "—",
+    authorizer: r.authorizer?.handler || "—",
+    mutator: r.mutators.map((m) => m.handler).join(", ") || "—",
+    upstream: r.upstream.url,
+  };
+}
+
 export default function ProxyRulesPage() {
-  const [rules] = useState<RuleItem[]>([
-    {
-      id: "rule-documents-api",
-      match: {
-        methods: ["GET", "POST"],
-        url: "/api/v1/documents/<.*>",
-      },
-      authenticator: "jwt (Janus JWKS)",
-      authorizer: "nexus_rebac (document:<id>#viewer)",
-      mutator: "header (inject X-User-ID)",
-      upstream: "http://documents-backend:8080",
-    },
-    {
-      id: "rule-public-health",
-      match: {
-        methods: ["GET"],
-        url: "/health",
-      },
-      authenticator: "anonymous (allow all)",
-      authorizer: "allow (pass-through)",
-      mutator: "noop",
-      upstream: "http://core-backend:8080",
-    },
-  ]);
+  const { t } = useTranslation();
 
-  const [testPath, setTestPath] = useState("/api/v1/documents/financial_report_2026");
-  const [testMethod, setTestMethod] = useState("GET");
-  const [matchedRule, setMatchedRule] = useState<RuleItem | null>(rules[0]);
+  const [apiRules, setApiRules] = React.useState<ApiRule[]>([]);
+  const [rules, setRules] = React.useState<RuleItem[]>([]);
+  const [loadingRules, setLoadingRules] = React.useState(true);
 
-  const handleTestMatch = () => {
-    if (testPath.startsWith("/api/v1/documents/")) {
-      setMatchedRule(rules[0]);
-    } else if (testPath === "/health") {
-      setMatchedRule(rules[1]);
-    } else {
+  const fetchRules = React.useCallback(async () => {
+    setLoadingRules(true);
+    try {
+      const res = await fetch("/api/proxy-rules");
+      const data = await res.json();
+      const list: ApiRule[] = Array.isArray(data) ? data : [];
+      setApiRules(list);
+      setRules(list.map(toRuleItem));
+    } catch (err) {
+      setApiRules([]);
+      setRules([]);
+    } finally {
+      setLoadingRules(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchRules();
+  }, [fetchRules]);
+
+  const [testPath, setTestPath] = React.useState("/api/v1/documents/financial_report_2026");
+  const [testMethod, setTestMethod] = React.useState("GET");
+  const [matchedRule, setMatchedRule] = React.useState<RuleItem | null>(null);
+  const [testing, setTesting] = React.useState(false);
+
+  const handleTestMatch = async () => {
+    setTesting(true);
+    try {
+      const res = await fetch("/api/proxy-rules/test-match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ method: testMethod, path: testPath }),
+      });
+      const data = await res.json();
+      setMatchedRule(data.matched ? toRuleItem(data.rule as ApiRule) : null);
+    } catch (err) {
       setMatchedRule(null);
+    } finally {
+      setTesting(false);
     }
   };
 
+  const rulesJSON = JSON.stringify(apiRules, null, 2);
+
   return (
-    <>
-      <header className="page-header">
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 style={{ fontSize: "20px", fontWeight: "700", letterSpacing: "-0.02em" }}>Autorix Aegis: Zero Trust Proxy Rules</h1>
-          <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: "2px" }}>
-            Declarative request interception, pipeline routing (Auth $\rightarrow$ Authz $\rightarrow$ Mutate) (:4455).
+          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+            {t("proxyRules.title")}
+          </h1>
+          <p className="text-xs text-muted-foreground mt-1">
+            {t("proxyRules.subtitle")}
           </p>
         </div>
-        <span className="badge badge-green">
-          <Shield size={12} /> PEP Reverse Proxy Active
-        </span>
-      </header>
 
-      <div className="page-body">
-        {/* Rule Tester Simulator */}
-        <div className="card">
-          <h2 className="card-title" style={{ marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <Play size={16} color="var(--accent-green)" /> Proxy Routing Simulator
-          </h2>
+        <div className="flex items-center gap-2">
+          <Badge variant="success" className="gap-1.5 py-1 px-3">
+            <Shield className="h-3.5 w-3.5" />
+            <span>{t("proxyRules.statusBadge")}</span>
+          </Badge>
+        </div>
+      </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 140px", gap: "12px", marginBottom: "20px" }}>
-            <div>
-              <label className="form-label">HTTP Method</label>
-              <select 
-                className="form-select" 
-                value={testMethod} 
-                onChange={(e) => setTestMethod(e.target.value)}
-              >
-                <option value="GET">GET</option>
-                <option value="POST">POST</option>
-                <option value="PUT">PUT</option>
-                <option value="DELETE">DELETE</option>
-              </select>
+      {/* Simulator Card */}
+      <Card className="bg-card/80">
+        <CardHeader className="p-6 pb-4">
+          <div className="flex items-center gap-2">
+            <Play className="h-4 w-4 text-emerald-400" />
+            <CardTitle className="text-sm font-semibold">
+              {t("proxyRules.simulatorTitle")}
+            </CardTitle>
+          </div>
+          <CardDescription className="text-xs">
+            {t("proxyRules.simulatorDesc")}
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="p-6 pt-0 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+            <div className="md:col-span-3 space-y-1.5">
+              <Label>{t("proxyRules.methodLabel")}</Label>
+              <Select value={testMethod} onValueChange={setTestMethod}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="GET">GET</SelectItem>
+                  <SelectItem value="POST">POST</SelectItem>
+                  <SelectItem value="PUT">PUT</SelectItem>
+                  <SelectItem value="DELETE">DELETE</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            <div>
-              <label className="form-label">Incoming Request Path</label>
-              <input 
-                type="text" 
-                className="form-input" 
-                value={testPath} 
-                onChange={(e) => setTestPath(e.target.value)} 
+            <div className="md:col-span-6 space-y-1.5">
+              <Label>{t("proxyRules.pathLabel")}</Label>
+              <Input
+                value={testPath}
+                onChange={(e) => setTestPath(e.target.value)}
+                placeholder="/api/v1/resource"
+                className="font-mono text-xs"
               />
             </div>
 
-            <div style={{ display: "flex", alignItems: "flex-end" }}>
-              <button 
-                type="button" 
-                className="btn btn-primary" 
-                style={{ width: "100%", background: "var(--accent-green)", borderColor: "var(--accent-green)" }}
+            <div className="md:col-span-3">
+              <Button
+                type="button"
+                variant="success"
                 onClick={handleTestMatch}
+                disabled={testing}
+                className="w-full gap-2"
               >
-                Simulate Match
-              </button>
+                <Play className="h-4 w-4" />
+                <span>{testing ? t("proxyRules.testingBtn") : t("proxyRules.simulateBtn")}</span>
+              </Button>
             </div>
           </div>
 
+          {/* Matched Rule Result Visualization */}
           {matchedRule ? (
-            <div style={{ padding: "16px", background: "var(--bg-primary)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                <span className="badge badge-green">Rule Matched: {matchedRule.id}</span>
-                <span style={{ fontSize: "12px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>Upstream: {matchedRule.upstream}</span>
+            <div className="rounded-xl border border-border/80 bg-muted/20 p-4 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border/50 pb-3">
+                <Badge variant="success" className="gap-1.5 py-0.5 font-mono text-xs">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  <span>{t("proxyRules.matchedBadge", { id: matchedRule.id })}</span>
+                </Badge>
+                <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+                  <Server className="h-3.5 w-3.5 text-blue-400" />
+                  <span>{t("proxyRules.upstreamLabel")}: <strong className="text-foreground">{matchedRule.upstream}</strong></span>
+                </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", marginTop: "12px" }}>
-                <div style={{ padding: "12px", background: "var(--bg-tertiary)", borderRadius: "var(--radius-md)" }}>
-                  <div className="form-label" style={{ color: "var(--accent-blue)" }}>1. Authenticator</div>
-                  <div style={{ fontSize: "13px", fontWeight: "600" }}>{matchedRule.authenticator}</div>
+              {/* 3 Pipeline Stages */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="rounded-lg border border-border/60 bg-card p-3 space-y-1.5">
+                  <div className="text-[10px] font-bold uppercase text-blue-400">
+                    {t("proxyRules.step1")}
+                  </div>
+                  <div className="text-xs font-semibold text-foreground font-mono">
+                    {matchedRule.authenticator}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Verifies cryptographic claims & token validity
+                  </div>
                 </div>
 
-                <div style={{ padding: "12px", background: "var(--bg-tertiary)", borderRadius: "var(--radius-md)" }}>
-                  <div className="form-label" style={{ color: "var(--accent-purple)" }}>2. Authorizer</div>
-                  <div style={{ fontSize: "13px", fontWeight: "600" }}>{matchedRule.authorizer}</div>
+                <div className="rounded-lg border border-border/60 bg-card p-3 space-y-1.5">
+                  <div className="text-[10px] font-bold uppercase text-purple-400">
+                    {t("proxyRules.step2")}
+                  </div>
+                  <div className="text-xs font-semibold text-foreground font-mono">
+                    {matchedRule.authorizer}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Zero-latency Zanzibar relation & CEL condition
+                  </div>
                 </div>
 
-                <div style={{ padding: "12px", background: "var(--bg-tertiary)", borderRadius: "var(--radius-md)" }}>
-                  <div className="form-label" style={{ color: "var(--accent-green)" }}>3. Mutator</div>
-                  <div style={{ fontSize: "13px", fontWeight: "600" }}>{matchedRule.mutator}</div>
+                <div className="rounded-lg border border-border/60 bg-card p-3 space-y-1.5">
+                  <div className="text-[10px] font-bold uppercase text-emerald-400">
+                    {t("proxyRules.step3")}
+                  </div>
+                  <div className="text-xs font-semibold text-foreground font-mono">
+                    {matchedRule.mutator}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Injects verified identity claims into upstream headers
+                  </div>
                 </div>
               </div>
             </div>
           ) : (
-            <div style={{ padding: "16px", background: "rgba(244, 63, 94, 0.1)", border: "1px solid var(--accent-rose)", borderRadius: "var(--radius-md)", color: "var(--accent-rose)" }}>
-              No rule matched this path. Aegis will return <strong>404 Not Found (Zero Trust Default Deny)</strong>.
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-400 font-medium">
+              {t("proxyRules.noMatch")}
             </div>
           )}
-        </div>
+        </CardContent>
+      </Card>
 
-        {/* Declarative Rules File Viewer */}
-        <div className="card">
-          <div className="card-header">
-            <h2 className="card-title">Declarative Rules Definition (`rules/default.rules.yaml`)</h2>
-            <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Hot-reloaded by Aegis</span>
+      {/* Declarative Rules File Viewer */}
+      <Card className="bg-card/80">
+        <CardHeader className="p-6 pb-4">
+          <div className="flex items-center gap-2">
+            <FileCode className="h-4 w-4 text-blue-400" />
+            <CardTitle className="text-sm font-semibold">
+              {t("proxyRules.yamlTitle")}
+            </CardTitle>
           </div>
+          <CardDescription className="text-xs">
+            {t("proxyRules.yamlDesc")}
+          </CardDescription>
+        </CardHeader>
 
-          <div className="code-box">
-{`version: "v1"
-rules:
-  - id: "rule-documents-api"
-    match:
-      url: "/api/v1/documents/<.*>"
-      methods: ["GET", "POST"]
-    authenticators:
-      - handler: "jwt"
-        config:
-          jwks_url: "http://janus:4444/.well-known/jwks.json"
-    authorizers:
-      - handler: "nexus_rebac"
-        config:
-          nexus_grpc_addr: "nexus:50051"
-          namespace: "document"
-          relation: "viewer"
-    mutators:
-      - handler: "header"
-        config:
-          headers:
-            X-User-ID: "{{ .Subject }}"
-    upstream:
-      url: "http://documents-backend:8080"`}
-          </div>
-        </div>
-      </div>
-    </>
+        <CardContent className="p-6 pt-0">
+          {loadingRules ? (
+            <div className="flex h-24 items-center justify-center text-xs text-muted-foreground">
+              Loading rules from Aegis…
+            </div>
+          ) : (
+            <CodeBlock
+              code={rulesJSON}
+              language="json"
+              title="GET /rules (Aegis admin API, live)"
+              showLineNumbers
+            />
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
