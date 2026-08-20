@@ -1,77 +1,55 @@
-# Guía de Uso para Desarrolladores: Autorix Janus
+# Autorix Janus: OAuth 2.0 & OpenID Connect Server Manual
 
-**Autorix Janus** es el servidor de autorización OAuth 2.0 y proveedor OpenID Connect (OIDC) Headless del ecosistema Autorix (equivalente a ORY Hydra).
-
----
-
-## 1. Conceptos y Arquitectura
-
-Janus resuelve el desafío de seguridad y delegación para APIs:
-* **Firma Asimétrica (RS256)**: Firma `access_token` e `id_token` JWT usando claves RSA que rota y expone públicamente en `/.well-known/jwks.json`.
-* **Zero Latency Verification**: Tu API Gateway (Autorix Aegis) o tus microservicios solo descargan el JWKS una vez y validan criptográficamente millones de JWTs por segundo en memoria local.
-* **PKCE Obligatorio (RFC 7636)**: Máxima seguridad para aplicaciones frontend (SPA / React) y aplicaciones móviles nativas.
+**Autorix Janus** is a high-performance OAuth 2.0 and OpenID Connect (OIDC) identity provider engine inspired by Ory Hydra. It issues cryptographically signed RS256 JWT access tokens, manages OAuth2 client lifecycles, handles PKCE-protected authorization flows, and maintains dynamic JWKS key rotations.
 
 ---
 
-## 2. Endpoints Públicos (`http://localhost:4444`)
+## 🏛️ 1. Architecture & Protocol Compliance
 
-| Endpoint | Protocolo | Descripción |
-| :--- | :--- | :--- |
-| `GET /.well-known/openid-configuration` | OIDC Discovery | Metadata de configuración de endpoints y algoritmos soportados |
-| `GET /.well-known/jwks.json` | RFC 7517 | Conjunto de claves públicas para validación de JWTs |
-| `POST /oauth2/token` | RFC 6749 | Intercambio de credenciales o códigos por tokens de acceso |
-| `POST /admin/clients` | Admin API | Registro de nuevas aplicaciones cliente |
+```text
+       [ Client Application / SPA ]
+                   │
+                   ▼ (OAuth2 Authorization Code + PKCE S256)
+       ┌───────────────────────┐
+       │     Autorix Janus     │ (REST :4444)
+       │                       │
+       │  ┌─────────────────┐  │  ┌───────────────────────┐
+       │  │ OIDC Discovery  │  │  │ RS256 Key Manager     │
+       │  │ (/.well-known)  │  │  │ (Auto JWKS Rotation)  │
+       │  └────────┬────────┘  │  └───────────┬───────────┘
+       │           │           │              │
+       │  ┌────────▼────────┐  │  ┌───────────▼───────────┐
+       │  │ OAuth2 Engine   │──┼──│ Token Signer          │
+       │  │ (AuthCode/M2M)  │  │  │ (JWT Claims & Scopes) │
+       │  └────────┬────────┘  │  └───────────┬───────────┘
+       └───────────┼───────────┴──────────────┼───────────┘
+                   │                          │
+                   ▼                          ▼
+               [ PostgreSQL Database: autorix_janus ]
+```
+
+### Standards Supported
+
+* **RFC 6749**: The OAuth 2.0 Authorization Framework.
+* **RFC 7636**: Proof Key for Code Exchange (PKCE) with mandatory `S256` challenge method.
+* **RFC 7517 / RFC 7518**: JSON Web Keys (JWK/JWKS) and RS256 signature algorithms.
+* **RFC 7662**: OAuth 2.0 Token Introspection.
+* **RFC 7009**: OAuth 2.0 Token Revocation.
+* **OpenID Connect Core 1.0**: ID Token issuance with user profile claims.
 
 ---
 
-## 3. Guía Paso a Paso
+## 🔑 2. Cryptographic Key Management & JWKS Rotation
 
-### 1. Registrar una Aplicación Cliente (Machine-to-Machine)
+Janus uses asymmetric **RSA 2048-bit** key pairs for signing JWTs. Public keys are published at `/.well-known/jwks.json`.
+
+### 2.1 Viewing the Public JWKS
 
 ```bash
-curl -X POST http://localhost:4444/admin/clients \
-  -H "Content-Type: application/json" \
-  -d '{
-    "client_id": "billing-service",
-    "client_name": "Servicio de Facturación",
-    "client_secret": "SuperSecretClientSecret123!",
-    "grant_types": ["client_credentials"],
-    "scopes": ["invoices:read", "invoices:write"],
-    "is_public": false
-  }'
+curl -s http://localhost:4444/.well-known/jwks.json
 ```
 
----
-
-### 2. Obtener un Access Token (Flujo `client_credentials`)
-
-```bash
-curl -X POST http://localhost:4444/oauth2/token \
-  -u "billing-service:SuperSecretClientSecret123!" \
-  -d "grant_type=client_credentials&scope=invoices:read"
-```
-
-**Respuesta (`200 OK`):**
-```json
-{
-  "access_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjY3ODkw...",
-  "token_type": "Bearer",
-  "expires_in": 3600,
-  "scope": "invoices:read"
-}
-```
-
----
-
-### 3. Verificar el Token con JWKS (`/.well-known/jwks.json`)
-
-Podés consultar las claves públicas en cualquier momento:
-
-```bash
-curl http://localhost:4444/.well-known/jwks.json
-```
-
-**Respuesta:**
+**Response:**
 ```json
 {
   "keys": [
@@ -79,45 +57,163 @@ curl http://localhost:4444/.well-known/jwks.json
       "kty": "RSA",
       "use": "sig",
       "alg": "RS256",
-      "kid": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-      "n": "u1P5tQ...",
+      "kid": "key_2026_q3_active",
+      "n": "u1L7Z3...[Base64URL modulus]...",
       "e": "AQAB"
     }
   ]
 }
 ```
 
+### 2.2 Rotating Signing Keys (Zero-Downtime)
+
+To rotate cryptographic keys without invalidating existing tokens:
+
+```bash
+curl -X POST http://localhost:4444/admin/keys/rotate
+```
+
+Janus generates a new active key for future token issuance while retaining the previous key in the JWKS for grace-period verification.
+
 ---
 
-## 4. Validación de Tokens en Go (en tus Microservicios)
+## 🚀 3. Client Registration & Scopes Catalog
 
-```go
-package main
+### 3.1 Creating an OAuth2 Client
 
-import (
-	"fmt"
-	"log"
+```bash
+curl -X POST http://localhost:4444/admin/clients \
+  -H "Content-Type: application/json" \
+  -d '{
+    "client_name": "Analytics Dashboard SPA",
+    "grant_types": ["authorization_code", "refresh_token"],
+    "response_types": ["code"],
+    "scope": "openid profile email analytics:read",
+    "redirect_uris": [
+      "https://analytics.enterprise.io/callback",
+      "http://localhost:3000/callback"
+    ],
+    "token_endpoint_auth_method": "none",
+    "require_pkce": true
+  }'
+```
 
-	"github.com/golang-jwt/jwt/v5"
-)
-
-func ValidateTokenWithPublicKey(tokenString string, publicKeyPEM []byte) (*jwt.MapClaims, error) {
-	pubKey, err := jwt.ParseRSAPublicKeyFromPEM(publicKeyPEM)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse public key: %w", err)
-	}
-
-	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-		}
-		return pubKey, nil
-	})
-	if err != nil || !token.Valid {
-		return nil, fmt.Errorf("invalid token: %w", err)
-	}
-
-	claims := token.Claims.(jwt.MapClaims)
-	return &claims, nil
+**Response (`201 Created`):**
+```json
+{
+  "client_id": "cli_9a8b7c6d5e4f",
+  "client_name": "Analytics Dashboard SPA",
+  "grant_types": ["authorization_code", "refresh_token"],
+  "scope": "openid profile email analytics:read",
+  "created_at": "2026-08-20T09:00:00Z"
 }
+```
+
+### 3.2 Machine-to-Machine (M2M) Client Creation
+
+```bash
+curl -X POST http://localhost:4444/admin/clients \
+  -H "Content-Type: application/json" \
+  -d '{
+    "client_name": "Billing Cron Daemon",
+    "grant_types": ["client_credentials"],
+    "response_types": ["token"],
+    "scope": "billing:read billing:write",
+    "token_endpoint_auth_method": "client_secret_post"
+  }'
+```
+
+**Response (`201 Created`):**
+```json
+{
+  "client_id": "cli_billing_m2m",
+  "client_secret": "sec_01918a7b6c5d4e3f2a1b0c9d8e7f6a",
+  "grant_types": ["client_credentials"],
+  "scope": "billing:read billing:write"
+}
+```
+
+### 3.3 Rotating Client Secrets
+
+```bash
+curl -X POST http://localhost:4444/admin/clients/cli_billing_m2m/rotate-secret
+```
+
+---
+
+## ⚡ 4. Token Issuance & Grant Flows
+
+### 4.1 Client Credentials Grant (M2M)
+
+```bash
+curl -X POST http://localhost:4444/oauth2/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials&client_id=cli_billing_m2m&client_secret=sec_01918a7b6c5d4e3f2a1b0c9d8e7f6a&scope=billing:read+billing:write"
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleV8yMDI2X3EzX2FjdGl2ZSIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "billing:read billing:write"
+}
+```
+
+### 4.2 Authorization Code Flow with PKCE S256 (SPA / Mobile)
+
+1. **Client Generates PKCE Verifier and Challenge**:
+   $$\text{Code Challenge} = \text{Base64URL}(\text{SHA-256}(\text{Code Verifier}))$$
+2. **Redirect to Janus `/oauth2/auth`**:
+   ```text
+   http://localhost:4444/oauth2/auth?
+     response_type=code&
+     client_id=cli_9a8b7c6d5e4f&
+     redirect_uri=https://analytics.enterprise.io/callback&
+     scope=openid+profile+email&
+     state=xyz123&
+     code_challenge=E9Melhoa2OwvFrGMTJguCH5...&
+     code_challenge_method=S256
+   ```
+3. **Exchanging Authorization Code for Tokens**:
+   ```bash
+   curl -X POST http://localhost:4444/oauth2/token \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "grant_type=authorization_code&client_id=cli_9a8b7c6d5e4f&code=auth_code_12345&redirect_uri=https://analytics.enterprise.io/callback&code_verifier=high_entropy_verifier_string"
+   ```
+
+---
+
+## 🔍 5. Token Introspection & Revocation
+
+### 5.1 Introspect Token (RFC 7662)
+
+Downstream APIs and proxies call this endpoint to check if an opaque or JWT token is active:
+
+```bash
+curl -X POST http://localhost:4444/oauth2/introspect \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "token=eyJhbGciOiJSUzI1Ni..."
+```
+
+**Response:**
+```json
+{
+  "active": true,
+  "scope": "billing:read billing:write",
+  "client_id": "cli_billing_m2m",
+  "sub": "cli_billing_m2m",
+  "exp": 1787220000,
+  "iat": 1787216400,
+  "iss": "http://localhost:4444"
+}
+```
+
+### 5.2 Revoke Token (RFC 7009)
+
+```bash
+curl -X POST http://localhost:4444/oauth2/revoke \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "token=eyJhbGciOiJSUzI1Ni...&client_id=cli_billing_m2m&client_secret=sec_..."
 ```

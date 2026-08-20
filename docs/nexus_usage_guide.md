@@ -1,203 +1,246 @@
-# Guía de Uso para Desarrolladores: Autorix Nexus
+# Autorix Nexus: Zanzibar ReBAC & Authorization Engine Manual
 
-**Autorix Nexus** es un motor de autorización de ultra-baja latencia que combina **ReBAC** (Control de Acceso Basado en Relaciones, inspirado en Google Zanzibar) con **ABAC** (Control de Acceso Basado en Atributos mediante Google CEL) en un único servidor gRPC.
-
----
-
-## 1. Conceptos Fundamentales
-
-### ¿Cómo piensa Nexus?
-Nexus no almacena listas de permisos estáticas (`alice -> can_read`). Almacena **Relaciones**:
-
-$$\text{namespace:object\#relation@subject}$$
-
-| Elemento | Ejemplo | Descripción |
-| :--- | :--- | :--- |
-| **Namespace** | `document` | Tipo de entidad o recurso. |
-| **Object** | `financial_report_2026` | Identificador único del recurso. |
-| **Relation** | `viewer`, `editor`, `owner` | Qué relación existe. |
-| **Subject** | `user:alice` o `group:finance#member` | Quién tiene la relación (usuario o grupo). |
-| **Caveat (ABAC)** | `is_work_hours` | Condición lógica que debe cumplirse en tiempo real. |
+**Autorix Nexus** is an ultra-low latency authorization engine combining **Google Zanzibar** relation graphs with **Attribute-Based Access Control (ABAC)** powered by Google Common Expression Language (CEL). It evaluates complex hierarchical permissions across millions of entities in sub-5ms latency.
 
 ---
 
-## 2. Puesta en Marcha Local
+## 🏛️ 1. Architectural Concepts & Data Model
 
-### Con Docker Compose (Recomendado)
-Levanta PostgreSQL con las migraciones aplicadas y el servidor Nexus:
+Unlike legacy RBAC systems that assign flat roles to users (`alice -> role:admin`), Nexus represents permissions as a **directed graph of relationships**:
 
-```bash
-docker compose up --build -d
+$$\text{namespace:object\#relation@subject\_namespace:subject\_id[\#subject\_relation] [with caveat]}$$
+
+### 1.1 The Zanzibar Tuple Structure
+
+| Field | Type | Description | Example |
+| :--- | :--- | :--- | :--- |
+| `namespace` | `string` | The resource category or domain boundary. | `documents`, `organizations`, `projects` |
+| `object` | `string` | Unique identifier of the resource instance. | `roadmap_2026_q3`, `org_enterprise_corp` |
+| `relation` | `string` | The named edge linking subject to object. | `owner`, `editor`, `viewer`, `parent` |
+| `subject_namespace` | `string` | Namespace of the subject (defaults to `user`). | `user`, `group`, `service_account` |
+| `subject_id` | `string` | Unique identifier of the subject. | `usr_4455`, `grp_engineering` |
+| `subject_relation` | `string` *(optional)* | Subject set indirection (for group membership). | `member`, `admin` |
+| `caveat_name` | `string` *(optional)* | Name of a registered CEL condition for ABAC. | `require_work_hours`, `ip_in_subnet` |
+| `caveat_context` | `map` *(optional)* | Static binding parameters for the caveat. | `{"allowed_ip": "10.0.0.0/8"}` |
+
+### 1.2 Subject Sets & Transitive Inheritance
+
+Nexus natively supports **Subject Sets** (users-in-usersets) allowing infinite hierarchical inheritance without duplicating permissions:
+
+```text
+  [ user:alice ] ──(member)──► [ group:engineering ] ──(editor)──► [ document:roadmap_2026 ]
 ```
 
-Verificá que el servidor gRPC esté escuchando en el puerto `50051`:
-```bash
-docker compose logs -f nexus
+* Tuple 1: `group:engineering#member@user:alice`
+* Tuple 2: `document:roadmap_2026#editor@group:engineering#member`
+
+When querying `Check(document:roadmap_2026, editor, user:alice)`, Nexus traverses the graph recursively and resolves `allowed: true`.
+
+---
+
+## ⚙️ 2. PostgreSQL Storage Engine & Optimization
+
+Nexus stores tuples in the `relation_tuples` table in `autorix_nexus`:
+
+```sql
+CREATE TABLE relation_tuples (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    namespace VARCHAR(128) NOT NULL,
+    object VARCHAR(256) NOT NULL,
+    relation VARCHAR(128) NOT NULL,
+    subject_namespace VARCHAR(128) NOT NULL DEFAULT 'user',
+    subject_object VARCHAR(256) NOT NULL,
+    subject_relation VARCHAR(128) NOT NULL DEFAULT '',
+    caveat_name VARCHAR(128),
+    caveat_context JSONB,
+    commit_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT uq_relation_tuple UNIQUE(namespace, object, relation, subject_namespace, subject_object, subject_relation)
+);
+
+CREATE INDEX idx_tuples_object_lookup ON relation_tuples(namespace, object, relation);
+CREATE INDEX idx_tuples_subject_lookup ON relation_tuples(subject_namespace, subject_object, subject_relation);
 ```
 
-### Sin Docker (Desarrollo Local)
-1. Asegurate de tener PostgreSQL corriendo y creá la base de datos `autorix_nexus`.
-2. Aplicá los scripts en `nexus/migrations/`.
-3. Ejecutá:
+### Recursive Graph Traversal Engine
+
+Nexus executes graph expansions using depth-limited recursive traversal with cycle detection:
+* **Max Depth**: Configurable (default: 10 levels).
+* **Cycle Guard**: Visited set $(N, O, R, S)$ tracking prevents infinite loops in circular group memberships (`A -> B -> A`).
+
+---
+
+## 📜 3. Namespace Schemas & Rewrite Rules
+
+Namespaces define permission inheritance rules via schema definitions.
+
+### 3.1 Defining a Namespace Schema
+
 ```bash
-cd nexus
-export DATABASE_URL="postgres://autorix:autorix_password@localhost:5432/autorix_nexus?sslmode=disable"
-make run
+curl -X POST http://localhost:8080/admin/namespaces \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "documents",
+    "relations": {
+      "owner": {},
+      "editor": {
+        "union": ["owner"]
+      },
+      "viewer": {
+        "union": ["editor", "parent.viewer"]
+      }
+    }
+  }'
+```
+
+* **Union**: Grants permission if the subject holds any of the specified relations (e.g. `owner` automatically implies `editor` and `viewer`).
+* **TupleToUserset (`parent.viewer`)**: Inherits permissions from a linked parent resource (e.g. all viewers of a folder can view documents inside it).
+
+---
+
+## ⚡ 4. Dynamic ABAC Conditions (Caveats)
+
+Caveats allow runtime environmental validation using Google CEL expressions.
+
+### 4.1 Registering a Caveat Definition
+
+```bash
+curl -X POST http://localhost:8080/admin/caveats \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "is_business_hours_and_corp_ip",
+    "cel_expression": "request_context.hour >= 9 && request_context.hour <= 18 && request_context.ip.startsWith(\"10.0.\")"
+  }'
+```
+
+### 4.2 Binding a Caveat to a Relation Tuple
+
+```bash
+curl -X POST http://localhost:8080/tuples \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tuples": [
+      {
+        "namespace": "databases",
+        "object": "prod_customer_db",
+        "relation": "operator",
+        "subject_namespace": "user",
+        "subject_id": "usr_bob",
+        "caveat_name": "is_business_hours_and_corp_ip"
+      }
+    ]
+  }'
 ```
 
 ---
 
-## 3. Pruebas Rápidas con `grpcurl`
+## 📡 5. Complete REST & gRPC API Reference
 
-Podés interactuar con Nexus directamente desde la terminal usando `grpcurl` (gracias a que gRPC Reflection viene habilitado).
+### 5.1 Evaluate Permission (`POST /check` or gRPC `Check`)
 
-### Listar los métodos disponibles
 ```bash
-grpcurl -plaintext localhost:50051 list autorix.nexus.v1.NexusService
+curl -X POST http://localhost:8080/check \
+  -H "Content-Type: application/json" \
+  -d '{
+    "namespace": "databases",
+    "object": "prod_customer_db",
+    "relation": "operator",
+    "subject_namespace": "user",
+    "subject_id": "usr_bob",
+    "request_context": {
+      "hour": 14,
+      "ip": "10.0.4.100"
+    },
+    "explain": true
+  }'
 ```
 
-### Evaluar un Permiso (`Check`)
-
-#### Caso 1: Chequeo de acceso directo simple
-```bash
-grpcurl -plaintext -d '{
-  "namespace": "document",
-  "object": "doc_100",
-  "relation": "viewer",
-  "subject_id": "alice",
-  "subject_namespace": "user"
-}' localhost:50051 autorix.nexus.v1.NexusService/Check
-```
-
-**Respuesta:**
+**Response (`200 OK`):**
 ```json
 {
   "allowed": true,
-  "reason": "direct match"
+  "reason": "caveat_passed",
+  "trace": {
+    "node": "databases:prod_customer_db#operator@user:usr_bob",
+    "depth": 1,
+    "caveat_evaluated": "is_business_hours_and_corp_ip",
+    "result": true
+  }
 }
 ```
 
-#### Caso 2: Chequeo con Contexto Dinámico (ABAC / Caveats)
-Si el recurso requiere validar la IP del usuario o la hora del request, pasá el `request_context`:
+### 5.2 Expand Permission Tree (`POST /expand` or gRPC `Expand`)
+
+Visualizes the complete tree of users and groups that have a given permission:
 
 ```bash
-grpcurl -plaintext -d '{
-  "namespace": "document",
-  "object": "payroll_q1",
-  "relation": "viewer",
-  "subject_id": "bob",
-  "subject_namespace": "user",
-  "request_context": {
-    "ip": "192.168.1.100",
-    "mfa_authenticated": true
-  }
-}' localhost:50051 autorix.nexus.v1.NexusService/Check
+curl -X POST http://localhost:8080/expand \
+  -H "Content-Type: application/json" \
+  -d '{
+    "namespace": "documents",
+    "object": "roadmap_2026",
+    "relation": "viewer"
+  }'
 ```
 
----
+### 5.3 Reverse Lookup: Find Accessible Resources (`POST /lookup/resources`)
 
-## 4. Integración en Clientes
+Returns all resources of a given type that a user can access:
 
-### En Go (Golang)
+```bash
+curl -X POST http://localhost:8080/lookup/resources \
+  -H "Content-Type: application/json" \
+  -d '{
+    "namespace": "documents",
+    "relation": "editor",
+    "subject_namespace": "user",
+    "subject_id": "usr_alice"
+  }'
+```
 
-```go
-package main
-
-import (
-	"context"
-	"log"
-
-	pb "github.com/autorix/nexus/api/autorix/nexus/v1"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/types/known/structpb"
-)
-
-func main() {
-	conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		log.Fatalf("did not connect: %v", err)
-	}
-	defer conn.Close()
-
-	client := pb.NewNexusServiceClient(conn)
-
-	// Contexto dinámico para el Caveat (ABAC)
-	reqCtx, _ := structpb.NewStruct(map[string]interface{}{
-		"ip": "192.168.1.50",
-	})
-
-	resp, err := client.Check(context.Background(), &pb.CheckRequest{
-		Namespace:        "project",
-		Object:           "proj_alpha",
-		Relation:         "maintainer",
-		SubjectId:        "user_123",
-		SubjectNamespace: "user",
-		RequestContext:   reqCtx,
-	})
-	if err != nil {
-		log.Fatalf("error checking permission: %v", err)
-	}
-
-	if resp.Allowed {
-		log.Println("Acceso concedido!")
-	} else {
-		log.Printf("Acceso denegado: %s\n", resp.Reason)
-	}
+**Response:**
+```json
+{
+  "resources": [
+    "roadmap_2026",
+    "architecture_spec_v2",
+    "q3_financial_model"
+  ]
 }
 ```
 
-### En Node.js / TypeScript
+### 5.4 Reverse Lookup: Find Authorized Subjects (`POST /lookup/subjects`)
 
-```typescript
-import * as grpc from '@grpc/grpc-js';
-import * as protoLoader from '@grpc/proto-loader';
+Returns all subjects who hold a relationship with an object:
 
-const packageDefinition = protoLoader.loadSync('nexus.proto');
-const proto = grpc.loadPackageDefinition(packageDefinition) as any;
-
-const client = new proto.autorix.nexus.v1.NexusService(
-  'localhost:50051',
-  grpc.credentials.createInsecure()
-);
-
-client.Check(
-  {
-    namespace: 'document',
-    object: 'doc_100',
-    relation: 'editor',
-    subject_id: 'alice',
-    subject_namespace: 'user',
-    request_context: {
-      fields: {
-        ip: { stringValue: '192.168.1.100' }
-      }
-    }
-  },
-  (err: any, response: any) => {
-    if (err) console.error(err);
-    console.log('Permitido:', response.allowed);
-  }
-);
+```bash
+curl -X POST http://localhost:8080/lookup/subjects \
+  -H "Content-Type: application/json" \
+  -d '{
+    "namespace": "documents",
+    "object": "roadmap_2026",
+    "relation": "viewer"
+  }'
 ```
 
 ---
 
-## 5. Modelado de Jerarquías y Grupos (Usersets)
+## 🛠️ 6. Production Recipes
 
-Para modelar que **"Todos los miembros del grupo Ingeniería pueden ver el Documento 1"**:
+### Multi-Tenant Document Hierarchy Recipe
 
-1. Insertá la tupla de grupo:
-   - `namespace`: `group`, `object`: `engineering`, `relation`: `member`, `subject`: `user:alice`
-2. Insertá la tupla de permiso apuntando al grupo:
-   - `namespace`: `document`, `object`: `doc_1`, `relation`: `viewer`, `subject`: `group:engineering#member`
+```text
+Organization (org:acme)
+  └── Team (group:backend) -> member: user:alice
+        └── Folder (folder:eng_specs) -> parent: org:acme
+              └── Document (doc:iam_architecture) -> parent: folder:eng_specs
+```
 
-Cuando consultes si `alice` puede ver `doc_1`, Nexus resolverá la cadena concurrentemente en memoria y devolverá `allowed: true` con `reason: "indirect match"`.
-
----
-
-## 6. Buenas Prácticas para Producción
-
-1. **Uso de Connection Pools gRPC**: Reutilizá un único `*grpc.ClientConn` compartido en tus servicios clientes (no abras una conexión por petición HTTP).
-2. **Timeouts en Context**: Pasá siempre un `context.WithTimeout(ctx, 50*time.Millisecond)` en las llamadas gRPC a Nexus. La evaluación debe resolverse en microsegundos.
-3. **Validación Temprana**: Inyectá `Nexus` en tu API Gateway (Autorix Aegis) para validar permisos antes de que el tráfico toque los microservicios de negocio.
+**Tuples required:**
+```json
+[
+  {"namespace": "organizations", "object": "acme", "relation": "member", "subject_namespace": "group", "subject_id": "backend", "subject_relation": "member"},
+  {"namespace": "groups", "object": "backend", "relation": "member", "subject_namespace": "user", "subject_id": "alice"},
+  {"namespace": "folders", "object": "eng_specs", "relation": "organization", "subject_namespace": "organizations", "subject_id": "acme"},
+  {"namespace": "documents", "object": "iam_architecture", "relation": "parent_folder", "subject_namespace": "folders", "subject_id": "eng_specs"}
+]
+```
