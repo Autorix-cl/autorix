@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -77,6 +78,24 @@ func (s *Server) Routes() http.Handler {
 		mux.HandleFunc("GET /v1/auth/session", s.handleValidateSession)
 		mux.HandleFunc("DELETE /v1/auth/session", s.handleLogout)
 		mux.HandleFunc("GET /v1/operators", s.handleListOperators)
+
+		// Audit & Governance (P8-S1, P8-S4)
+		mux.HandleFunc("GET /v1/audit", s.handleListAudit)
+		mux.HandleFunc("GET /admin/audit", s.handleListAudit)
+		mux.HandleFunc("POST /v1/audit", s.handleRecordAudit)
+		mux.HandleFunc("POST /admin/audit", s.handleRecordAudit)
+		mux.HandleFunc("GET /v1/audit/verify", s.handleVerifyAudit)
+		mux.HandleFunc("GET /admin/audit/verify", s.handleVerifyAudit)
+		mux.HandleFunc("GET /v1/audit/export", s.handleExportAudit)
+		mux.HandleFunc("GET /admin/audit/export", s.handleExportAudit)
+		mux.HandleFunc("GET /v1/compliance/evidence", s.handleGetComplianceEvidence)
+		mux.HandleFunc("GET /admin/compliance/evidence", s.handleGetComplianceEvidence)
+		mux.HandleFunc("GET /v1/environments", s.handleListEnvironments)
+		mux.HandleFunc("GET /admin/environments", s.handleListEnvironments)
+		mux.HandleFunc("GET /v1/governance/orgs", s.handleListOrganisations)
+		mux.HandleFunc("GET /admin/governance/orgs", s.handleListOrganisations)
+		mux.HandleFunc("GET /v1/governance/projects", s.handleListProjects)
+		mux.HandleFunc("GET /admin/governance/projects", s.handleListProjects)
 	}
 	return metrics.HTTPMiddleware("argus")(tracing.HTTPMiddleware()(mux))
 }
@@ -827,6 +846,125 @@ func (s *Server) handleListOperators(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, operators)
+}
+
+func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 200 {
+			limit = parsed
+		}
+	}
+	filter := core.AuditRecordFilter{
+		ActorID:      r.URL.Query().Get("actor_id"),
+		Action:       r.URL.Query().Get("action"),
+		ResourceType: r.URL.Query().Get("resource_type"),
+		ResourceID:   r.URL.Query().Get("resource_id"),
+		Environment:  r.URL.Query().Get("environment"),
+		Outcome:      r.URL.Query().Get("outcome"),
+		Cursor:       r.URL.Query().Get("cursor"),
+		Limit:        limit,
+	}
+	records, nextCursor, hasMore, err := s.repo.ListAuditRecords(r.Context(), filter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"data":        records,
+		"next_cursor": nextCursor,
+		"has_more":    hasMore,
+	})
+}
+
+func (s *Server) handleRecordAudit(w http.ResponseWriter, r *http.Request) {
+	var record core.AuditRecord
+	if err := json.NewDecoder(r.Body).Decode(&record); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	created, err := s.repo.RecordAudit(r.Context(), record)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, created)
+}
+
+func (s *Server) handleVerifyAudit(w http.ResponseWriter, r *http.Request) {
+	res, err := s.repo.VerifyAuditChainDetailed(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) handleExportAudit(w http.ResponseWriter, r *http.Request) {
+	format := r.URL.Query().Get("format")
+	if format == "csv" {
+		data, err := s.repo.ExportAuditRecords(r.Context(), "csv")
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment; filename=audit-records.csv")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(data)
+		return
+	}
+	data, err := s.repo.ExportAuditRecords(r.Context(), "json")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", "attachment; filename=audit-records.json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+func (s *Server) handleGetComplianceEvidence(w http.ResponseWriter, r *http.Request) {
+	report, err := s.repo.GetComplianceEvidence(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
+}
+
+func (s *Server) handleListEnvironments(w http.ResponseWriter, r *http.Request) {
+	envs, err := s.repo.ListEnvironments(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, envs)
+}
+
+func (s *Server) handleListOrganisations(w http.ResponseWriter, r *http.Request) {
+	orgs, err := s.repo.ListOrganisations(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, orgs)
+}
+
+func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
+	var orgID *uuid.UUID
+	if o := r.URL.Query().Get("org_id"); o != "" {
+		if parsed, err := uuid.Parse(o); err == nil {
+			orgID = &parsed
+		}
+	}
+	projects, err := s.repo.ListProjects(r.Context(), orgID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, projects)
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {

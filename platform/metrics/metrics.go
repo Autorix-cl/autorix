@@ -128,6 +128,12 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 	return s.ResponseWriter.Write(b)
 }
 
+func (s *statusRecorder) Flush() {
+	if flusher, ok := s.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 // HTTPMiddleware returns a standard HTTP RED middleware measuring request counts and latencies.
 func HTTPMiddleware(engine string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

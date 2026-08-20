@@ -22,142 +22,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { CodeBlock } from "@/components/ui/code-block";
-import type {
-  ComplianceEvidenceItem,
+import {
+  complianceEvidenceItemSchema,
+  type ComplianceEvidenceItem,
 } from "@/lib/api/schemas/compliance";
-
-const MOCK_COMPLIANCE_CONTROLS: ComplianceEvidenceItem[] = [
-  {
-    id: "ctrl_soc2_cc6_1",
-    framework: "SOC 2 Type II",
-    control_id: "CC6.1",
-    control_name: "Logical Access Controls & Authentication",
-    status: "compliant",
-    evidence_type: "mfa_and_credential_vaulting",
-    description:
-      "All operator and user authentications enforce Argon2id memory-hard password hashing, optional TOTP MFA, and SSO federation via Hermes.",
-    engine: "Ego & Argus",
-    last_evaluated_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    evaluator: "argus-continuous-compliance-evaluator",
-    artifacts_count: 3,
-    details: {
-      argon2_params: { memory_kb: 65536, iterations: 3, parallelism: 4 },
-      sso_providers_configured: 1,
-      break_glass_rate_limiting: "5 failed attempts -> 15 min lock",
-    },
-  },
-  {
-    id: "ctrl_soc2_cc6_3",
-    framework: "SOC 2 Type II",
-    control_id: "CC6.3",
-    control_name: "Role-Based & Relationship-Based Authorization",
-    status: "compliant",
-    evidence_type: "rebac_abac_enforcement",
-    description:
-      "Access authorization is strictly evaluated via Google Zanzibar relation graphs in Nexus and CEL attribute policies in Themis.",
-    engine: "Nexus & Themis",
-    last_evaluated_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-    evaluator: "nexus-rbac-policy-audit",
-    artifacts_count: 5,
-    details: {
-      evaluation_model: "Zanzibar + CEL ABAC",
-      default_decision: "deny",
-      tenant_isolation_enforced: true,
-    },
-  },
-  {
-    id: "ctrl_soc2_cc6_6",
-    framework: "SOC 2 Type II",
-    control_id: "CC6.6",
-    control_name: "Perimeter Protection & Zero Trust Request Inspection",
-    status: "compliant",
-    evidence_type: "zero_trust_pep_proxy",
-    description:
-      "Inbound API requests are intercepted by Aegis reverse proxy enforcing authentication, authorization, and header mutation.",
-    engine: "Aegis",
-    last_evaluated_at: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-    evaluator: "aegis-perimeter-sentinel",
-    artifacts_count: 4,
-    details: {
-      proxy_rules_active: 8,
-      unauthenticated_rejection_code: 401,
-      unauthorized_rejection_code: 403,
-    },
-  },
-  {
-    id: "ctrl_soc2_cc6_8",
-    framework: "SOC 2 Type II",
-    control_id: "CC6.8",
-    control_name: "Tamper-Evident Immutable Audit Logging",
-    status: "compliant",
-    evidence_type: "cryptographic_hash_chain",
-    description:
-      "All mutations and authorization decisions are written to an append-only cryptographic hash chain with SHA-256 links.",
-    engine: "Argus",
-    last_evaluated_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-    evaluator: "argus-merkle-verifier",
-    artifacts_count: 8,
-    details: {
-      hash_algorithm: "SHA-256",
-      chain_length: 1042,
-      tamper_evident_integrity: "100% intact",
-    },
-  },
-  {
-    id: "ctrl_iso_a9_2",
-    framework: "ISO/IEC 27001",
-    control_id: "A.9.2.1",
-    control_name: "User Registration & Access Lifecycle",
-    status: "compliant",
-    evidence_type: "user_provisioning_audit",
-    description:
-      "User provisioning and deprovisioning are tracked through SCIM 2.0 and Ego identity schemas with automated lifecycle revocation.",
-    engine: "Ego & Hermes",
-    last_evaluated_at: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
-    evaluator: "hermes-directory-sync-audit",
-    artifacts_count: 2,
-    details: {
-      scim_rfc_compliance: "RFC 7643 / RFC 7644",
-      directory_sync_interval: "Continuous webhook",
-    },
-  },
-  {
-    id: "ctrl_iso_a9_4_2",
-    framework: "ISO/IEC 27001",
-    control_id: "A.9.4.2",
-    control_name: "Secure API Key Management & Capability Attenuation",
-    status: "compliant",
-    evidence_type: "macaroon_key_vaulting",
-    description:
-      "API keys carry recognizable environment prefixes and support decentralized HMAC caveat attenuation without database mutations.",
-    engine: "Vulcan",
-    last_evaluated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-    evaluator: "vulcan-key-rotation-verifier",
-    artifacts_count: 6,
-    details: {
-      key_prefix_standard: "av_live_ / av_test_",
-      attenuation_algorithm: "HMAC-SHA256 Chained Macaroons",
-    },
-  },
-  {
-    id: "ctrl_iso_a12_4",
-    framework: "ISO/IEC 27001",
-    control_id: "A.12.4.1",
-    control_name: "Protection of Log Information & Redaction",
-    status: "compliant",
-    evidence_type: "secrets_redaction_filter",
-    description:
-      "Automated regex and object redaction rules strip passwords, API keys, and session tokens before persisting logs or rendering UI diffs.",
-    engine: "Argus & Console BFF",
-    last_evaluated_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-    evaluator: "console-redaction-sentinel",
-    artifacts_count: 4,
-    details: {
-      patterns_masked: ["abt_*", "ast_*", "aet_*", "av_live_*", "Argon2 hashes", "Bearer tokens"],
-      redaction_rate: "100%",
-    },
-  },
-];
 
 export default function CompliancePage() {
   const [selectedFramework, setSelectedFramework] = React.useState<string>("ALL");
@@ -175,15 +43,15 @@ export default function CompliancePage() {
     queryKey: ["compliance", "evidence", selectedFramework],
     queryFn: async () => {
       const res = await fetch("/api/compliance/evidence");
-      if (!res.ok) return MOCK_COMPLIANCE_CONTROLS;
+      if (!res.ok) return [];
       const json = await res.json();
-      if (Array.isArray(json)) return json;
-      if (json.data && Array.isArray(json.data)) return json.data;
-      return MOCK_COMPLIANCE_CONTROLS;
+      if (Array.isArray(json)) return json.map((it) => complianceEvidenceItemSchema.parse(it));
+      if (json.data && Array.isArray(json.data)) return json.data.map((it: unknown) => complianceEvidenceItemSchema.parse(it));
+      return [];
     },
   });
 
-  const controls = complianceData ?? MOCK_COMPLIANCE_CONTROLS;
+  const controls = React.useMemo(() => complianceData ?? [], [complianceData]);
 
   const filteredControls = React.useMemo(() => {
     return controls.filter((ctrl) => {

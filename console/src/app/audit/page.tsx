@@ -30,109 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { CodeBlock } from "@/components/ui/code-block";
 import { redactObject } from "@/lib/api/redact";
-import type { AuditEntry, AuditVerification } from "@/lib/api/schemas/audit";
-
-const MOCK_AUDIT_LOGS: AuditEntry[] = [
-  {
-    id: "aud_9f8b7a6c-5d4e-4f3a-2b1c-0e9d8c7b6a50",
-    timestamp: new Date(Date.now() - 4 * 60 * 1000).toISOString(),
-    actor: "security.admin@enterprise.io",
-    actor_type: "operator",
-    action: "UPDATE",
-    resource_type: "policy",
-    resource_id: "pol_themis_finance_mfa",
-    environment: "production",
-    request_id: "req_a1b2c3d4e5f6",
-    ip_address: "192.168.1.100",
-    user_agent: "Mozilla/5.0 AutorixConsole/1.0",
-    outcome: "success",
-    before_state: {
-      id: "pol_themis_finance_mfa",
-      name: "Enforce Finance MFA",
-      expression: 'request.auth.claims.department == "finance"',
-      priority: 5,
-      secret_salt: "abt_98234798237498237498237498237498",
-    },
-    after_state: {
-      id: "pol_themis_finance_mfa",
-      name: "Enforce Finance MFA & IP Restriction",
-      expression: 'request.auth.claims.department == "finance" && request.auth.mfa == true',
-      priority: 1,
-      secret_salt: "abt_98234798237498237498237498237498",
-    },
-    hash: "a4f8e91c7b3d2e0f8a9c1b2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f",
-    prev_hash: "9b3c4d5e6f7a8b9c0d1e2f3a4f8e91c7b3d2e0f8a9c1b2d3e4f5a6b7c8d9e0f1",
-    sequence: 1042,
-  },
-  {
-    id: "aud_8e7d6c5b-4a3f-2e1d-0c9b-8a7f6e5d4c31",
-    timestamp: new Date(Date.now() - 18 * 60 * 1000).toISOString(),
-    actor: "ops.lead@enterprise.io",
-    actor_type: "operator",
-    action: "CREATE",
-    resource_type: "api_key",
-    resource_id: "av_live_billing_sync_prod",
-    environment: "production",
-    request_id: "req_f6e5d4c3b2a1",
-    ip_address: "10.0.4.15",
-    user_agent: "AutorixCLI/1.0",
-    outcome: "success",
-    before_state: null,
-    after_state: {
-      id: "key_778899",
-      name: "Billing Sync Integration Key",
-      key_prefix: "av_live_bill",
-      scopes: ["invoices:read", "invoices:write"],
-      token_secret: "av_live_98a7sd8f7asdf89as7df89asdf",
-    },
-    hash: "9b3c4d5e6f7a8b9c0d1e2f3a4f8e91c7b3d2e0f8a9c1b2d3e4f5a6b7c8d9e0f1",
-    prev_hash: "3d2e0f8a9c1b2d3e4f5a6b7c8d9e0f1a4f8e91c7b3d2e0f8a9c1b2d3e4f5a6b7",
-    sequence: 1041,
-  },
-  {
-    id: "aud_7d6c5b4a-3f2e-1d0c-9b8a-7f6e5d4c3b22",
-    timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-    actor: "unknown_attacker@external.net",
-    actor_type: "external",
-    action: "LOGIN",
-    resource_type: "operator",
-    resource_id: "admin@enterprise.io",
-    environment: "production",
-    request_id: "req_887766554433",
-    ip_address: "198.51.100.42",
-    user_agent: "Python/requests",
-    outcome: "denied",
-    reason: "Invalid password attempt (4 consecutive failures)",
-    before_state: { failed_attempts: 3 },
-    after_state: { failed_attempts: 4, locked_until: null },
-    hash: "3d2e0f8a9c1b2d3e4f5a6b7c8d9e0f1a4f8e91c7b3d2e0f8a9c1b2d3e4f5a6b7",
-    prev_hash: "2b3c4d5e6f7a8b9c0d1e2f3a4f8e91c7b3d2e0f8a9c1b2d3e4f5a6b7c8d9e0f0",
-    sequence: 1040,
-  },
-  {
-    id: "aud_6c5b4a3f-2e1d-0c9b-8a7f-6e5d4c3b2a13",
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    actor: "security.admin@enterprise.io",
-    actor_type: "operator",
-    action: "DELETE",
-    resource_type: "proxy_rule",
-    resource_id: "rule_legacy_v1_payments",
-    environment: "staging",
-    request_id: "req_334455667788",
-    ip_address: "192.168.1.100",
-    user_agent: "Mozilla/5.0 AutorixConsole/1.0",
-    outcome: "success",
-    before_state: {
-      id: "rule_legacy_v1_payments",
-      path_pattern: "/api/v1/payments/*",
-      upstream: "http://legacy-payment-svc:8080",
-    },
-    after_state: null,
-    hash: "2b3c4d5e6f7a8b9c0d1e2f3a4f8e91c7b3d2e0f8a9c1b2d3e4f5a6b7c8d9e0f0",
-    prev_hash: "1a2b3c4d5e6f7a8b9c0d1e2f3a4f8e91c7b3d2e0f8a9c1b2d3e4f5a6b7c8d9e0",
-    sequence: 1039,
-  },
-];
+import { auditEntrySchema, type AuditEntry, type AuditVerification } from "@/lib/api/schemas/audit";
 
 export default function AuditPage() {
   const [searchTerm, setSearchTerm] = React.useState("");
@@ -156,13 +54,12 @@ export default function AuditPage() {
 
       const res = await fetch(`/api/audit?${params.toString()}`);
       if (!res.ok) {
-        // Fall back to mock logs if backend is not running live
-        return MOCK_AUDIT_LOGS;
+        return [];
       }
       const json = await res.json();
-      if (Array.isArray(json)) return json;
-      if (json.data && Array.isArray(json.data)) return json.data;
-      return MOCK_AUDIT_LOGS;
+      if (Array.isArray(json)) return json.map((entry) => auditEntrySchema.parse(entry));
+      if (json.data && Array.isArray(json.data)) return json.data.map((entry: unknown) => auditEntrySchema.parse(entry));
+      return [];
     },
   });
 
@@ -178,9 +75,9 @@ export default function AuditPage() {
       if (!res.ok) {
         return {
           verified: true,
-          chain_length: 1042,
-          head_hash: "a4f8e91c7b3d2e0f8a9c1b2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f",
-          genesis_hash: "0000000000000000000000000000000000000000000000000000000000000000",
+          chain_length: 0,
+          head_hash: "",
+          genesis_hash: "",
           verified_at: new Date().toISOString(),
           algorithm: "SHA-256",
         };
@@ -189,7 +86,7 @@ export default function AuditPage() {
     },
   });
 
-  const logs = auditEntries ?? MOCK_AUDIT_LOGS;
+  const logs = React.useMemo(() => auditEntries ?? [], [auditEntries]);
 
   const filteredLogs = React.useMemo(() => {
     return logs.filter((log) => {
