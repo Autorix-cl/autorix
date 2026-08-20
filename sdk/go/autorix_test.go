@@ -83,3 +83,46 @@ func TestNexus_CheckWithCache(t *testing.T) {
 		t.Fatalf("expected cached allowed true, got %v", allowedCached)
 	}
 }
+
+func TestNexus_RealHTTPCheck_AllowedAndDenied(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/check" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"allowed":true,"reason":"granted"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		NexusURL: server.URL,
+	})
+
+	allowed, err := client.Check(context.Background(), "document", "doc_1", "viewer", "alice", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Fatalf("expected allowed true, got false")
+	}
+}
+
+func TestNexus_FailClosed_OnNetworkOrServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		NexusURL: server.URL,
+	})
+
+	allowed, err := client.Check(context.Background(), "document", "doc_1", "viewer", "alice", nil)
+	if err == nil {
+		t.Fatalf("expected error on 500 status")
+	}
+	if allowed {
+		t.Fatalf("expected fail-closed (allowed=false), got true")
+	}
+}

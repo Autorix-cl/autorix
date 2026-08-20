@@ -41,7 +41,7 @@ export class AutorixClient {
     this.config = {
       baseUrl: config.baseUrl || "http://localhost:4455",
       egoUrl: config.egoUrl || "http://localhost:4433",
-      nexusUrl: config.nexusUrl || "http://localhost:50051",
+      nexusUrl: config.nexusUrl || "http://localhost:8080",
       janusUrl: config.janusUrl || "http://localhost:4444",
       vulcanUrl: config.vulcanUrl || "http://localhost:4466",
     };
@@ -71,21 +71,25 @@ export class AutorixClient {
   }
 
   /**
-   * Evaluates a Zanzibar ReBAC + CEL permission check
+   * Evaluates a Zanzibar ReBAC + CEL permission check (Fail-Closed)
    */
   async check(req: CheckPermissionRequest): Promise<CheckPermissionResponse> {
     try {
-      const res = await fetch(`${this.config.nexusUrl}/api/v1/permissions/check`, {
+      const baseUrl = (this.config.nexusUrl || "http://localhost:8080").replace(/\/$/, "");
+      const res = await fetch(`${baseUrl}/check`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(req),
       });
 
-      if (!res.ok) return { allowed: false, reason: "Request failed" };
+      if (!res.ok) {
+        return { allowed: false, reason: `Nexus returned status ${res.status}` };
+      }
       return (await res.json()) as CheckPermissionResponse;
-    } catch {
-      // Fallback
-      return { allowed: true, reason: "Local verified" };
+    } catch (err: unknown) {
+      // Fail-closed on network or runtime failure
+      const message = err instanceof Error ? err.message : "Connection failed";
+      return { allowed: false, reason: `Nexus check error: ${message}` };
     }
   }
 }

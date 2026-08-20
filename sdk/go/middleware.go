@@ -12,7 +12,7 @@ func (c *Client) Middleware(next http.Handler) http.Handler {
 		if userID != "" {
 			email := r.Header.Get("X-User-Email")
 			rawRoles := r.Header.Get("X-User-Roles")
-			
+
 			var roles []string
 			if rawRoles != "" {
 				roles = strings.Split(rawRoles, ",")
