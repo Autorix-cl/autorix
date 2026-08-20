@@ -298,5 +298,14 @@ services:
       aegis:
         condition: service_healthy
 
+  docs:
+    build:
+      context: .
+      dockerfile: docs/Dockerfile
+    container_name: autorix-docs
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+
 volumes:
   postgres_data:
