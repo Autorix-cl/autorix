@@ -17,16 +17,41 @@ services:
       - ./vulcan/migrations:/docker-entrypoint-initdb.d/04-vulcan:ro
       - ./hermes/migrations:/docker-entrypoint-initdb.d/05-hermes:ro
       - ./themis/migrations:/docker-entrypoint-initdb.d/06-themis:ro
+      - ./argus/migrations:/docker-entrypoint-initdb.d/07-argus:ro
+      - ./aegis/migrations:/docker-entrypoint-initdb.d/08-aegis:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U autorix -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  argus:
+    build:
+      context: .
+      dockerfile: argus/Dockerfile
+    container_name: autorix-argus
+    restart: unless-stopped
+    ports:
+      - "50053:50053"
+      - "4400:4400"
+    environment:
+      PORT: "50053"
+      HTTP_PORT: "4400"
+      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_argus?sslmode=disable"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4400/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   nexus:
     build:
-      context: ./nexus
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: nexus/Dockerfile
     container_name: autorix-nexus
     restart: unless-stopped
     ports:
@@ -36,14 +61,22 @@ services:
       PORT: "50051"
       HTTP_PORT: "8080"
       DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_nexus?sslmode=disable"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     depends_on:
       postgres:
+        condition: service_healthy
+      argus:
         condition: service_healthy
 
   ego:
     build:
-      context: ./ego
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ego/Dockerfile
     container_name: autorix-ego
     restart: unless-stopped
     ports:
@@ -51,14 +84,26 @@ services:
     environment:
       PORT: "4433"
       DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_ego?sslmode=disable"
+      # Local compose serves ego over plain HTTP; a Secure cookie would
+      # never be sent back by the browser. Production deployments (behind
+      # TLS) must leave this unset so it defaults to true.
+      SECURE_COOKIES: "false"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4433/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     depends_on:
       postgres:
+        condition: service_healthy
+      argus:
         condition: service_healthy
 
   janus:
     build:
-      context: ./janus
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: janus/Dockerfile
     container_name: autorix-janus
     restart: unless-stopped
     ports:
@@ -67,14 +112,22 @@ services:
       PORT: "4444"
       ISSUER_URL: "http://localhost:4444"
       DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_janus?sslmode=disable"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4444/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     depends_on:
       postgres:
+        condition: service_healthy
+      argus:
         condition: service_healthy
 
   vulcan:
     build:
-      context: ./vulcan
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: vulcan/Dockerfile
     container_name: autorix-vulcan
     restart: unless-stopped
     ports:
@@ -82,14 +135,22 @@ services:
     environment:
       PORT: "4466"
       DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_vulcan?sslmode=disable"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4466/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     depends_on:
       postgres:
+        condition: service_healthy
+      argus:
         condition: service_healthy
 
   hermes:
     build:
-      context: ./hermes
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: hermes/Dockerfile
     container_name: autorix-hermes
     restart: unless-stopped
     ports:
@@ -98,29 +159,47 @@ services:
       PORT: "4477"
       BASE_URL: "http://localhost:4477"
       DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_hermes?sslmode=disable"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4477/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     depends_on:
       postgres:
+        condition: service_healthy
+      argus:
         condition: service_healthy
 
   themis:
     build:
-      context: ./themis
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: themis/Dockerfile
     container_name: autorix-themis
     restart: unless-stopped
     ports:
       - "50052:50052"
+      - "4488:4488"
     environment:
       PORT: "50052"
+      HTTP_PORT: "4488"
       DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_themis?sslmode=disable"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4488/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     depends_on:
       postgres:
+        condition: service_healthy
+      argus:
         condition: service_healthy
 
   aegis:
     build:
-      context: ./aegis
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: aegis/Dockerfile
     container_name: autorix-aegis
     restart: unless-stopped
     ports:
@@ -129,10 +208,23 @@ services:
     environment:
       PORT: "4455"
       ADMIN_PORT: "4456"
+      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_aegis?sslmode=disable"
       RULES_PATH: "/app/rules/default.rules.yaml"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4456/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     depends_on:
-      - nexus
-      - janus
+      postgres:
+        condition: service_healthy
+      nexus:
+        condition: service_healthy
+      janus:
+        condition: service_healthy
+      argus:
+        condition: service_healthy
 
   console:
     build:
@@ -143,23 +235,68 @@ services:
     ports:
       - "3000:3000"
     environment:
+      NEXT_PUBLIC_ARGUS_URL: "http://localhost:4400"
       NEXT_PUBLIC_NEXUS_URL: "http://localhost:8080"
       NEXT_PUBLIC_EGO_URL: "http://localhost:4433"
       NEXT_PUBLIC_JANUS_URL: "http://localhost:4444"
       NEXT_PUBLIC_AEGIS_URL: "http://localhost:4455"
       NEXT_PUBLIC_VULCAN_URL: "http://localhost:4466"
       NEXT_PUBLIC_HERMES_URL: "http://localhost:4477"
-      NEXT_PUBLIC_THEMIS_URL: "http://localhost:50052"
+      NEXT_PUBLIC_THEMIS_URL: "http://localhost:4488"
+      ARGUS_INTERNAL_URL: "http://argus:4400"
       NEXUS_INTERNAL_URL: "http://nexus:8080"
+      EGO_INTERNAL_URL: "http://ego:4433"
+      JANUS_INTERNAL_URL: "http://janus:4444"
       AEGIS_INTERNAL_URL: "http://aegis:4456"
+      VULCAN_INTERNAL_URL: "http://vulcan:4466"
+      HERMES_INTERNAL_URL: "http://hermes:4477"
+      THEMIS_INTERNAL_URL: "http://themis:4488"
     depends_on:
-      - nexus
-      - aegis
-      - ego
-      - janus
-      - vulcan
-      - hermes
-      - themis
+      argus:
+        condition: service_healthy
+      nexus:
+        condition: service_healthy
+      aegis:
+        condition: service_healthy
+      ego:
+        condition: service_healthy
+      janus:
+        condition: service_healthy
+      vulcan:
+        condition: service_healthy
+      hermes:
+        condition: service_healthy
+      themis:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    container_name: autorix-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    depends_on:
+      argus:
+        condition: service_healthy
+      nexus:
+        condition: service_healthy
+      ego:
+        condition: service_healthy
+      janus:
+        condition: service_healthy
+      vulcan:
+        condition: service_healthy
+      hermes:
+        condition: service_healthy
+      themis:
+        condition: service_healthy
+      aegis:
+        condition: service_healthy
 
 volumes:
   postgres_data:
