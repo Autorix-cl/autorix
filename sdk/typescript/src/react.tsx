@@ -1,5 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { AutorixClient, AutorixConfig, UserSession } from "./client";
+import {
+  AutorixClient,
+  AutorixConfig,
+  CheckPermissionRequest,
+  CheckPermissionResponse,
+  EvaluatePolicyResponse,
+  UserSession,
+} from "./client";
 
 interface AutorixContextValue {
   client: AutorixClient;
@@ -112,4 +119,80 @@ export function usePermission(
   }, [namespace, object, relation, session?.identity?.id]);
 
   return { allowed, checking };
+}
+
+export function useBatchPermissions(
+  requests: Array<{ namespace: string; object: string; relation: string; context?: Record<string, unknown> }>
+) {
+  const { client, session } = useAutorix();
+  const [results, setResults] = useState<CheckPermissionResponse[]>([]);
+  const [checking, setChecking] = useState<boolean>(true);
+
+  useEffect(() => {
+    let active = true;
+    if (!session?.identity?.id || requests.length === 0) {
+      setResults(requests.map(() => ({ allowed: false })));
+      setChecking(false);
+      return;
+    }
+
+    setChecking(true);
+    const reqs: CheckPermissionRequest[] = requests.map((r) => ({
+      ...r,
+      subject: session.identity.id,
+    }));
+
+    client
+      .checkBatch(reqs)
+      .then((res) => {
+        if (active) {
+          setResults(res);
+          setChecking(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setResults(requests.map(() => ({ allowed: false })));
+          setChecking(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [JSON.stringify(requests), session?.identity?.id]);
+
+  return { results, checking };
+}
+
+export function usePolicy(policyContext: Record<string, unknown>, tenantId?: string) {
+  const { client } = useAutorix();
+  const [result, setResult] = useState<EvaluatePolicyResponse | null>(null);
+  const [evaluating, setEvaluating] = useState<boolean>(true);
+
+  useEffect(() => {
+    let active = true;
+    setEvaluating(true);
+
+    client
+      .evaluatePolicy({ context: policyContext, tenantId })
+      .then((res) => {
+        if (active) {
+          setResult(res);
+          setEvaluating(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setResult({ allPassed: false, results: [], totalEvaluated: 0 });
+          setEvaluating(false);
+        }
+      });
+
+  return () => {
+      active = false;
+    };
+  }, [JSON.stringify(policyContext), tenantId]);
+
+  return { passed: result?.allPassed ?? false, result, evaluating };
 }

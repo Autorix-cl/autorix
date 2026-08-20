@@ -44,3 +44,25 @@ func (c *Client) RequireAuth(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	}))
 }
+
+// RequirePermission enforces a Zanzibar ReBAC permission check before executing the handler.
+func (c *Client) RequirePermission(namespace, relation string, getObjectID func(r *http.Request) string, next http.Handler) http.Handler {
+	return c.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, _ := UserFromContext(r.Context())
+		objectID := getObjectID(r)
+
+		allowed, err := c.Nexus.Check(r.Context(), CheckRequest{
+			Namespace: namespace,
+			Object:    objectID,
+			Relation:  relation,
+			SubjectID: user.ID,
+		})
+
+		if err != nil || !allowed {
+			http.Error(w, `{"error":"forbidden","message":"Access denied by policy"}`, http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	}))
+}

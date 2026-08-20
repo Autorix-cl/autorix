@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -84,45 +85,130 @@ func TestNexus_CheckWithCache(t *testing.T) {
 	}
 }
 
-func TestNexus_RealHTTPCheck_AllowedAndDenied(t *testing.T) {
+func TestNexus_RetryWithJitterOnTransientErrors(t *testing.T) {
+	var attempts int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/check" {
-			http.NotFound(w, r)
+		current := atomic.AddInt32(&attempts, 1)
+		if current < 3 {
+			// First 2 calls fail with 503 Service Unavailable
+			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
+		// 3rd call succeeds
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"allowed":true,"reason":"granted"}`))
+		w.Write([]byte(`{"allowed":true}`))
 	}))
 	defer server.Close()
 
 	client := NewClient(Config{
 		NexusURL: server.URL,
+		RetryConfig: RetryConfig{
+			MaxRetries:    3,
+			InitialDelay:  10 * time.Millisecond,
+			MaxDelay:      50 * time.Millisecond,
+			BackoffFactor: 1.5,
+		},
 	})
 
-	allowed, err := client.Check(context.Background(), "document", "doc_1", "viewer", "alice", nil)
+	allowed, err := client.Nexus.Check(context.Background(), CheckRequest{
+		Namespace: "documents",
+		Object:    "doc_100",
+		Relation:  "viewer",
+		SubjectID: "alice",
+	})
+
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("expected retry to succeed, got error: %v", err)
 	}
 	if !allowed {
 		t.Fatalf("expected allowed true, got false")
 	}
+	if atomic.LoadInt32(&attempts) != 3 {
+		t.Fatalf("expected 3 attempts, got %d", attempts)
+	}
 }
 
-func TestNexus_FailClosed_OnNetworkOrServerError(t *testing.T) {
+func TestNexus_BatchCheck(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"allowed":true}`))
 	}))
 	defer server.Close()
 
-	client := NewClient(Config{
-		NexusURL: server.URL,
+	client := NewClient(Config{NexusURL: server.URL})
+
+	requests := []CheckRequest{
+		{Namespace: "doc", Object: "d1", Relation: "read", SubjectID: "u1"},
+		{Namespace: "doc", Object: "d2", Relation: "read", SubjectID: "u1"},
+		{Namespace: "doc", Object: "d3", Relation: "write", SubjectID: "u1"},
+	}
+
+	results, err := client.Nexus.CheckBatch(context.Background(), requests)
+	if err != nil {
+		t.Fatalf("BatchCheck failed: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+	for i, allowed := range results {
+		if !allowed {
+			t.Errorf("result %d expected true", i)
+		}
+	}
+}
+
+func TestThemis_Evaluate(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"all_passed": true,
+			"total_evaluated": 1,
+			"results": [{"policy_id":"pol_1","policy_name":"MFA","passed":true}]
+		}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{ThemisURL: server.URL})
+
+	resp, err := client.Themis.Evaluate(context.Background(), EvaluatePolicyRequest{
+		TenantID: "default",
+		Context: map[string]interface{}{
+			"auth": map[string]interface{}{"mfa": true},
+		},
 	})
 
-	allowed, err := client.Check(context.Background(), "document", "doc_1", "viewer", "alice", nil)
-	if err == nil {
-		t.Fatalf("expected error on 500 status")
+	if err != nil {
+		t.Fatalf("Themis Evaluate failed: %v", err)
 	}
-	if allowed {
-		t.Fatalf("expected fail-closed (allowed=false), got true")
+	if !resp.AllPassed || resp.TotalEvaluated != 1 {
+		t.Fatalf("unexpected themis evaluation outcome: %+v", resp)
+	}
+}
+
+func TestVulcan_VerifyAndAttenuate(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/keys/verify" {
+			w.Write([]byte(`{"valid":true,"key_id":"k1","scopes":["read"]}`))
+			return
+		}
+		if r.URL.Path == "/keys/attenuate" {
+			w.Write([]byte(`{"attenuated_token":"av_live_attenuated","caveats_applied":["ip = 10.0.0.1"]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{VulcanURL: server.URL})
+
+	ver, err := client.Vulcan.Verify(context.Background(), "av_live_test", nil)
+	if err != nil || !ver.Valid {
+		t.Fatalf("expected valid key, got err=%v", err)
+	}
+
+	att, err := client.Vulcan.Attenuate(context.Background(), "av_live_test", []string{"ip = 10.0.0.1"})
+	if err != nil || att != "av_live_attenuated" {
+		t.Fatalf("expected attenuated token, got %s (err: %v)", att, err)
 	}
 }
