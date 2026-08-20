@@ -1,12 +1,9 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/autorix/aegis/internal/authenticator"
@@ -15,28 +12,91 @@ import (
 	"github.com/autorix/aegis/internal/mutator"
 	"github.com/autorix/aegis/internal/proxy"
 	"github.com/autorix/aegis/internal/rule"
+	"github.com/autorix/aegis/internal/storage/postgres"
 	httpTransport "github.com/autorix/aegis/internal/transport/http"
+	"github.com/autorix/platform/config"
+	"github.com/autorix/platform/health"
+	"github.com/autorix/platform/httpx"
+	platformlog "github.com/autorix/platform/log"
+	"github.com/autorix/platform/metrics"
+	platformpg "github.com/autorix/platform/postgres"
+	"github.com/autorix/platform/registry"
+	"github.com/autorix/platform/run"
+	"github.com/autorix/platform/version"
 )
 
+// cfg is aegis's environment configuration, loaded via platform/config.
+type cfg struct {
+	RulesPath       string        `env:"RULES_PATH"`
+	DatabaseURL     string        `env:"DATABASE_URL"`
+	AdminPort       string        `env:"ADMIN_PORT" envDefault:"4456"`
+	Port            string        `env:"PORT" envDefault:"4455"`
+	LogLevel        string        `env:"LOG_LEVEL" envDefault:"info"`
+	InstanceID      string        `env:"AUTORIX_INSTANCE_ID"`
+	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"10s"`
+	RequestTimeout  time.Duration `env:"REQUEST_TIMEOUT" envDefault:"30s"`
+	CORSOrigins     string        `env:"CORS_ORIGINS" envDefault:"*"`
+}
+
 func main() {
-	log.Println("Starting Autorix Aegis (Zero Trust Access Proxy)...")
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	// 1. Load Security Rules
-	rulesPath := os.Getenv("RULES_PATH")
-	if rulesPath == "" {
-		rulesPath = "rules/default.rules.yaml"
+	var c cfg
+	if err := config.Load(&c); err != nil {
+		log.Fatalf("Failed to load config: %v\n", err)
 	}
 
-	// The Store owns the rules file end-to-end: it loads and compiles it at
-	// boot, serves Match() to the proxy pipeline, and is the read/write
-	// backend for the admin API below — every mutation there hot-reloads
-	// the pipeline and persists back to this same file.
-	store, err := rule.NewStore(rulesPath)
-	if err != nil {
-		log.Fatalf("Failed to load rules: %v\n", err)
+	startedAt := time.Now()
+
+	instanceID := c.InstanceID
+	if instanceID == "" {
+		if hostname, hostErr := os.Hostname(); hostErr == nil {
+			instanceID = hostname
+		}
+	}
+
+	logger := platformlog.New(platformlog.Config{
+		Engine:     "aegis",
+		InstanceID: instanceID,
+		Level:      c.LogLevel,
+	}, nil)
+
+	logger.Info("starting autorix aegis (zero trust access proxy)")
+
+	ctx, stop := run.NotifyContext()
+	defer stop()
+
+	checker := health.NewChecker()
+
+	// 1. Initialize Security Rules Store (Postgres with file fallback)
+	var store rule.Store
+	if c.DatabaseURL != "" {
+		pool, err := platformpg.Connect(ctx, c.DatabaseURL, platformpg.ConnectOptions{})
+		if err != nil {
+			logger.Error("failed to connect to postgres", "error", err)
+			os.Exit(1)
+		}
+		defer pool.Close()
+
+		metrics.RegisterPostgresPool(pool, "aegis")
+
+		pgStore, err := postgres.NewPostgresStore(ctx, pool)
+		if err != nil {
+			logger.Error("failed to initialize postgres rules store", "error", err)
+			os.Exit(1)
+		}
+		store = pgStore
+		checker.Register("postgres", platformpg.Check(pool))
+	} else {
+		rulesPath := c.RulesPath
+		if rulesPath == "" {
+			rulesPath = "rules/default.rules.yaml"
+		}
+
+		fileStore, err := rule.NewStore(rulesPath)
+		if err != nil {
+			logger.Error("failed to load rules", "error", err)
+			os.Exit(1)
+		}
+		store = fileStore
 	}
 
 	// 2. Initialize Pipeline Handlers
@@ -60,60 +120,93 @@ func main() {
 	// 3. Create Pipeline Proxy Handler
 	pipelineProxy := proxy.NewPipelineProxy(store, authenticators, authorizers, mutators)
 
-	// 3b. Admin REST API (console rule management) — separate port from the
-	// proxy pipeline, since the proxy's mux is a catch-all reverse proxy.
-	adminServer := httpTransport.NewServer(store)
-	adminPort := os.Getenv("ADMIN_PORT")
-	if adminPort == "" {
-		adminPort = "4456"
-	}
+	// 3a. Uniform health/readiness/identity contract (ADR 0001).
+	healthHandler := health.NewHandler(checker, func() health.Info {
+		return health.Info{
+			Engine:       "aegis",
+			Version:      version.Version,
+			BuildSHA:     version.BuildSHA,
+			Capabilities: []string{"proxy", "authn", "authz", "mutation"},
+			InstanceID:   instanceID,
+			StartedAt:    startedAt,
+		}
+	})
+
+	// 3b. Admin REST API (console rule management)
+	adminServer := httpTransport.NewServer(store, healthHandler, pipelineProxy)
+	adminHandler := httpx.Chain(adminServer.Routes(),
+		httpx.RequestID,
+		httpx.Recover(logger),
+		metrics.HTTPMiddleware("aegis_admin"),
+		httpx.AccessLog(logger),
+		httpx.Timeout(c.RequestTimeout),
+		httpx.CORS(httpx.CORSConfig{AllowedOrigins: []string{c.CORSOrigins}}),
+	)
 
 	adminHTTPServer := &http.Server{
-		Addr:         ":" + adminPort,
-		Handler:      adminServer.Routes(),
+		Addr:         ":" + c.AdminPort,
+		Handler:      adminHandler,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
-	go func() {
-		log.Printf("Autorix Aegis admin API listening on :%s\n", adminPort)
-		if err := adminHTTPServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Admin server error: %v\n", err)
-		}
-	}()
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "4455" // Default ORY Oathkeeper proxy port
-	}
+	proxyHandler := metrics.HTTPMiddleware("aegis")(pipelineProxy)
 
 	httpServer := &http.Server{
-		Addr:         ":" + port,
-		Handler:      pipelineProxy,
+		Addr:         ":" + c.Port,
+		Handler:      proxyHandler,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
-	go func() {
-		log.Printf("Autorix Aegis listening on :%s (Zero Trust Proxy)\n", port)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v\n", err)
-		}
-	}()
+	// Optional control-plane registration (Argus). No-op unless
+	// AUTORIX_ARGUS_URL/AUTORIX_ENROLLMENT_TOKEN are set; never blocks or
+	// fails engine startup.
+	// aegis has no Postgres of its own (file-based rule store) and no
+	// configured nexus/janus upstream address today (internal/authorizer's
+	// NexusAuthorizer is still a stub), so it has no honest dependency to
+	// declare yet — see platform registry client for the mechanism once
+	// aegis gains real upstream addresses.
+	registryClient := registry.NewFromEnv("aegis", registry.Endpoints{REST: "http://localhost:" + c.AdminPort},
+		[]string{"health.v1"},
+		nil,
+		logger)
+	registryClient.Start(ctx)
 
-	<-ctx.Done()
-	log.Println("Shutting down Autorix Aegis gracefully...")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Forced shutdown error: %v\n", err)
+	err := run.Run(ctx, c.ShutdownTimeout, logger, []run.Named{
+		{
+			Name: "aegis-proxy",
+			Serve: func() error {
+				logger.Info("aegis proxy listening", "port", c.Port)
+				if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					return err
+				}
+				return run.ErrServerClosed
+			},
+			Shutdown: httpServer.Shutdown,
+		},
+		{
+			Name: "aegis-admin",
+			Serve: func() error {
+				logger.Info("aegis admin api listening", "port", c.AdminPort)
+				if err := adminHTTPServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					return err
+				}
+				return run.ErrServerClosed
+			},
+			Shutdown: adminHTTPServer.Shutdown,
+		},
+		{
+			Name:     "argus-registry",
+			Serve:    func() error { <-ctx.Done(); return run.ErrServerClosed },
+			Shutdown: registryClient.Stop,
+		},
+	})
+	if err != nil {
+		logger.Error("server error", "error", err)
 	}
-	if err := adminHTTPServer.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Forced admin server shutdown error: %v\n", err)
-	}
-	log.Println("Autorix Aegis stopped.")
+
+	logger.Info("autorix aegis stopped")
 }
