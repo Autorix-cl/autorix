@@ -4,38 +4,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Autorix is a Zero-Trust IAM (Identity & Access Management) suite, architected as independent Go microservices inspired by the ORY stack (Keto, Kratos, Hydra, Oathkeeper, Talos, Polis), plus a Next.js admin console.
+Autorix is a Next-Generation Zero-Trust IAM (Identity & Access Management) suite, architected as independent Go microservices inspired by the Ory stack (Keto, Kratos, Hydra, Oathkeeper, Talos, Polis) and Google Zanzibar, plus an enterprise Next.js 15 admin console.
 
-| Service | Port | Protocol | ORY equivalent | Purpose |
-| :--- | :--- | :--- | :--- | :--- |
-| **nexus** | 50051 | gRPC | Keto/Zanzibar | Hybrid ReBAC (Zanzibar) + ABAC (Google CEL) authorization engine |
-| **ego** | 4433 | REST | Kratos | Identity lifecycle, sessions, Argon2id credential hashing |
-| **janus** | 4444 | REST/OIDC | Hydra | OAuth 2.0 / OIDC server with PKCE, asymmetric JWKS |
-| **aegis** | 4455 | HTTP proxy | Oathkeeper | Zero-Trust Access Proxy / perimeter PEP |
-| **vulcan** | 4466 | REST | Talos | API keys (`av_live_...` prefix) + locally-attenuable Macaroons |
-| **hermes** | 4477 | REST/XML | Polis | SAML 2.0 → OIDC bridge, SCIM 2.0 sync server |
-| **themis** | — | gRPC+HTTP | — | ABAC/CEL policy evaluation engine (newer addition, not yet in README diagram) |
+| Service | Port | Protocol | Purpose |
+| :--- | :--- | :--- | :--- |
+| **argus** | 4400 / 50053 | REST / gRPC | Fleet Control Plane, enrollment tokens, operators, SHA-256 chained audit trail, compliance |
+| **console** | 3000 | Next.js 15 | Zero-Trust Admin Console, standalone `/login` & `/setup`, Studio interfaces, live Merkle audit verification |
+| **nexus** | 50051 / 8080 | gRPC / REST | Google Zanzibar ReBAC authorization engine with high-throughput Check API |
+| **ego** | 4433 | REST | Identity lifecycle, JSON schema traits, Argon2id passwords, TOTP MFA, sessions |
+| **janus** | 4444 | REST / OIDC | OAuth 2.0 / OIDC server with PKCE, asymmetric RS256 JWKS |
+| **aegis** | 4455 / 4456 | HTTP proxy / REST | Zero-Trust Access Proxy (PEP), rule routing, authenticators, authorizers, header mutators |
+| **vulcan** | 4466 | REST | API keys (`av_live_...` prefix) + locally-attenuable HMAC-SHA256 Macaroons |
+| **hermes** | 4477 | REST / XML | SAML 2.0 → OIDC bridge, SCIM 2.0 user/group directory synchronization |
+| **themis** | 50052 / 4488 | gRPC / REST | Dedicated ABAC/CEL policy evaluation engine |
 
 `console/` is the Next.js 15 (App Router) admin UI for all engines. `sdk/` holds official Go, TypeScript, and Python client SDKs. `aegis` sits in front of all other engines as the perimeter proxy.
 
 ## Architecture Pattern (per Go service)
 
-Every Go microservice (`aegis`, `ego`, `hermes`, `janus`, `nexus`, `themis`, `vulcan`) follows the same hexagonal layout and Go module `github.com/autorix/<service>`:
+Every Go microservice (`argus`, `aegis`, `ego`, `hermes`, `janus`, `nexus`, `themis`, `vulcan`) follows the hexagonal layout and Go module `github.com/autorix/<service>`:
 
 ```
 <service>/
   cmd/<service>d/main.go          # entrypoint, wiring
   internal/core/                  # domain logic, framework-free
-  internal/<domain>/              # domain-specific packages (e.g. ego/internal/credential, ego/internal/session)
-  internal/storage/postgres/repository.go   # Postgres persistence adapter
-  internal/transport/http/server.go         # REST handlers (and /transport/grpc/server.go for nexus & themis)
-  migrations/                     # SQL migrations, applied via scripts/init-databases.sh on container init
-  api/autorix/<service>/v1/*.proto  # protobuf/gRPC contracts (nexus, themis) — generated via buf
+  internal/<domain>/              # domain-specific packages (e.g. ego/internal/credential)
+  internal/storage/postgres/      # Postgres persistence adapter
+  internal/transport/http/        # REST handlers
+  internal/transport/grpc/        # gRPC handlers (argus, nexus, themis)
+  migrations/                     # SQL migrations, applied via scripts/init-databases.sh
+  api/autorix/<service>/v1/*.proto  # protobuf/gRPC contracts
 ```
 
 Each service owns an isolated Postgres database (`autorix_<service>`), provisioned by `scripts/init-databases.sh`. There is no shared database or ORM across services — cross-service calls go through each service's public API/gRPC contract, never direct DB access.
-
-themis additionally uses Google CEL (`internal/engine/cel.go`) to evaluate ABAC policy expressions against dynamic JSON payloads (`internal/core/engine.go`, `internal/core/service.go`).
 
 ## Common Commands
 
@@ -43,19 +44,21 @@ themis additionally uses Google CEL (`internal/engine/cel.go`) to evaluate ABAC 
 ```bash
 docker compose up --build
 ```
-Spins up Postgres (with 6 isolated databases via `scripts/init-databases.sh`), all seven Go engines, and the console.
+Spins up Postgres (with 8 isolated databases), Prometheus, all 8 Go microservices, and the Console.
 
 ### Go services — test / build / run
-Run from inside a service directory (e.g. `cd ego`):
+Run from inside a service directory (e.g. `cd argus`):
 ```bash
-go test -v ./...              # all tests
+go test -v ./...                  # all tests
 go test -v ./internal/core/...    # single package
 go test -run TestName ./...       # single test
 go build -o bin/<service>d ./cmd/<service>d/main.go
 go run ./cmd/<service>d/main.go
 ```
+
 Run across all engines from repo root:
 ```bash
+(cd argus && go test -v ./...)
 (cd nexus && go test -v ./...)
 (cd ego && go test -v ./...)
 (cd janus && go test -v ./...)
@@ -65,33 +68,27 @@ Run across all engines from repo root:
 (cd themis && go test -v ./...)
 ```
 
-### themis-specific (has a Makefile; the pattern for services with gRPC/protobuf)
-```bash
-cd themis
-make proto    # regenerate .pb.go via buf (requires protoc-gen-go, protoc-gen-go-grpc, buf — `make setup`)
-make build
-make run
-make test
-make bench    # benchmarks for internal/engine
-```
-`nexus` follows the same buf/protobuf pattern for its `.proto` contract under `nexus/api/autorix/nexus/v1/`.
-
-### Console (Next.js)
+### Console (Next.js 15)
 ```bash
 cd console
-npm run dev      # localhost:3000
-npm run build
-npm run start
-npm run lint
+npm test          # Run Vitest test suite
+npm run build     # Validate production build & linting
+npm run start     # Run production server
+npx playwright test # Run E2E test suites
 ```
 
 ## Documentation
 
-Per-service usage guides and the technical roadmap live in `docs/`:
+Per-service usage guides and runbooks live in `docs/`:
 - `docs/api_reference_and_integration_guide.md` — master API integration manual
-- `docs/<service>_usage_guide.md` — one guide per engine (nexus, ego, janus, aegis, vulcan, hermes)
-- `docs/roadmap.md` — technical roadmap and overall architecture
+- `docs/argus_usage_guide.md` — Argus Control Plane & cryptographic audit trail
+- `docs/console_usage_guide.md` — Console UI & Studio user manual
+- `docs/themis_usage_guide.md` — Themis ABAC CEL engine
+- `docs/nexus_usage_guide.md`, `ego_usage_guide.md`, `janus_usage_guide.md`, `aegis_usage_guide.md`, `vulcan_usage_guide.md`, `hermes_usage_guide.md`
+- `docs/operations_and_runbook.md` — Day-1 & Day-2 Operations Runbook
+- `docs/production_k8s_guide.md` — Kubernetes production deployment guide
+- `docs/sdks_integration_guide.md` — Official SDKs for Go, TypeScript, Python
 
-## SDD (Spec-Driven Development)
-
-This repo uses SDD workflows (`openspec/`) with **strict TDD mode enabled**: write a failing test before implementation code for any SDD-tracked change.
+## Commit Guidelines
+- Conventional Commits only (`feat(...)`, `fix(...)`, `docs(...)`, `refactor(...)`, `test(...)`).
+- Never include `Co-Authored-By` or AI attribution trailers.

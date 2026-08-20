@@ -1,334 +1,383 @@
-# Manual Maestro de Integración y Referencia de APIs: Suite Autorix
+# Master API Reference & Integration Guide: Autorix IAM Suite
 
-Este documento es la referencia técnica definitiva para arquitectos e ingenieros que deseen integrar **Autorix** en su infraestructura de microservicios y aplicaciones cliente (Frontend, Backend, Móvil, Scripts M2M y Enterprise IdPs).
-
----
-
-# Tabla de Contenidos
-1. [Visión Global y Matriz de Puertos](#1-visión-global-y-matriz-de-puertos)
-2. [Referencia Completa de APIs por Servicio](#2-referencia-completa-de-apis-por-servicio)
-   - [2.1 Autorix Nexus (ReBAC + ABAC)](#21-autorix-nexus-rebac--abac)
-   - [2.2 Autorix Ego (Identidad y Sesiones)](#22-autorix-ego-identidad-y-sesiones)
-   - [2.3 Autorix Janus (OAuth2 & OIDC)](#23-autorix-janus-oauth2--oidc)
-   - [2.4 Autorix Aegis (Zero Trust Proxy)](#24-autorix-aegis-zero-trust-proxy)
-   - [2.5 Autorix Vulcan (API Keys & Macaroons)](#25-autorix-vulcan-api-keys--macaroons)
-   - [2.6 Autorix Hermes (SAML 2.0 & SCIM 2.0)](#26-autorix-hermes-saml-20--scim-20)
-3. [Cómo Trabajan Todos Juntos (Flujos End-to-End)](#3-cómo-trabajan-todos-juntos-flujos-end-to-end)
-   - [Flujo 1: Inicio de Sesión y Acceso a APIs con Aegis](#flujo-1-inicio-de-sesión-y-acceso-a-apis-con-aegis)
-   - [Flujo 2: M2M con Client Credentials y Verificación ReBAC](#flujo-2-m2m-con-client-credentials-y-verificación-rebac)
-   - [Flujo 3: Single Sign-On Empresarial (Okta -> Hermes -> Ego -> Janus)](#flujo-3-single-sign-on-empresarial-okta---hermes---ego---janus)
-4. [Guía de Integración para Nuevos Microservicios](#4-guía-de-integración-para-nuevos-microservicios)
-   - [Patrón de Backend Seguro (Go / Node.js / Python)](#patrón-de-backend-seguro-go--nodejs--python)
-   - [Patrón de Frontend SPA (React / Next.js)](#patrón-de-frontend-spa-react--nextjs)
+This document serves as the authoritative integration manual and API reference for the complete **Autorix Zero-Trust IAM Ecosystem**.
 
 ---
 
-# 1. Visión Global y Matriz de Puertos
+# Table of Contents
 
-| Servicio | Puerto | Protocolo | Tipo de Tráfico | Propósito |
+1. [Architecture & Port Matrix](#1-architecture--port-matrix)
+2. [Authentication & Credential Standards](#2-authentication--credential-standards)
+3. [Service API Reference](#3-service-api-reference)
+   - [3.1 Autorix Argus (Fleet Control Plane & Compliance :4400 / :50053)](#31-autorix-argus-fleet-control-plane--compliance)
+   - [3.2 Autorix Themis (ABAC CEL Policy Engine :4488 / :50052)](#32-autorix-themis-abac-cel-policy-engine)
+   - [3.3 Autorix Nexus (Google Zanzibar ReBAC Engine :8080 / :50051)](#33-autorix-nexus-google-zanzibar-rebac-engine)
+   - [3.4 Autorix Ego (Identity, Traits & Argon2id :4433)](#34-autorix-ego-identity-traits--argon2id)
+   - [3.5 Autorix Janus (OAuth 2.0 & OIDC Server :4444)](#35-autorix-janus-oauth-20--oidc-server)
+   - [3.6 Autorix Aegis (Zero-Trust PEP Reverse Proxy :4455 / :4456)](#36-autorix-aegis-zero-trust-pep-reverse-proxy)
+   - [3.7 Autorix Vulcan (API Keys & Attenuated Macaroons :4466)](#37-autorix-vulcan-api-keys--attenuated-macaroons)
+   - [3.8 Autorix Hermes (SAML 2.0 & SCIM 2.0 Federation :4477)](#38-autorix-hermes-saml-20--scim-20-federation)
+   - [3.9 Autorix Console BFF (:3000)](#39-autorix-console-bff)
+4. [End-to-End Integration Flows](#4-end-to-end-integration-flows)
+
+---
+
+# 1. Architecture & Port Matrix
+
+| Service | Port | Protocol | Ingress Tier | Purpose |
 | :--- | :--- | :--- | :--- | :--- |
-| **Aegis** | `4455` | HTTP/1.1 | **Público / Edge** | Punto de Entrada Único (PEP) / Reverse Proxy |
-| **Ego** | `4433` | HTTP REST | Público / Interno | Registro, Login, Recuperación y `/sessions/whoami` |
-| **Janus** | `4444` | HTTP REST / OIDC | Público / Interno | Emisión de Tokens JWT, OIDC Discovery y JWKS |
-| **Nexus** | `50051` | gRPC | **Estrictamente Interno** | Evaluación de Grafo de Permisos ReBAC/ABAC (< 5ms) |
-| **Vulcan** | `4466` | HTTP REST | Interno / SDK | Creación de API Keys y Verificación de Macaroons |
-| **Hermes** | `4477` | HTTP REST / XML | Público / IdP | Endpoint SAML ACS y Servidor SCIM 2.0 |
+| **Aegis PEP** | `4455` | HTTP/1.1 | **Public / Edge** | Policy Enforcement Point (PEP) Reverse Proxy. |
+| **Aegis Admin** | `4456` | HTTP REST | Internal | Dynamic YAML/Postgres proxy rules management. |
+| **Console** | `3000` | HTTP / Next.js | **Public / Admin** | Zero-Trust Admin Console and BFF layer. |
+| **Argus REST** | `4400` | HTTP REST | Admin / Internal | Fleet orchestration, tokens, audit hash chain, compliance. |
+| **Argus gRPC** | `50053` | gRPC (Proto) | Cluster Internal | High-throughput engine heartbeats and enrollment. |
+| **Themis REST**| `4488` | HTTP REST | Internal / Console | ABAC Google CEL policy CRUD & evaluation testing. |
+| **Themis gRPC**| `50052` | gRPC (Proto) | Cluster Internal | In-cluster sub-millisecond CEL expression evaluation. |
+| **Nexus REST** | `8080` | HTTP REST | Internal / Console | Relation tuple management and Check API. |
+| **Nexus gRPC** | `50051` | gRPC (Proto) | Cluster Internal | Zanzibar relation graph traversal engine. |
+| **Ego** | `4433` | HTTP REST | Public / Internal | User lifecycle, JSON traits, Argon2id passwords, TOTP MFA. |
+| **Janus** | `4444` | HTTP REST / OIDC | Public / Internal | OAuth 2.0 PKCE, OpenID Connect tokens, JWKS. |
+| **Vulcan** | `4466` | HTTP REST | Internal / SDK | API Keys (`av_live_...`), HMAC-SHA256 Macaroons. |
+| **Hermes** | `4477` | HTTP REST / XML | Public / IdP | SAML 2.0 ACS, SCIM 2.0 Directory Sync (RFC 7643/7644). |
+| **Prometheus** | `9090` | HTTP | Operations | Cluster-wide RED metrics scraper. |
+| **Postgres** | `5432` | PostgreSQL | Database Tier | 8 partitioned databases with schema isolation. |
 
 ---
 
-# 2. Referencia Completa de APIs por Servicio
+# 2. Authentication & Credential Standards
+
+| Credential Type | Prefix | Algorithm / Format | Usage |
+| :--- | :--- | :--- | :--- |
+| **Bootstrap Token** | `abt_` | High-Entropy Hex (Argon2id stored) | One-time initial claim of Argus root owner. |
+| **Enrollment Token** | `aet_` | High-Entropy Hex (SHA-256 stored) | Authorizes new engine instances to join cluster. |
+| **Session Token** | `ast_` | High-Entropy Hex | Operator session cookie in Console / Argus. |
+| **API Key (Live)** | `av_live_` | HMAC-SHA256 Macaroon Token | Production machine-to-machine capabilities. |
+| **API Key (Test)** | `av_test_` | HMAC-SHA256 Macaroon Token | Non-production integration testing. |
+| **JWT Access Token**| `eyJ...` | RS256 Asymmetric Signature | User authentication emitted by Janus OIDC. |
 
 ---
 
-## 2.1 Autorix Nexus (ReBAC + ABAC)
-* **Protocolo:** gRPC (Protobuf v1)
-* **Host:** `nexus:50051`
+# 3. Service API Reference
 
-### RPC `Check`
-Evalúa si un sujeto tiene una relación con un objeto, evaluando condiciones CEL (ABAC).
+---
 
-* **Firma Proto:** `rpc Check(CheckRequest) returns (CheckResponse);`
-* **Request:**
+## 3.1 Autorix Argus (Fleet Control Plane & Compliance)
+
+### `GET /v1/auth/status`
+Checks if the root owner has been initialized.
+
+```bash
+curl -s http://localhost:4400/v1/auth/status
+```
 ```json
 {
-  "namespace": "document",
-  "object": "payroll_2026_q1",
-  "relation": "viewer",
-  "subject_namespace": "user",
-  "subject_id": "usr_9988",
-  "request_context": {
-    "ip": "192.168.1.100",
-    "mfa_active": true
-  }
+  "bootstrapped": true,
+  "operators_count": 1
 }
 ```
-* **Response:**
+
+### `POST /v1/auth/bootstrap`
+Initializes the root owner using the server bootstrap token.
+
+```bash
+curl -X POST http://localhost:4400/v1/auth/bootstrap \
+  -H "Content-Type: application/json" \
+  -d '{
+    "bootstrap_token": "abt_0123456789abcdef0123456789abcdef",
+    "name": "Cluster Administrator",
+    "email": "admin@autorix.local",
+    "password": "SecretMasterKey#2026"
+  }'
+```
+
+### `POST /v1/auth/login`
+Authenticates an administrative operator. Rate-limited to 5 attempts before 15-minute lockout.
+
+```bash
+curl -X POST http://localhost:4400/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@autorix.local",
+    "password": "SecretMasterKey#2026"
+  }'
+```
+
+### `GET /v1/audit`
+Queries paginated immutable audit records.
+
+```bash
+curl -s "http://localhost:4400/v1/audit?limit=20&outcome=success"
+```
+
+### `GET /v1/audit/verify`
+Runs cryptographic SHA-256 Merkle chain verification across all audit records.
+
+```bash
+curl -s http://localhost:4400/v1/audit/verify
+```
 ```json
 {
-  "allowed": true,
-  "reason": "direct match"
+  "verified": true,
+  "chain_length": 142,
+  "head_hash": "a4f8e91c7b3d2e0f8a9c1b2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f",
+  "verified_at": "2026-08-20T08:30:00Z",
+  "algorithm": "SHA-256"
+}
+```
+
+### `GET /v1/compliance/evidence`
+Retrieves live compliance evaluation for SOC 2 and ISO 27001.
+
+```bash
+curl -s http://localhost:4400/v1/compliance/evidence
+```
+
+---
+
+## 3.2 Autorix Themis (ABAC CEL Policy Engine)
+
+### `POST /v1/policies`
+Creates a new ABAC policy with Google Common Expression Language.
+
+```bash
+curl -X POST http://localhost:4488/v1/policies \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Name": "Finance Department Wire Lockdown",
+    "TenantID": "default",
+    "Description": "Enforces MFA and business hours for wire transfers",
+    "Expression": "request.auth.claims.department == \"finance\" && request.auth.mfa == true",
+    "Priority": 1,
+    "Enabled": true,
+    "Labels": { "security": "high-assurance" }
+  }'
+```
+
+### `POST /v1/policies/evaluate`
+Evaluates CEL policies dynamically against a context.
+
+```bash
+curl -X POST http://localhost:4488/v1/policies/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "TenantID": "default",
+    "Context": {
+      "request": {
+        "auth": { "claims": { "department": "finance" }, "mfa": true }
+      }
+    }
+  }'
+```
+
+---
+
+## 3.3 Autorix Nexus (Google Zanzibar ReBAC Engine)
+
+### `POST /admin/relation-tuples`
+Creates a relation tuple in the Zanzibar graph.
+
+```bash
+curl -X POST http://localhost:8080/admin/relation-tuples \
+  -H "Content-Type: application/json" \
+  -d '{
+    "namespace": "documents",
+    "object": "roadmap_q3_2026",
+    "relation": "editor",
+    "subject_namespace": "user",
+    "subject_id": "usr_9988"
+  }'
+```
+
+### `POST /v1/check`
+Executes a ReBAC graph Check.
+
+```bash
+curl -X POST http://localhost:8080/v1/check \
+  -H "Content-Type: application/json" \
+  -d '{
+    "namespace": "documents",
+    "object": "roadmap_q3_2026",
+    "relation": "editor",
+    "subject_namespace": "user",
+    "subject_id": "usr_9988"
+  }'
+```
+```json
+{
+  "allowed": true
 }
 ```
 
 ---
 
-## 2.2 Autorix Ego (Identidad y Sesiones)
-* **Host:** `http://localhost:4433`
+## 3.4 Autorix Ego (Identity & Lifecycle Engine)
 
-### `POST /self-service/registration`
-* **Descripción:** Registra un nuevo usuario, hashea la contraseña con Argon2id y emite la sesión inicial.
-* **Request:**
-```json
-{
-  "traits": {
-    "email": "elena.rostova@autorix.io",
-    "name": { "first": "Elena", "last": "Rostova" }
-  },
-  "password": "SecurePassword#2026!"
-}
-```
-* **Response (`201 Created`):**
-```json
-{
-  "identity": {
-    "id": "e47ac10b-58cc-4372-a567-0e02b2c3d479",
+### `POST /identities`
+Registers a new user identity with traits.
+
+```bash
+curl -X POST http://localhost:4433/identities \
+  -H "Content-Type: application/json" \
+  -d '{
     "schema_id": "default",
     "traits": {
-      "email": "elena.rostova@autorix.io",
-      "name": { "first": "Elena", "last": "Rostova" }
+      "email": "engineer@enterprise.io",
+      "name": "Jane Doe",
+      "department": "Platform Engineering"
     },
-    "state": "active"
-  },
-  "session": {
-    "id": "d1c2b3a4-1111-2222-3333-444455556666",
-    "token": "4a7b9c1d...", 
-    "expires_at": "2026-09-15T15:00:00Z"
-  }
-}
+    "credentials": {
+      "password": { "config": { "password": "SecureUserPassword#2026" } }
+    }
+  }'
 ```
-*(Inyecta cookie HTTP-Only `autorix_session_token`).*
-
-### `POST /self-service/login`
-* **Request:** `{"identifier": "elena.rostova@autorix.io", "password": "SecurePassword#2026!"}`
-* **Response (`200 OK`):** Devuelve la identidad y la nueva sesión.
 
 ### `GET /sessions/whoami`
-* **Headers:** `Authorization: Bearer <session_token>` o Cookie `autorix_session_token`.
-* **Response (`200 OK`):** Devuelve el objeto `Session` con los traits del usuario.
+Validates active session cookie or Bearer token.
 
-### `POST /self-service/logout`
-* **Descripción:** Revoca la sesión en la base de datos y purga la cookie.
+```bash
+curl -s http://localhost:4433/sessions/whoami \
+  -H "Cookie: ego_session=..."
+```
 
 ---
 
-## 2.3 Autorix Janus (OAuth2 & OIDC)
-* **Host:** `http://localhost:4444`
+## 3.5 Autorix Janus (OAuth 2.0 & OIDC Server)
 
 ### `GET /.well-known/openid-configuration`
-* **Descripción:** Metadata de descubrimiento OpenID Connect (JWKS URI, Token Endpoint, Algoritmos).
+OIDC discovery document.
+
+```bash
+curl -s http://localhost:4444/.well-known/openid-configuration
+```
 
 ### `GET /.well-known/jwks.json`
-* **Descripción:** Claves públicas RSA/ES256 activas para verificación en memoria.
+Public RS256 JWKS keys for verifying JWT access tokens.
+
+```bash
+curl -s http://localhost:4444/.well-known/jwks.json
+```
 
 ### `POST /oauth2/token`
-* **Header:** `Content-Type: application/x-www-form-urlencoded`
-* **Flujo Client Credentials (M2M):**
-  - Parámetros: `grant_type=client_credentials&client_id={id}&client_secret={secret}&scope={scopes}`
-* **Flujo Authorization Code con PKCE:**
-  - Parámetros: `grant_type=authorization_code&code={code}&code_verifier={verifier}&client_id={id}`
-* **Response (`200 OK`):**
+Issues OAuth 2.0 access and refresh tokens.
+
+```bash
+curl -X POST http://localhost:4444/oauth2/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials&client_id=client_abc&client_secret=secret_xyz&scope=read+write"
+```
+
+---
+
+## 3.6 Autorix Aegis (Zero-Trust Reverse PEP Proxy)
+
+### `GET /v1/rules` (`:4456` Admin API)
+Lists active proxy routing and authorization rules.
+
+```bash
+curl -s http://localhost:4456/v1/rules
+```
+
+### `POST /v1/rules`
+Creates a PEP interception rule:
+
+```bash
+curl -X POST http://localhost:4456/v1/rules \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "protect-billing-api",
+    "match": {
+      "url": "http://localhost:4455/api/v1/billing/*",
+      "methods": ["GET", "POST"]
+    },
+    "authenticators": [
+      { "handler": "jwt", "config": { "jwks_url": "http://janus:4444/.well-known/jwks.json" } }
+    ],
+    "authorizers": [
+      { "handler": "nexus", "config": { "namespace": "service", "relation": "access" } }
+    ],
+    "mutators": [
+      { "handler": "header", "config": { "headers": { "X-User-ID": "{{ .Subject }}" } } }
+    ],
+    "upstream": {
+      "url": "http://billing-service:8080"
+    }
+  }'
+```
+
+---
+
+## 3.7 Autorix Vulcan (API Keys & Attenuated Macaroons)
+
+### `POST /v1/keys`
+Issues a high-entropy Macaroon API key:
+
+```bash
+curl -X POST http://localhost:4466/v1/keys \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Data Ingestion Pipeline",
+    "environment": "live",
+    "scopes": ["ingest:write", "datasets:read"],
+    "expires_in": 2592000
+  }'
+```
 ```json
 {
-  "access_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6...",
-  "token_type": "Bearer",
-  "expires_in": 3600,
-  "id_token": "eyJhbGciOiJSUzI1NiIs...",
-  "scope": "openid profile email"
+  "id": "key_8899aabb",
+  "token": "av_live_9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a10",
+  "prefix": "av_live_",
+  "scopes": ["ingest:write", "datasets:read"],
+  "expires_at": "2026-09-19T08:30:00Z"
 }
 ```
 
-### `POST /admin/clients`
-* **Descripción:** Registra una nueva aplicación cliente OAuth2.
+### `POST /v1/keys/attenuate`
+Attenuates an existing key with offline caveats (IP restriction, scope reduction, expiration):
 
----
-
-## 2.4 Autorix Aegis (Zero Trust Proxy)
-* **Host:** `http://localhost:4455`
-
-Aegis intercepta todo el tráfico que entra a la red y aplica el pipeline configurado en `rules.yaml`:
-1. **Verifica Autenticador (`jwt`, `anonymous`)**.
-2. **Consulta a Nexus (`nexus_rebac`)** para validar que el sujeto tenga permiso.
-3. **Muta Cabeceras (`header`)** inyectando `X-User-ID: <subject>` y eliminando tokens sensibles.
-4. **Redirige al Upstream** (`upstream.url`).
-
----
-
-## 2.5 Autorix Vulcan (API Keys & Macaroons)
-* **Host:** `http://localhost:4466`
-
-### `POST /keys`
-* **Descripción:** Genera una nueva API key con prefijo `av_live_` y su Macaroon base.
-* **Request:** `{"name": "Billing Service", "owner_id": "org_100", "is_live": true}`
-
-### `POST /keys/attenuate`
-* **Descripción:** Agrega un caveat criptográfico local a un Macaroon existente.
-* **Request:**
-```json
-{
-  "macaroon": { ... },
-  "caveat": "time_before = 2026-08-17T00:00:00Z"
-}
-```
-
-### `POST /keys/verify`
-* **Descripción:** Valida la firma HMAC encadenada y todas las condiciones contextuales (IP, hora, método).
-
----
-
-## 2.6 Autorix Hermes (SAML 2.0 & SCIM 2.0)
-* **Host:** `http://localhost:4477`
-
-### `GET /saml/metadata`
-* **Descripción:** Descarga el XML de metadata del Service Provider para configurar en Okta / Azure AD.
-
-### `GET /saml/login?provider=okta-corp`
-* **Descripción:** Redirige al empleado al portal SSO de su empresa con el `AuthnRequest`.
-
-### `POST /saml/acs`
-* **Descripción:** Endpoint consumidor de aserciones SAML POST.
-
-### `GET /scim/v2/Users` y `POST /scim/v2/Users`
-* **Descripción:** Aprovisionamiento y sincronización de identidades estándar RFC 7644.
-
----
-
-# 3. Cómo Trabajan Todos Juntos (Flujos End-to-End)
-
-## Flujo 1: Inicio de Sesión y Acceso a APIs con Aegis
-
-Este es el flujo central de cualquier usuario que interactúa con tu plataforma:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as Usuario / SPA
-    participant Ego as Autorix Ego (:4433)
-    participant Aegis as Autorix Aegis (:4455)
-    participant Janus as Autorix Janus (:4444)
-    participant Nexus as Autorix Nexus (:50051)
-    participant Backend as Backend de Documentos (:8080)
-
-    Note over User,Ego: Paso 1: Autenticación de Identidad
-    User->>Ego: POST /self-service/login (email, password)
-    Ego-->>User: 200 OK + Cookie autorix_session_token
-
-    Note over User,Janus: Paso 2: Obtención de Token OAuth2/OIDC
-    User->>Janus: POST /oauth2/token (con sesión de Ego)
-    Janus-->>User: Access Token JWT (Firmado con RS256)
-
-    Note over User,Backend: Paso 3: Consumo de API Protegida
-    User->>Aegis: GET /api/v1/documents/doc_42 (Bearer JWT)
-    
-    rect rgb(240, 248, 255)
-    Note over Aegis,Janus: 1. Authenticator (Aegis)
-    Aegis->>Janus: Valida firma JWT contra JWKS en memoria (< 0.5ms)
-    
-    Note over Aegis,Nexus: 2. Authorizer (Aegis)
-    Aegis->>Nexus: gRPC Check(namespace="document", object="doc_42", relation="viewer", subject="usr_elena")
-    Nexus-->>Aegis: allowed: true
-    
-    Note over Aegis,Backend: 3. Mutator & Proxy (Aegis)
-    Aegis->>Backend: GET /api/v1/documents/doc_42 [Header: X-User-ID=usr_elena]
-    end
-
-    Backend-->>Aegis: 200 OK {"data": "Reporte Confidencial"}
-    Aegis-->>User: 200 OK {"data": "Reporte Confidencial"}
+```bash
+curl -X POST http://localhost:4466/v1/keys/attenuate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "av_live_9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a10",
+    "caveats": [
+      "time < 2026-08-21T00:00:00Z",
+      "ip = 10.0.4.15",
+      "scope = ingest:write"
+    ]
+  }'
 ```
 
 ---
 
-## Flujo 2: M2M con Client Credentials y Verificación ReBAC
+## 3.8 Autorix Hermes (SAML 2.0 & SCIM 2.0 Federation)
 
-Para comunicación entre microservicios (ej: Servicio de Facturación accediendo a Clientes):
+### `GET /v1/saml/metadata`
+Returns Hermes Service Provider SAML 2.0 XML metadata for Okta/Entra ID import.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Billing as Servicio de Facturación
-    participant Janus as Autorix Janus (:4444)
-    participant Aegis as Autorix Aegis (:4455)
-    participant Customers as Servicio de Clientes
+```bash
+curl -s http://localhost:4477/v1/saml/metadata
+```
 
-    Billing->>Janus: POST /oauth2/token (client_credentials)
-    Janus-->>Billing: Access Token JWT (sub="billing-service")
+### `GET /scim/v2/Users`
+SCIM 2.0 user directory sync endpoint (RFC 7644).
 
-    Billing->>Aegis: POST /api/customers/100/invoices (Bearer JWT)
-    Note over Aegis: Valida JWT y verifica en Nexus si billing-service puede crear facturas
-    Aegis->>Customers: POST /api/customers/100/invoices (X-User-ID: billing-service)
-    Customers-->>Billing: 201 Created
+```bash
+curl -s http://localhost:4477/scim/v2/Users \
+  -H "Authorization: Bearer <scim_bearer_token>"
 ```
 
 ---
 
-# 4. Guía de Integración para Nuevos Microservicios
+## 3.9 Autorix Console BFF
 
-## Patrón de Backend Seguro (Go / Node.js / Python)
-
-Gracias a **Autorix Aegis**, tus microservicios de negocio **NO necesitan librerías de autenticación, ni validar JWTs, ni conectarse a bases de datos de usuarios**.
-
-### En Go (Golang)
-```go
-package main
-
-import (
-	"fmt"
-	"net/http"
-)
-
-func handleGetDocument(w http.ResponseWriter, r *http.Request) {
-	// Aegis ya validó el JWT y verificó los permisos en Nexus.
-	// La identidad viene garantizada en la cabecera X-User-ID.
-	userID := r.Header.Get("X-User-ID")
-	if userID == "" {
-		http.Error(w, "Unauthorized (Bypassed Proxy?)", http.StatusUnauthorized)
-		return
-	}
-
-	fmt.Fprintf(w, "Hola %s! Acceso permitido al documento.", userID)
-}
-
-func main() {
-	http.HandleFunc("/api/v1/documents/", handleGetDocument)
-	http.ListenAndServe(":8080", nil)
-}
-```
-
-### En Node.js / Express
-```javascript
-const express = require('express');
-const app = express();
-
-app.get('/api/v1/documents/:id', (req, res) => {
-  const userId = req.header('X-User-ID');
-  if (!userId) {
-    return res.status(401).json({ error: 'Direct access forbidden' });
-  }
-
-  res.json({
-    documentId: req.params.id,
-    requestedBy: userId,
-    content: 'Datos ultra seguros'
-  });
-});
-
-app.listen(8080);
-```
-
----
-
-## Patrón de Frontend SPA (React / Next.js)
-
-1. El usuario se registra o loguea contra **Autorix Ego** (`http://localhost:4433/self-service/login`).
-2. El navegador recibe la cookie `autorix_session_token`.
-3. Para consultar APIs protegidas, el frontend hace peticiones directamente a través de **Autorix Aegis** (`http://localhost:4455/api/...`).
-4. Aegis valida la cookie/token, consulta a **Nexus** y devuelve la respuesta.
+| Endpoint | Method | Purpose |
+| :--- | :--- | :--- |
+| `/api/auth/status` | `GET` | Returns bootstrap status from Argus. |
+| `/api/auth/login` | `POST` | Authenticates operator, sets HTTP-only session cookie. |
+| `/api/auth/logout` | `POST` | Invalidates session cookie and server session. |
+| `/api/notifications` | `GET` | Aggregates live fleet audit and instance alerts for Notification Center. |
+| `/api/audit` | `GET`, `POST` | Proxies audit records to Argus with double-submit CSRF. |
+| `/api/audit/verify` | `GET` | Requests SHA-256 Merkle chain verification from Argus. |
+| `/api/compliance/evidence` | `GET` | Proxies live compliance controls evaluation. |
+| `/api/fleet/instances` | `GET` | Lists live fleet instances. |
+| `/api/health` | `GET` | Measures status and latency across all 7 engines + Argus. |
