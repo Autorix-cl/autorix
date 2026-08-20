@@ -51,6 +51,16 @@ export default defineConfig({
         ]
       },
       {
+        text: 'Client SDKs',
+        items: [
+          { text: 'SDKs Overview', link: '/sdk/' },
+          { text: 'Go SDK Manual', link: '/sdk/go' },
+          { text: 'TypeScript / React SDK', link: '/sdk/typescript' },
+          { text: 'Python / FastAPI SDK', link: '/sdk/python' },
+          { text: 'CLI & Direct gRPC/REST', link: '/sdk/cli' }
+        ]
+      },
+      {
         text: 'Control Plane & UI',
         items: [
           { text: 'Argus (Fleet Control Plane)', link: '/argus_usage_guide' },
@@ -62,7 +72,6 @@ export default defineConfig({
         items: [
           { text: 'Operations & Runbook', link: '/operations_and_runbook' },
           { text: 'Kubernetes Production Guide', link: '/production_k8s_guide' },
-          { text: 'SDKs Integration Guide', link: '/sdks_integration_guide' },
           { text: 'Technical Roadmap', link: '/roadmap' }
         ]
       }
@@ -75,6 +84,17 @@ export default defineConfig({
         items: [
           { text: 'Getting Started & Home', link: '/' },
           { text: 'Master API Reference & Architecture', link: '/api_reference_and_integration_guide' }
+        ]
+      },
+      {
+        text: 'Official Client SDKs',
+        collapsed: false,
+        items: [
+          { text: 'SDKs Overview & Principles', link: '/sdk/' },
+          { text: '🐹 Go SDK Reference', link: '/sdk/go' },
+          { text: '⚛️ TypeScript / React SDK Reference', link: '/sdk/typescript' },
+          { text: '🐍 Python / FastAPI SDK Reference', link: '/sdk/python' },
+          { text: '💻 CLI & Universal Direct APIs', link: '/sdk/cli' }
         ]
       },
       {
@@ -104,7 +124,6 @@ export default defineConfig({
         items: [
           { text: 'Day-1 & Day-2 Operations Runbook', link: '/operations_and_runbook' },
           { text: 'Production Kubernetes Deployment', link: '/production_k8s_guide' },
-          { text: 'Official SDKs (Go, TS, Python)', link: '/sdks_integration_guide' },
           { text: 'Roadmap & Future Phases', link: '/roadmap' }
         ]
       }
