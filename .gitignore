@@ -83,6 +83,11 @@ console/e2e/.auth/
 console/coverage/
 coverage.out
 coverage.txt
-**/coverage.out
 # Local AI runtime state
 .atl/
+
+# VitePress
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+.vitepress/dist/
+.vitepress/cache/

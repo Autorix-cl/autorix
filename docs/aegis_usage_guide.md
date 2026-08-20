@@ -123,7 +123,7 @@ Rules are configured dynamically via the Admin REST API (`:4456`) or loaded from
 | Handler | Configuration | Description |
 | :--- | :--- | :--- |
 | `noop` | `{}` | Forwards request headers as received. |
-| `header` | `{"headers": {"X-Auth-Sub": "{{ .Subject }}"}}` | Injects custom headers with Go template resolution. |
+| `header` | `{"headers": {"X-Auth-Sub": "${Subject}"}}` | Injects custom headers with Go template resolution. |
 | `id_token` | `{"issuer": "http://aegis", "jwks_url": "..."}` | Mints a short-lived, signed JWT assertion for zero-trust downstream consumption. |
 
 ---
