@@ -15,7 +15,8 @@ export default function LoginPage() {
 
 function LoginForm() {
   const searchParams = useSearchParams();
-  const from = searchParams.get("from") || "/";
+  const rawFrom = searchParams.get("from") || "/";
+  const from = rawFrom.startsWith("/") && !rawFrom.startsWith("//") ? rawFrom : "/";
 
   const [activeTab, setActiveTab] = useState<"local" | "sso">("local");
   const [email, setEmail] = useState("");
