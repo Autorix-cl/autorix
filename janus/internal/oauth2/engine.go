@@ -121,3 +121,20 @@ func HashSecret(secret string) (string, error) {
 func VerifySecret(secret, hash string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(secret)) == nil
 }
+
+// AuthenticateClient checks credentials for public and confidential clients,
+// including previous secret validity during the rotation overlap window.
+func AuthenticateClient(client *core.OAuth2Client, secret string) bool {
+	if client.IsPublic {
+		return true
+	}
+	if client.ClientSecretHash != "" && VerifySecret(secret, client.ClientSecretHash) {
+		return true
+	}
+	if client.PreviousSecretHash != "" && client.PreviousSecretExpiresAt != nil &&
+		time.Now().Before(*client.PreviousSecretExpiresAt) &&
+		VerifySecret(secret, client.PreviousSecretHash) {
+		return true
+	}
+	return false
+}

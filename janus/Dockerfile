@@ -1,21 +1,30 @@
 # Build stage
 FROM golang:1.25-alpine AS builder
 
+ARG VERSION=dev
+ARG BUILD_SHA=unknown
+ARG BUILD_TIME=unknown
+
 WORKDIR /build
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
 
 # Cache dependencies
-COPY go.mod go.sum ./
+COPY platform ./platform
+COPY argus ./argus
+COPY janus/go.mod janus/go.sum ./janus/
+WORKDIR /build/janus
 RUN go mod download
+WORKDIR /build
 
 # Copy source code
-COPY . .
+COPY janus ./janus
+WORKDIR /build/janus
 
 # Compile static binary
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags="-s -w -extldflags '-static'" \
+    -ldflags="-s -w -extldflags '-static' -X github.com/autorix/platform/version.Version=${VERSION:-dev} -X github.com/autorix/platform/version.BuildSHA=${BUILD_SHA:-unknown} -X github.com/autorix/platform/version.BuildTime=${BUILD_TIME:-unknown}" \
     -o /build/janusd ./cmd/janusd/main.go
 
 # Production runtime stage
@@ -29,7 +38,7 @@ WORKDIR /app
 # Copy certificates and compiled binary
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /build/janusd /app/janusd
-COPY --from=builder /build/migrations /app/migrations
+COPY --from=builder /build/janus/migrations /app/migrations
 
 # Expose OAuth2 HTTP port
 EXPOSE 4444
