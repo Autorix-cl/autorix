@@ -1,7 +1,34 @@
 "use client";
 
-import { useState } from "react";
-import { Layers, Plus, Check, Shield, Lock, RefreshCw } from "lucide-react";
+import * as React from "react";
+import { Layers, Plus, Lock, RefreshCw, Key, Search, Loader2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "@/lib/i18n";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { CodeBlock } from "@/components/ui/code-block";
+import type { z } from "zod";
+import { useApiQuery } from "@/lib/query/use-api-query";
+import { useApiMutation } from "@/lib/query/use-api-mutation";
+import { fetchAndParse } from "@/lib/api/schema";
+import {
+  apiKeyListSchema,
+  createKeyResponseSchema,
+  attenuateResponseSchema,
+  macaroonSchema,
+  type APIKey,
+} from "@/lib/api/schemas/vulcan";
+
+type Macaroon = z.infer<typeof macaroonSchema>;
+import { LoadingState } from "@/components/state/loading-state";
+import { EmptyState } from "@/components/state/empty-state";
+import { ErrorState } from "@/components/state/error-state";
+import { NotConnectedState } from "@/components/state/not-connected-state";
 
 interface KeyItem {
   id: string;
@@ -9,244 +36,384 @@ interface KeyItem {
   prefix: string;
   keyMasked: string;
   ownerId: string;
-  caveatsCount: number;
   createdAt: string;
 }
 
+function toKeyItem(k: APIKey): KeyItem {
+  return {
+    id: k.id,
+    name: k.name,
+    prefix: k.key_prefix || "av_live",
+    keyMasked: `${k.key_prefix}_${k.key_hint || "xxxx"}...`,
+    ownerId: k.owner_id || "system",
+    createdAt: k.created_at ? new Date(k.created_at).toLocaleString() : "Recently",
+  };
+}
+
 export default function ApiKeysPage() {
-  const [keys, setKeys] = useState<KeyItem[]>([
-    {
-      id: "vulcan_k1",
-      name: "Stripe Webhook Worker",
-      prefix: "av_live_",
-      keyMasked: "av_live_9a8b...1f2e",
-      ownerId: "service-worker-01",
-      caveatsCount: 2,
-      createdAt: "2026-08-16 10:00",
-    },
-    {
-      id: "vulcan_k2",
-      name: "Staging Testing Key",
-      prefix: "av_test_",
-      keyMasked: "av_test_3c4d...8a9b",
-      ownerId: "qa-team",
-      caveatsCount: 0,
-      createdAt: "2026-08-16 11:20",
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+
+  const [keyName, setKeyName] = React.useState("");
+  const [ownerId, setOwnerId] = React.useState("");
+  const [isLive, setIsLive] = React.useState(true);
+  const [newlyCreatedKey, setNewlyCreatedKey] = React.useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = React.useState("");
+
+  // Attenuation studio state
+  const [selectedKeyForAttenuation, setSelectedKeyForAttenuation] = React.useState<string>("");
+  const [newCaveat, setNewCaveat] = React.useState("ip = 192.168.1.50");
+  const [attenuatedToken, setAttenuatedToken] = React.useState<string | null>(null);
+  // Vulcan's GET /keys never returns macaroon signature material (by design,
+  // to avoid leaking capability tokens at rest) — only the POST /keys create
+  // response includes the real macaroon. So attenuation can only operate on
+  // keys created during this browser session; we track those here instead of
+  // fabricating a placeholder macaroon for keys loaded from the directory.
+  const [macaroonsByKeyId, setMacaroonsByKeyId] = React.useState<Record<string, Macaroon>>({});
+
+  const {
+    data: keysRaw,
+    isLoading,
+    isFetching,
+    isError,
+    error,
+    refetch,
+  } = useApiQuery(["api-keys"], () => fetchAndParse<APIKey[]>("/api/keys", apiKeyListSchema));
+
+  const keys: KeyItem[] = React.useMemo(() => (keysRaw ?? []).map(toKeyItem), [keysRaw]);
+
+  React.useEffect(() => {
+    if (keys.length > 0 && !selectedKeyForAttenuation) {
+      setSelectedKeyForAttenuation(keys[0].id);
     }
-  ]);
+  }, [keys, selectedKeyForAttenuation]);
 
-  const [keyName, setKeyName] = useState("");
-  const [ownerId, setOwnerId] = useState("");
-  const [isLive, setIsLive] = useState(true);
-  const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
-
-  // Attenuation state
-  const [selectedKeyForAttenuation, setSelectedKeyForAttenuation] = useState("av_live_9a8b...1f2e");
-  const [newCaveat, setNewCaveat] = useState("ip = 192.168.1.50");
-  const [attenuatedToken, setAttenuatedToken] = useState<string | null>(null);
+  const createKey = useApiMutation(
+    (vars: { name: string; ownerId: string; isLive: boolean }) =>
+      fetchAndParse("/api/keys", createKeyResponseSchema, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(vars),
+      }),
+    {
+      successMessage: "API key generated",
+      onSuccess: (data, vars) => {
+        queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+        setNewlyCreatedKey(data.raw_token || `av_${vars.isLive ? "live" : "test"}_${data.api_key.id}`);
+        setSelectedKeyForAttenuation(data.api_key.id);
+        setMacaroonsByKeyId((prev) => ({ ...prev, [data.api_key.id]: data.macaroon }));
+        setKeyName("");
+        setOwnerId("");
+      },
+    },
+  );
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!keyName) return;
-
-    const randomSuffix = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-    const generatedRawKey = `${isLive ? "av_live_" : "av_test_"}${randomSuffix}`;
-
-    const newKey: KeyItem = {
-      id: `vulcan_${crypto.randomUUID().slice(0, 8)}`,
-      name: keyName,
-      prefix: isLive ? "av_live_" : "av_test_",
-      keyMasked: `${generatedRawKey.slice(0, 12)}...${generatedRawKey.slice(-4)}`,
-      ownerId: ownerId || "system",
-      caveatsCount: 0,
-      createdAt: "Just now",
-    };
-
-    setKeys([newKey, ...keys]);
-    setNewlyCreatedKey(generatedRawKey);
-    setKeyName("");
-    setOwnerId("");
+    createKey.mutate({ name: keyName, ownerId, isLive });
   };
+
+  const attenuate = useApiMutation(
+    (vars: { macaroon: Macaroon; caveat: string }) =>
+      fetchAndParse("/api/keys/attenuate", attenuateResponseSchema, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(vars),
+      }),
+    {
+      successMessage: "Macaroon attenuated",
+      onSuccess: (data) => {
+        setAttenuatedToken(
+          `macaroon_v1:${data.key_id}:[${data.caveats.map((c) => c.predicate).join(", ")}]:hmac_${data.signature}`,
+        );
+      },
+    },
+  );
+
+  const targetKeyForAttenuation = keys.find((k) => k.id === selectedKeyForAttenuation) || keys[0];
+  const baseMacaroonForAttenuation = targetKeyForAttenuation ? macaroonsByKeyId[targetKeyForAttenuation.id] : undefined;
 
   const handleAttenuate = () => {
-    if (!newCaveat) return;
-    const signature = Array.from(crypto.getRandomValues(new Uint8Array(8)))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-    setAttenuatedToken(`macaroon_v1:${selectedKeyForAttenuation}:[${newCaveat}]:hmac_${signature}`);
+    if (!newCaveat || !baseMacaroonForAttenuation) return;
+    attenuate.mutate({ macaroon: baseMacaroonForAttenuation, caveat: newCaveat });
   };
 
+  const filteredKeys = keys.filter(
+    (k) =>
+      k.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      k.ownerId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      k.keyMasked.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
   return (
-    <>
-      <header className="page-header">
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 style={{ fontSize: "20px", fontWeight: "700", letterSpacing: "-0.02em" }}>Autorix Vulcan: API Keys & Macaroons</h1>
-          <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: "2px" }}>
-            Scannable prefixed keys and decentralized capability tokens with chained HMAC attenuation (:4466).
-          </p>
-        </div>
-        <span className="badge badge-blue">
-          <Layers size={12} /> Macaroon HMAC Active
-        </span>
-      </header>
-
-      <div className="page-body">
-        {newlyCreatedKey && (
-          <div style={{ padding: "16px", backgroundColor: "rgba(16, 185, 129, 0.15)", border: "1px solid var(--accent-green)", borderRadius: "var(--radius-md)", marginBottom: "24px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-green)", fontWeight: "600", marginBottom: "8px" }}>
-              <Check size={18} /> API Key Generated (Copy now, it will not be shown again):
-            </div>
-            <div className="code-box" style={{ color: "#fff", background: "#000", fontSize: "14px" }}>
-              {newlyCreatedKey}
-            </div>
-          </div>
-        )}
-
-        <div className="grid-2">
-          {/* Create Key */}
-          <div className="card">
-            <h2 className="card-title" style={{ marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <Plus size={16} color="var(--accent-cyan)" /> Generate API Key
-            </h2>
-
-            <form onSubmit={handleCreate}>
-              <div className="form-group">
-                <label className="form-label">Key Name / Description</label>
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  placeholder="e.g. Production Ingestion Service" 
-                  value={keyName} 
-                  onChange={(e) => setKeyName(e.target.value)} 
-                  required 
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Owner / Service Subject</label>
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  placeholder="e.g. billing-service" 
-                  value={ownerId} 
-                  onChange={(e) => setOwnerId(e.target.value)} 
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Environment Prefix</label>
-                <select 
-                  className="form-select" 
-                  value={isLive ? "live" : "test"} 
-                  onChange={(e) => setIsLive(e.target.value === "live")}
-                >
-                  <option value="live">Live (`av_live_...` Production)</option>
-                  <option value="test">Test (`av_test_...` Sandbox)</option>
-                </select>
-              </div>
-
-              <button 
-                type="submit" 
-                className="btn btn-primary" 
-                style={{ width: "100%", background: "var(--accent-cyan)", borderColor: "var(--accent-cyan)" }}
-              >
-                <Lock size={14} /> Generate Scannable API Key
-              </button>
-            </form>
-          </div>
-
-          {/* Macaroon Attenuation Studio */}
-          <div className="card">
-            <h2 className="card-title" style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <RefreshCw size={16} color="var(--accent-purple)" /> Macaroon Attenuation Studio
-            </h2>
-            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "16px" }}>
-              Attenuate permissions locally by adding caveats without round-tripping to the database.
-            </p>
-
-            <div className="form-group">
-              <label className="form-label">Select Base Key</label>
-              <select 
-                className="form-select" 
-                value={selectedKeyForAttenuation} 
-                onChange={(e) => setSelectedKeyForAttenuation(e.target.value)}
-              >
-                {keys.map((k) => (
-                  <option key={k.id} value={k.keyMasked}>{k.name} ({k.keyMasked})</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Add First-Party Caveat</label>
-              <select 
-                className="form-select" 
-                value={newCaveat} 
-                onChange={(e) => setNewCaveat(e.target.value)}
-              >
-                <option value="time_before = 2026-08-17T00:00:00Z">Time Expiry (time_before = 2026-08-17T00:00:00Z)</option>
-                <option value="ip = 192.168.1.50">IP Whitelist (ip = 192.168.1.50)</option>
-                <option value="method = GET">Read-Only (method = GET)</option>
-                <option value="path_prefix = /api/v1/public">Scope Limiter (path_prefix = /api/v1/public)</option>
-              </select>
-            </div>
-
-            <button 
-              type="button" 
-              className="btn btn-secondary" 
-              style={{ width: "100%", marginBottom: "12px" }}
-              onClick={handleAttenuate}
-            >
-              Compute HMAC Chain Signature
-            </button>
-
-            {attenuatedToken && (
-              <div className="code-box" style={{ fontSize: "11px", color: "var(--accent-green)" }}>
-                {attenuatedToken}
-              </div>
-            )}
-          </div>
+          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("apiKeys.title")}</h1>
+          <p className="text-xs text-muted-foreground mt-1">{t("apiKeys.subtitle")}</p>
         </div>
 
-        {/* Keys Table */}
-        <div className="card">
-          <div className="card-header">
-            <h2 className="card-title">Issued API Keys ({keys.length})</h2>
-            <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Storage: autorix_vulcan (SHA-256 Hashes)</span>
-          </div>
-
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Key Name</th>
-                  <th>Masked Token</th>
-                  <th>Owner Subject</th>
-                  <th>Environment</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {keys.map((k) => (
-                  <tr key={k.id}>
-                    <td style={{ fontWeight: "500" }}>{k.name}</td>
-                    <td style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--accent-cyan)" }}>{k.keyMasked}</td>
-                    <td>{k.ownerId}</td>
-                    <td>
-                      <span className={k.prefix === "av_live_" ? "badge badge-green" : "badge badge-amber"}>
-                        {k.prefix === "av_live_" ? "Production" : "Sandbox"}
-                      </span>
-                    </td>
-                    <td style={{ color: "var(--text-muted)", fontSize: "12px" }}>{k.createdAt}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="cyan" className="gap-1.5 py-1 px-3">
+            <Layers className="h-3.5 w-3.5" />
+            <span>{t("apiKeys.statusBadge")}</span>
+          </Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="h-8 gap-1 text-xs"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+            <span>{t("common.refresh")}</span>
+          </Button>
         </div>
       </div>
-    </>
+
+      {/* Newly Created Key Alert Banner */}
+      {newlyCreatedKey && (
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-5 space-y-3 animate-in fade-in-50">
+          <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
+            <Lock className="h-4 w-4" />
+            <span>{t("apiKeys.keyGeneratedBanner")}</span>
+          </div>
+
+          <CodeBlock
+            code={newlyCreatedKey}
+            language="text"
+            title="PLAINTEXT VULCAN API KEY"
+            className="bg-black/90 text-emerald-300 font-mono text-sm"
+          />
+
+          <p className="text-[11px] text-muted-foreground">
+            Key successfully persisted in Vulcan PostgreSQL with SHA-256 hash. Copy it now as it will not be displayed
+            again.
+          </p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Generate API Key Card */}
+        <Card className="bg-card/80">
+          <CardHeader className="p-6 pb-4">
+            <div className="flex items-center gap-2">
+              <Plus className="h-4 w-4 text-cyan-400" />
+              <CardTitle className="text-sm font-semibold">{t("apiKeys.generateTitle")}</CardTitle>
+            </div>
+            <CardDescription className="text-xs">{t("apiKeys.generateDesc")}</CardDescription>
+          </CardHeader>
+
+          <CardContent className="p-6 pt-0">
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="keyName">{t("apiKeys.keyNameLabel")}</Label>
+                <Input
+                  id="keyName"
+                  placeholder={t("apiKeys.keyNamePlaceholder")}
+                  value={keyName}
+                  onChange={(e) => setKeyName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="ownerId">{t("apiKeys.ownerLabel")}</Label>
+                <Input
+                  id="ownerId"
+                  placeholder={t("apiKeys.ownerPlaceholder")}
+                  value={ownerId}
+                  onChange={(e) => setOwnerId(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="env">{t("apiKeys.envLabel")}</Label>
+                <Select value={isLive ? "live" : "test"} onValueChange={(val) => setIsLive(val === "live")}>
+                  <SelectTrigger id="env">
+                    <SelectValue placeholder="Select Environment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="live">{t("apiKeys.liveOption")}</SelectItem>
+                    <SelectItem value="test">{t("apiKeys.testOption")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button type="submit" variant="cyan" disabled={createKey.isPending} className="w-full gap-2 mt-2">
+                {createKey.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+                <span>{createKey.isPending ? t("common.loading") : t("apiKeys.generateBtn")}</span>
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Macaroon Attenuation Studio Card */}
+        <Card className="bg-card/80 flex flex-col justify-between">
+          <CardHeader className="p-6 pb-4">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 text-purple-400" />
+              <CardTitle className="text-sm font-semibold">{t("apiKeys.attenuationTitle")}</CardTitle>
+            </div>
+            <CardDescription className="text-xs">{t("apiKeys.attenuationDesc")}</CardDescription>
+          </CardHeader>
+
+          <CardContent className="p-6 pt-0 space-y-4 flex-1">
+            <div className="space-y-1.5">
+              <Label>{t("apiKeys.baseKeyLabel")}</Label>
+              <Select value={selectedKeyForAttenuation} onValueChange={setSelectedKeyForAttenuation}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select base key" />
+                </SelectTrigger>
+                <SelectContent>
+                  {keys.length === 0 ? (
+                    <SelectItem value="none">No keys available</SelectItem>
+                  ) : (
+                    keys.map((k) => (
+                      <SelectItem key={k.id} value={k.id}>
+                        {k.name} ({k.keyMasked})
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>{t("apiKeys.caveatLabel")}</Label>
+              <Select value={newCaveat} onValueChange={setNewCaveat}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select caveat" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="time_before = 2026-08-17T00:00:00Z">
+                    Time Expiry (time_before = 2026-08-17T00:00:00Z)
+                  </SelectItem>
+                  <SelectItem value="ip = 192.168.1.50">IP Restriction (ip = 192.168.1.50)</SelectItem>
+                  <SelectItem value="method = GET">Read-Only Method (method = GET)</SelectItem>
+                  <SelectItem value="path_prefix = /api/v1/public">
+                    Scope Limiter (path_prefix = /api/v1/public)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {!baseMacaroonForAttenuation && (
+              <p className="text-[11px] text-amber-400">{t("apiKeys.macaroonUnavailable")}</p>
+            )}
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleAttenuate}
+              disabled={attenuate.isPending || !baseMacaroonForAttenuation}
+              className="w-full gap-2 border-purple-500/30 hover:border-purple-500/60 hover:bg-purple-500/10 text-xs"
+            >
+              {attenuate.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
+              ) : (
+                <RefreshCw className="h-4 w-4 text-purple-400" />
+              )}
+              <span>{t("apiKeys.computeBtn")}</span>
+            </Button>
+
+            {attenuatedToken && (
+              <CodeBlock
+                code={attenuatedToken}
+                language="text"
+                title="ATTENUATED MACAROON CAPABILITY TOKEN (HMAC)"
+                className="text-emerald-300"
+              />
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Issued Keys Table */}
+      <Card className="bg-card/80">
+        <CardHeader className="p-6 pb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Key className="h-4 w-4 text-cyan-400" />
+                <span>{t("apiKeys.tableTitle")}</span>
+                <Badge variant="secondary" className="font-mono text-[10px]">
+                  {keys.length}
+                </Badge>
+              </CardTitle>
+              <CardDescription className="text-xs">{t("apiKeys.tableDesc")}</CardDescription>
+            </div>
+
+            {/* Search Filter */}
+            <div className="flex items-center gap-2 w-full sm:w-72">
+              <div className="relative w-full">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder={t("apiKeys.searchPlaceholder")}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 h-8 text-xs bg-muted/30"
+                />
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-6 pt-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("apiKeys.colName")}</TableHead>
+                <TableHead>{t("apiKeys.colToken")}</TableHead>
+                <TableHead>{t("apiKeys.colOwner")}</TableHead>
+                <TableHead>{t("apiKeys.colEnv")}</TableHead>
+                <TableHead>{t("apiKeys.colCreated")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="p-0">
+                    <LoadingState label="Fetching API keys from Vulcan database..." />
+                  </TableCell>
+                </TableRow>
+              ) : isError ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="p-0">
+                    {error?.kind === "engine-unreachable" ? (
+                      <NotConnectedState engineName="Vulcan" onRetry={refetch} />
+                    ) : (
+                      <ErrorState error={error} onRetry={refetch} />
+                    )}
+                  </TableCell>
+                </TableRow>
+              ) : filteredKeys.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="p-0">
+                    <EmptyState title={t("apiKeys.tableTitle")} description="No API keys issued in Vulcan yet." />
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredKeys.map((k) => (
+                  <TableRow key={k.id}>
+                    <TableCell className="font-semibold text-foreground">{k.name}</TableCell>
+                    <TableCell className="font-mono text-xs text-cyan-400 font-medium">{k.keyMasked}</TableCell>
+                    <TableCell className="text-muted-foreground">{k.ownerId}</TableCell>
+                    <TableCell>
+                      <Badge variant={k.prefix.includes("live") ? "success" : "warning"} className="text-[10px]">
+                        {k.prefix.includes("live") ? t("common.production") : t("common.sandbox")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-xs font-mono">{k.createdAt}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

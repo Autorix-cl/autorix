@@ -1,18 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { 
-  Network, 
-  Play, 
-  CheckCircle2, 
-  XCircle, 
-  Zap, 
-  ShieldAlert,
-  Database,
-  Layers,
-  Sparkles,
-  GitGraph
-} from "lucide-react";
+import { Play, CheckCircle2, XCircle, Zap, Database, GitGraph } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,22 +9,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/components/ui/select";
-import { 
-  Table, 
-  TableHeader, 
-  TableBody, 
-  TableRow, 
-  TableHead, 
-  TableCell 
-} from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { CodeBlock } from "@/components/ui/code-block";
+import { useApiQuery } from "@/lib/query/use-api-query";
+import { useApiMutation } from "@/lib/query/use-api-mutation";
+import { fetchAndParse } from "@/lib/api/schema";
+import { tupleListSchema, checkResponseSchema, type Tuple } from "@/lib/api/schemas/nexus";
+import { LoadingState } from "@/components/state/loading-state";
+import { EmptyState } from "@/components/state/empty-state";
+import { ErrorState } from "@/components/state/error-state";
+import { NotConnectedState } from "@/components/state/not-connected-state";
+import { NotConnectedEngine } from "@/components/resources/not-connected-engine";
+import { useCapabilities } from "@/lib/capabilities/capability-context";
 
 interface ZanzibarTuple {
   namespace: string;
@@ -45,18 +31,37 @@ interface ZanzibarTuple {
   caveat?: string;
 }
 
+function toZanzibarTuple(t: Tuple): ZanzibarTuple {
+  return {
+    namespace: t.namespace,
+    object: t.object,
+    relation: t.relation,
+    subject: `${t.subject_namespace || "user"}:${t.subject_id}${t.subject_relation ? "#" + t.subject_relation : ""}`,
+    caveat: t.caveat_name || undefined,
+  };
+}
+
+interface CheckVars {
+  namespace: string;
+  object: string;
+  relation: string;
+  subjectId: string;
+  requestContext?: Record<string, unknown>;
+  startedAt: number;
+}
+
 export default function PermissionsPage() {
   const { t } = useTranslation();
+  const { isEngineConnected } = useCapabilities();
 
   const [namespace, setNamespace] = React.useState("document");
   const [object, setObject] = React.useState("financial_report_2026");
   const [relation, setRelation] = React.useState("viewer");
   const [subjectId, setSubjectId] = React.useState("alice");
   const [requestContext, setRequestContext] = React.useState(
-    '{\n  "ip": "192.168.1.100",\n  "amount": 450,\n  "mfa_verified": true\n}'
+    '{\n  "ip": "192.168.1.100",\n  "amount": 450,\n  "mfa_verified": true\n}',
   );
 
-  const [evaluating, setEvaluating] = React.useState(false);
   const [result, setResult] = React.useState<{
     allowed: boolean;
     reason: string;
@@ -64,109 +69,101 @@ export default function PermissionsPage() {
     path: string;
   } | null>(null);
 
-  const [tuples, setTuples] = React.useState<ZanzibarTuple[]>([]);
-  const [loadingTuples, setLoadingTuples] = React.useState(true);
+  const {
+    data: tuplesRaw,
+    isLoading: isLoadingTuples,
+    isError: isTuplesError,
+    error: tuplesError,
+    refetch: refetchTuples,
+  } = useApiQuery(["nexus-tuples"], () => fetchAndParse<Tuple[]>("/api/permissions", tupleListSchema));
 
-  const fetchTuples = React.useCallback(async () => {
-    setLoadingTuples(true);
-    try {
-      const res = await fetch("/api/permissions");
-      const data = await res.json();
-      const mapped: ZanzibarTuple[] = (Array.isArray(data) ? data : []).map((t: any) => ({
-        namespace: t.namespace,
-        object: t.object,
-        relation: t.relation,
-        subject: `${t.subject_namespace || "user"}:${t.subject_id}${
-          t.subject_relation ? "#" + t.subject_relation : ""
-        }`,
-        caveat: t.caveat_name || undefined,
-      }));
-      setTuples(mapped);
-    } catch (err) {
-      setTuples([]);
-    } finally {
-      setLoadingTuples(false);
-    }
-  }, []);
+  const tuples: ZanzibarTuple[] = React.useMemo(() => (tuplesRaw ?? []).map(toZanzibarTuple), [tuplesRaw]);
 
-  React.useEffect(() => {
-    fetchTuples();
-  }, [fetchTuples]);
+  const checkMutation = useApiMutation(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- startedAt is stripped from the request body on purpose
+    ({ startedAt, ...body }: CheckVars) =>
+      fetchAndParse("/api/permissions/check", checkResponseSchema, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    {
+      onSuccess: (data, vars) => {
+        const latencyMs = Number((performance.now() - vars.startedAt).toFixed(2));
+        setResult({
+          allowed: Boolean(data.allowed),
+          reason:
+            data.reason ||
+            t("permissions.directMatchReason", {
+              namespace: vars.namespace,
+              object: vars.object,
+              relation: vars.relation,
+              subject: `user:${vars.subjectId}`,
+            }),
+          latencyMs,
+          path: `user:${vars.subjectId} -> direct relation -> ${vars.namespace}:${vars.object}#${vars.relation}`,
+        });
+      },
+      onError: (err, vars) => {
+        const latencyMs = Number((performance.now() - vars.startedAt).toFixed(2));
+        setResult({
+          allowed: false,
+          reason: err.message || "Check request failed",
+          latencyMs,
+          path: `user:${vars.subjectId} -> ${vars.namespace}:${vars.object}#${vars.relation}`,
+        });
+      },
+    },
+  );
 
-  const handleSimulate = async (e: React.FormEvent) => {
+  const handleSimulate = (e: React.FormEvent) => {
     e.preventDefault();
-    setEvaluating(true);
 
-    const startedAt = performance.now();
     let parsedContext: Record<string, unknown> | undefined;
     try {
       parsedContext = requestContext ? JSON.parse(requestContext) : undefined;
-    } catch (err) {
+    } catch {
       // Let Nexus's CEL evaluator surface the parsing/evaluation error instead.
       parsedContext = undefined;
     }
 
-    try {
-      const res = await fetch("/api/permissions/check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          namespace,
-          object,
-          relation,
-          subjectId,
-          requestContext: parsedContext,
-        }),
-      });
-      const data = await res.json();
-      const latencyMs = Number((performance.now() - startedAt).toFixed(2));
-
-      if (!res.ok) {
-        setResult({
-          allowed: false,
-          reason: data.error || "Check request failed",
-          latencyMs,
-          path: `user:${subjectId} -> ${namespace}:${object}#${relation}`,
-        });
-        return;
-      }
-
-      setResult({
-        allowed: Boolean(data.allowed),
-        reason:
-          data.reason ||
-          t("permissions.directMatchReason", {
-            namespace,
-            object,
-            relation,
-            subject: `user:${subjectId}`,
-          }),
-        latencyMs,
-        path: `user:${subjectId} -> direct relation -> ${namespace}:${object}#${relation}`,
-      });
-    } catch (err: any) {
-      setResult({
-        allowed: false,
-        reason: err.message || "Failed to reach Nexus",
-        latencyMs: Number((performance.now() - startedAt).toFixed(2)),
-        path: `user:${subjectId} -> ${namespace}:${object}#${relation}`,
-      });
-    } finally {
-      setEvaluating(false);
-    }
+    checkMutation.mutate({
+      namespace,
+      object,
+      relation,
+      subjectId,
+      requestContext: parsedContext,
+      startedAt: performance.now(),
+    });
   };
+
+  const evaluating = checkMutation.isPending;
+
+  if (!isEngineConnected("nexus")) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("permissions.title")}</h1>
+            <p className="text-xs text-muted-foreground mt-1">{t("permissions.subtitle")}</p>
+          </div>
+        </div>
+        <NotConnectedEngine
+          engineType="nexus"
+          engineName="Autorix Nexus (ReBAC)"
+          description="Google Zanzibar authorization engine."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Page Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-            {t("permissions.title")}
-          </h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            {t("permissions.subtitle")}
-          </p>
+          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("permissions.title")}</h1>
+          <p className="text-xs text-muted-foreground mt-1">{t("permissions.subtitle")}</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -183,13 +180,9 @@ export default function PermissionsPage() {
           <CardHeader className="p-6 pb-4">
             <div className="flex items-center gap-2">
               <Play className="h-4 w-4 text-purple-400" />
-              <CardTitle className="text-sm font-semibold">
-                {t("permissions.simulatorTitle")}
-              </CardTitle>
+              <CardTitle className="text-sm font-semibold">{t("permissions.simulatorTitle")}</CardTitle>
             </div>
-            <CardDescription className="text-xs">
-              {t("permissions.simulatorDesc")}
-            </CardDescription>
+            <CardDescription className="text-xs">{t("permissions.simulatorDesc")}</CardDescription>
           </CardHeader>
 
           <CardContent className="p-6 pt-0">
@@ -197,22 +190,12 @@ export default function PermissionsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="namespace">{t("permissions.namespaceLabel")}</Label>
-                  <Input
-                    id="namespace"
-                    value={namespace}
-                    onChange={(e) => setNamespace(e.target.value)}
-                    required
-                  />
+                  <Input id="namespace" value={namespace} onChange={(e) => setNamespace(e.target.value)} required />
                 </div>
 
                 <div className="space-y-1.5">
                   <Label htmlFor="object">{t("permissions.objectLabel")}</Label>
-                  <Input
-                    id="object"
-                    value={object}
-                    onChange={(e) => setObject(e.target.value)}
-                    required
-                  />
+                  <Input id="object" value={object} onChange={(e) => setObject(e.target.value)} required />
                 </div>
               </div>
 
@@ -235,12 +218,7 @@ export default function PermissionsPage() {
 
                 <div className="space-y-1.5">
                   <Label htmlFor="subject">{t("permissions.subjectLabel")}</Label>
-                  <Input
-                    id="subject"
-                    value={subjectId}
-                    onChange={(e) => setSubjectId(e.target.value)}
-                    required
-                  />
+                  <Input id="subject" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} required />
                 </div>
               </div>
 
@@ -255,18 +233,9 @@ export default function PermissionsPage() {
                 />
               </div>
 
-              <Button
-                type="submit"
-                variant="purple"
-                disabled={evaluating}
-                className="w-full gap-2 mt-2"
-              >
+              <Button type="submit" variant="purple" disabled={evaluating} className="w-full gap-2 mt-2">
                 <Zap className="h-4 w-4" />
-                <span>
-                  {evaluating
-                    ? t("permissions.evaluatingBtn")
-                    : t("permissions.evaluateBtn")}
-                </span>
+                <span>{evaluating ? t("permissions.evaluatingBtn") : t("permissions.evaluateBtn")}</span>
               </Button>
             </form>
           </CardContent>
@@ -277,9 +246,7 @@ export default function PermissionsPage() {
           <CardHeader className="p-6 pb-4">
             <div className="flex items-center gap-2">
               <GitGraph className="h-4 w-4 text-purple-400" />
-              <CardTitle className="text-sm font-semibold">
-                {t("permissions.resultTitle")}
-              </CardTitle>
+              <CardTitle className="text-sm font-semibold">{t("permissions.resultTitle")}</CardTitle>
             </div>
             <CardDescription className="text-xs">
               Live Zanzibar traversal graph & CEL ABAC execution trace.
@@ -314,20 +281,12 @@ export default function PermissionsPage() {
 
                 <div className="space-y-2">
                   <Label>{t("permissions.reasonLabel")}</Label>
-                  <CodeBlock
-                    code={result.reason}
-                    language="text"
-                    title="DECISION ENGINE"
-                  />
+                  <CodeBlock code={result.reason} language="text" title="DECISION ENGINE" />
                 </div>
 
                 <div className="space-y-2">
                   <Label>{t("permissions.pathLabel")}</Label>
-                  <CodeBlock
-                    code={result.path}
-                    language="text"
-                    title="ZANZIBAR RESOLUTION GRAPH"
-                  />
+                  <CodeBlock code={result.path} language="text" title="ZANZIBAR RESOLUTION GRAPH" />
                 </div>
               </div>
             ) : (
@@ -351,9 +310,7 @@ export default function PermissionsPage() {
                   {tuples.length}
                 </Badge>
               </CardTitle>
-              <CardDescription className="text-xs">
-                {t("permissions.tuplesDesc")}
-              </CardDescription>
+              <CardDescription className="text-xs">{t("permissions.tuplesDesc")}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -370,35 +327,42 @@ export default function PermissionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loadingTuples ? (
+              {isLoadingTuples ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-xs text-muted-foreground py-8">
-                    Loading relation tuples from Nexus…
+                  <TableCell colSpan={5} className="p-0">
+                    <LoadingState label="Loading relation tuples from Nexus…" />
+                  </TableCell>
+                </TableRow>
+              ) : isTuplesError ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="p-0">
+                    {tuplesError?.kind === "engine-unreachable" ? (
+                      <NotConnectedState engineName="Nexus" onRetry={refetchTuples} />
+                    ) : (
+                      <ErrorState error={tuplesError} onRetry={refetchTuples} />
+                    )}
                   </TableCell>
                 </TableRow>
               ) : tuples.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-xs text-muted-foreground py-8">
-                    No relation tuples yet. Write one via the Nexus REST API to see it here.
+                  <TableCell colSpan={5} className="p-0">
+                    <EmptyState
+                      title={t("permissions.tuplesTitle")}
+                      description="No relation tuples yet. Write one via the Nexus REST API to see it here."
+                    />
                   </TableCell>
                 </TableRow>
               ) : (
                 tuples.map((tup, idx) => (
                   <TableRow key={idx}>
-                    <TableCell className="font-mono text-xs text-purple-400 font-medium">
-                      {tup.namespace}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-foreground font-semibold">
-                      {tup.object}
-                    </TableCell>
+                    <TableCell className="font-mono text-xs text-purple-400 font-medium">{tup.namespace}</TableCell>
+                    <TableCell className="font-mono text-xs text-foreground font-semibold">{tup.object}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className="font-mono text-[10px]">
                         #{tup.relation}
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-blue-400">
-                      @{tup.subject}
-                    </TableCell>
+                    <TableCell className="font-mono text-xs text-blue-400">@{tup.subject}</TableCell>
                     <TableCell>
                       {tup.caveat ? (
                         <span className="rounded bg-purple-500/10 px-2 py-0.5 text-[10px] font-mono text-purple-300 border border-purple-500/20">

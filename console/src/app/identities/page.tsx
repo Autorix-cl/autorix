@@ -1,7 +1,26 @@
 "use client";
 
-import { useState } from "react";
-import { Users, Plus, Check, Key, ShieldCheck, UserCheck } from "lucide-react";
+import * as React from "react";
+import { Users, Plus, ShieldCheck, UserCheck, Search, Fingerprint, RefreshCw, Loader2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "@/lib/i18n";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { CodeBlock } from "@/components/ui/code-block";
+import { useApiQuery } from "@/lib/query/use-api-query";
+import { useApiMutation } from "@/lib/query/use-api-mutation";
+import { fetchAndParse } from "@/lib/api/schema";
+import { identityListSchema, registrationResponseSchema, type Identity } from "@/lib/api/schemas/identity";
+import { LoadingState } from "@/components/state/loading-state";
+import { EmptyState } from "@/components/state/empty-state";
+import { ErrorState } from "@/components/state/error-state";
+import { NotConnectedState } from "@/components/state/not-connected-state";
+import { NotConnectedEngine } from "@/components/resources/not-connected-engine";
+import { useCapabilities } from "@/lib/capabilities/capability-context";
 
 interface IdentityItem {
   id: string;
@@ -11,147 +30,76 @@ interface IdentityItem {
   createdAt: string;
 }
 
-export default function IdentitiesPage() {
-  const [identities, setIdentities] = useState<IdentityItem[]>([
-    {
-      id: "e47ac10b-58cc-4372-a567-0e02b2c3d479",
-      email: "elena.rostova@autorix.io",
-      name: "Elena Rostova",
-      state: "active",
-      createdAt: "2026-08-16 12:00",
-    },
-    {
-      id: "f81d4fae-7dec-11d0-a765-00a0c91e6bf6",
-      email: "alan.turing@autorix.io",
-      name: "Alan Turing",
-      state: "active",
-      createdAt: "2026-08-16 13:30",
-    }
-  ]);
+function toIdentityItem(item: Identity): IdentityItem {
+  const traits = item.traits as { email?: string; name?: { first?: string; last?: string } };
+  return {
+    id: item.id,
+    email: traits?.email || "unknown@autorix.io",
+    name: traits?.name
+      ? `${traits.name.first || ""} ${traits.name.last || ""}`.trim()
+      : traits?.email?.split("@")[0] || "User",
+    state: item.state || "active",
+    createdAt: item.created_at ? new Date(item.created_at).toLocaleString() : "Recently",
+  };
+}
 
-  const [email, setEmail] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [password, setPassword] = useState("");
-  const [statusMsg, setStatusMsg] = useState("");
+export default function IdentitiesPage() {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const { isEngineConnected } = useCapabilities();
+
+  const [email, setEmail] = React.useState("");
+  const [firstName, setFirstName] = React.useState("");
+  const [lastName, setLastName] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [searchQuery, setSearchQuery] = React.useState("");
+
+  const {
+    data: identitiesRaw,
+    isLoading,
+    isFetching,
+    isError,
+    error,
+    refetch,
+  } = useApiQuery(["identities"], () => fetchAndParse<Identity[]>("/api/identities", identityListSchema));
+
+  const identities: IdentityItem[] = React.useMemo(() => (identitiesRaw ?? []).map(toIdentityItem), [identitiesRaw]);
+
+  const createIdentity = useApiMutation(
+    (vars: { email: string; firstName: string; lastName: string; password: string }) =>
+      fetchAndParse("/api/identities", registrationResponseSchema, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(vars),
+      }),
+    {
+      successMessage: (data) => t("identities.successMsg", { email: (data.identity.traits?.email as string) ?? email }),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["identities"] });
+        setEmail("");
+        setFirstName("");
+        setLastName("");
+        setPassword("");
+      },
+    },
+  );
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
-
-    const newId: IdentityItem = {
-      id: crypto.randomUUID(),
-      email: email,
-      name: `${firstName} ${lastName}`.trim() || email.split("@")[0],
-      state: "active",
-      createdAt: "Just now",
-    };
-
-    setIdentities([newId, ...identities]);
-    setStatusMsg(`Identity ${email} registered with Argon2id password hashing!`);
-    setEmail("");
-    setFirstName("");
-    setLastName("");
-    setPassword("");
-    setTimeout(() => setStatusMsg(""), 4000);
+    createIdentity.mutate({ email, firstName, lastName, password });
   };
 
-  return (
-    <>
-      <header className="page-header">
-        <div>
-          <h1 style={{ fontSize: "20px", fontWeight: "700", letterSpacing: "-0.02em" }}>Autorix Ego: Identity Studio</h1>
-          <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: "2px" }}>
-            User management, JSON Schema traits validation, and Argon2id credentials (:4433).
-          </p>
-        </div>
-        <span className="badge badge-blue">
-          <UserCheck size={12} /> REST Headless Active
-        </span>
-      </header>
+  const filteredIdentities = identities.filter(
+    (item) =>
+      item.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.id.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
 
-      <div className="page-body">
-        {statusMsg && (
-          <div style={{ padding: "12px 16px", backgroundColor: "rgba(16, 185, 129, 0.15)", border: "1px solid var(--accent-green)", borderRadius: "var(--radius-md)", color: "var(--accent-green)", marginBottom: "24px", display: "flex", alignItems: "center", gap: "8px", fontSize: "13px" }}>
-            <Check size={16} />
-            {statusMsg}
-          </div>
-        )}
-
-        <div className="grid-2">
-          {/* Create User Form */}
-          <div className="card">
-            <h2 className="card-title" style={{ marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <Plus size={16} color="var(--accent-blue)" /> Register New Identity
-            </h2>
-            
-            <form onSubmit={handleCreate}>
-              <div className="form-group">
-                <label className="form-label">Email Address (Identifier)</label>
-                <input 
-                  type="email" 
-                  className="form-input" 
-                  placeholder="user@example.com" 
-                  value={email} 
-                  onChange={(e) => setEmail(e.target.value)} 
-                  required 
-                />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div className="form-group">
-                  <label className="form-label">First Name (Trait)</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder="Ada" 
-                    value={firstName} 
-                    onChange={(e) => setFirstName(e.target.value)} 
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Last Name (Trait)</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder="Lovelace" 
-                    value={lastName} 
-                    onChange={(e) => setLastName(e.target.value)} 
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Password (Argon2id Encoded)</label>
-                <input 
-                  type="password" 
-                  className="form-input" 
-                  placeholder="••••••••••••" 
-                  value={password} 
-                  onChange={(e) => setPassword(e.target.value)} 
-                  required 
-                />
-              </div>
-
-              <button type="submit" className="btn btn-primary" style={{ width: "100%", marginTop: "8px" }}>
-                <Key size={14} /> Provision User & Hash Password
-              </button>
-            </form>
-          </div>
-
-          {/* Identity Schema Preview */}
-          <div className="card">
-            <h2 className="card-title" style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <ShieldCheck size={16} color="var(--accent-purple)" /> Dynamic Schema (JSON Schema)
-            </h2>
-            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "16px" }}>
-              Profiles are validated against <code style={{ color: "var(--accent-blue)" }}>default.identity.schema.json</code> without database schema changes.
-            </p>
-
-            <div className="code-box" style={{ maxHeight: "240px" }}>
-{`{
+  const schemaJson = `{
   "$id": "https://schemas.autorix.io/default.identity.schema.json",
-  "title": "User Identity",
+  "title": "Enterprise User Identity",
   "properties": {
     "traits": {
       "properties": {
@@ -161,49 +109,245 @@ export default function IdentitiesPage() {
             "first": { "type": "string" },
             "last": { "type": "string" }
           }
-        }
+        },
+        "department": { "type": "string" }
       },
       "required": ["email"]
     }
   }
-}`}
-            </div>
+}`;
+
+  if (!isEngineConnected("ego")) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("identities.title")}</h1>
+            <p className="text-xs text-muted-foreground mt-1">{t("identities.subtitle")}</p>
           </div>
         </div>
+        <NotConnectedEngine
+          engineType="ego"
+          engineName="Autorix Ego (Identity)"
+          description="Identity lifecycle, passwordless authentication, and session vault."
+        />
+      </div>
+    );
+  }
 
-        {/* Identities Table */}
-        <div className="card">
-          <div className="card-header">
-            <h2 className="card-title">Registered Identities ({identities.length})</h2>
-            <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Storage: autorix_ego (PostgreSQL JSONB)</span>
-          </div>
+  return (
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("identities.title")}</h1>
+          <p className="text-xs text-muted-foreground mt-1">{t("identities.subtitle")}</p>
+        </div>
 
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Identity UUID</th>
-                  <th>Primary Email</th>
-                  <th>Display Name</th>
-                  <th>State</th>
-                  <th>Registered</th>
-                </tr>
-              </thead>
-              <tbody>
-                {identities.map((item) => (
-                  <tr key={item.id}>
-                    <td style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--accent-blue)" }}>{item.id}</td>
-                    <td style={{ fontWeight: "500" }}>{item.email}</td>
-                    <td>{item.name}</td>
-                    <td><span className="badge badge-green">{item.state}</span></td>
-                    <td style={{ color: "var(--text-muted)", fontSize: "12px" }}>{item.createdAt}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="info" className="gap-1.5 py-1 px-3">
+            <UserCheck className="h-3.5 w-3.5" />
+            <span>{t("identities.statusBadge")}</span>
+          </Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="h-8 gap-1 text-xs"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+            <span>{t("common.refresh")}</span>
+          </Button>
         </div>
       </div>
-    </>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Register Identity Card */}
+        <Card className="bg-card/80">
+          <CardHeader className="p-6 pb-4">
+            <div className="flex items-center gap-2">
+              <Plus className="h-4 w-4 text-blue-400" />
+              <CardTitle className="text-sm font-semibold">{t("identities.registerTitle")}</CardTitle>
+            </div>
+            <CardDescription className="text-xs">{t("identities.registerDesc")}</CardDescription>
+          </CardHeader>
+
+          <CardContent className="p-6 pt-0">
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="email">{t("identities.emailLabel")}</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder={t("identities.emailPlaceholder")}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="firstName">{t("identities.firstNameLabel")}</Label>
+                  <Input
+                    id="firstName"
+                    type="text"
+                    placeholder={t("identities.firstNamePlaceholder")}
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="lastName">{t("identities.lastNameLabel")}</Label>
+                  <Input
+                    id="lastName"
+                    type="text"
+                    placeholder={t("identities.lastNamePlaceholder")}
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="password">{t("identities.passwordLabel")}</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder={t("identities.passwordPlaceholder")}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={8}
+                />
+              </div>
+
+              <Button
+                type="submit"
+                variant="default"
+                disabled={createIdentity.isPending}
+                className="w-full gap-2 mt-2 bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {createIdentity.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Fingerprint className="h-4 w-4" />
+                )}
+                <span>{createIdentity.isPending ? t("common.loading") : t("identities.submitBtn")}</span>
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Dynamic Schema Preview Card */}
+        <Card className="bg-card/80 flex flex-col justify-between">
+          <CardHeader className="p-6 pb-4">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-purple-400" />
+              <CardTitle className="text-sm font-semibold">{t("identities.schemaTitle")}</CardTitle>
+            </div>
+            <CardDescription className="text-xs">{t("identities.schemaDesc")}</CardDescription>
+          </CardHeader>
+
+          <CardContent className="p-6 pt-0 flex-1">
+            <CodeBlock
+              code={schemaJson}
+              language="json"
+              title="default.identity.schema.json"
+              className="h-full max-h-72"
+            />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Identities Directory Table */}
+      <Card className="bg-card/80">
+        <CardHeader className="p-6 pb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Users className="h-4 w-4 text-blue-400" />
+                <span>{t("identities.tableTitle")}</span>
+                <Badge variant="secondary" className="font-mono text-[10px]">
+                  {identities.length}
+                </Badge>
+              </CardTitle>
+              <CardDescription className="text-xs">{t("identities.tableDesc")}</CardDescription>
+            </div>
+
+            {/* Filter Search */}
+            <div className="flex items-center gap-2 w-full sm:w-72">
+              <div className="relative w-full">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder={t("identities.searchPlaceholder")}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 h-8 text-xs bg-muted/30"
+                />
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-6 pt-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("identities.colUuid")}</TableHead>
+                <TableHead>{t("identities.colEmail")}</TableHead>
+                <TableHead>{t("identities.colName")}</TableHead>
+                <TableHead>{t("identities.colState")}</TableHead>
+                <TableHead>{t("identities.colCreated")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="p-0">
+                    <LoadingState label="Connecting to Ego PostgreSQL storage..." />
+                  </TableCell>
+                </TableRow>
+              ) : isError ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="p-0">
+                    {error?.kind === "engine-unreachable" ? (
+                      <NotConnectedState engineName="Ego" onRetry={refetch} />
+                    ) : (
+                      <ErrorState error={error} onRetry={refetch} />
+                    )}
+                  </TableCell>
+                </TableRow>
+              ) : filteredIdentities.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="p-0">
+                    <EmptyState
+                      title={t("identities.tableTitle")}
+                      description="No registered identities found in PostgreSQL database."
+                    />
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredIdentities.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell className="font-mono text-xs text-blue-400 font-medium">{item.id}</TableCell>
+                    <TableCell className="font-semibold text-foreground">{item.email}</TableCell>
+                    <TableCell className="text-muted-foreground">{item.name}</TableCell>
+                    <TableCell>
+                      <Badge variant={item.state === "active" ? "success" : "secondary"} className="text-[10px]">
+                        {item.state === "active" ? t("common.active") : t("common.inactive")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-xs font-mono">{item.createdAt}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
