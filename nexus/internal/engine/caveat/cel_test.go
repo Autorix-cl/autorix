@@ -1,6 +1,8 @@
 package caveat
 
 import (
+	"context"
+	"errors"
 	"testing"
 )
 
@@ -66,5 +68,97 @@ func TestCELEvaluator_Evaluate(t *testing.T) {
 				t.Errorf("Evaluate() got = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCELEvaluator_Validate(t *testing.T) {
+	evaluator, err := NewCELEvaluator()
+	if err != nil {
+		t.Fatalf("failed to create CEL evaluator: %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		expression string
+		wantErr    bool
+	}{
+		{
+			name:       "valid boolean expression",
+			expression: `ctx.ip == "10.0.0.1"`,
+			wantErr:    false,
+		},
+		{
+			name:       "valid comparison with caveat",
+			expression: `ctx.amount <= caveat.limit`,
+			wantErr:    false,
+		},
+		{
+			name:       "invalid syntax",
+			expression: `ctx.ip === "10.0.0.1"`,
+			wantErr:    true,
+		},
+		{
+			name:       "non-boolean return expression",
+			expression: `ctx.amount + 10`,
+			wantErr:    true,
+		},
+		{
+			name:       "empty expression",
+			expression: ``,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := evaluator.Validate(tt.expression)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate(%q) error = %v, wantErr = %v", tt.expression, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+type mockCaveatGetter struct {
+	caveats map[string]string
+}
+
+func (m *mockCaveatGetter) GetCaveatExpression(ctx context.Context, name string) (string, error) {
+	expr, ok := m.caveats[name]
+	if !ok {
+		return "", errors.New("caveat not found")
+	}
+	return expr, nil
+}
+
+func TestCELEvaluator_EvaluateByName(t *testing.T) {
+	getter := &mockCaveatGetter{
+		caveats: map[string]string{
+			"is_admin_ip": `ctx.ip == "10.0.0.1"`,
+			"within_budget": `ctx.cost <= caveat.budget`,
+		},
+	}
+
+	evaluator, err := NewCELEvaluator(WithCaveatGetter(getter))
+	if err != nil {
+		t.Fatalf("failed to create evaluator: %v", err)
+	}
+
+	// 1. Evaluate existing caveat that passes
+	ok, err := evaluator.EvaluateByName(context.Background(), "is_admin_ip", map[string]interface{}{"ip": "10.0.0.1"}, nil)
+	if err != nil || !ok {
+		t.Errorf("expected is_admin_ip to evaluate to true, got ok=%v, err=%v", ok, err)
+	}
+
+	// 2. Evaluate existing caveat that fails
+	ok, err = evaluator.EvaluateByName(context.Background(), "is_admin_ip", map[string]interface{}{"ip": "192.168.1.1"}, nil)
+	if err != nil || ok {
+		t.Errorf("expected is_admin_ip to evaluate to false, got ok=%v, err=%v", ok, err)
+	}
+
+	// 3. Evaluate nonexistent caveat
+	_, err = evaluator.EvaluateByName(context.Background(), "nonexistent", nil, nil)
+	if err == nil {
+		t.Errorf("expected error for nonexistent caveat")
 	}
 }
