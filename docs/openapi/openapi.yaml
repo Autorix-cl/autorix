@@ -1,0 +1,88 @@
+openapi: 3.0.3
+info:
+  title: Autorix Zero-Trust & IAM Unified Control Plane API
+  description: Public Control Plane API specification for Autorix Fleet (Argus, Nexus, Ego, Janus, Vulcan, Hermes, Themis, Aegis).
+  version: 1.0.0
+servers:
+  - url: http://localhost:4400
+    description: Local Argus Control Plane
+paths:
+  /admin/instances:
+    get:
+      summary: List registered fleet engine instances
+      tags: [Fleet]
+      parameters:
+        - name: env
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of active instances and health metrics
+  /admin/enrollment-tokens:
+    post:
+      summary: Mint an engine enrollment token
+      tags: [Fleet]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [engine_type, environment]
+              properties:
+                engine_type:
+                  type: string
+                environment:
+                  type: string
+      responses:
+        '201':
+          description: Created enrollment token
+  /admin/audit:
+    get:
+      summary: Query immutable audit records
+      tags: [Audit & Governance]
+      responses:
+        '200':
+          description: Paginated audit records with diffs
+  /admin/audit/verify:
+    get:
+      summary: Cryptographically verify audit hash chain
+      tags: [Audit & Governance]
+      responses:
+        '200':
+          description: Verification status and head hash
+  /check:
+    post:
+      summary: Zanzibar ReBAC permission check (Nexus)
+      tags: [Authorization]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [namespace, object, relation, subject]
+              properties:
+                namespace:
+                  type: string
+                object:
+                  type: string
+                relation:
+                  type: string
+                subject:
+                  type: string
+                context:
+                  type: object
+      responses:
+        '200':
+          description: Permission decision
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  allowed:
+                    type: boolean
+                  reason:
+                    type: string
