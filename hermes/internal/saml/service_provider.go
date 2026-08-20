@@ -1,7 +1,9 @@
 package saml
 
 import (
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -60,7 +62,7 @@ func (sp *ServiceProvider) GenerateAuthnRequestURL(p *core.SAMLProvider) (string
 
 // SAML Response XML Structures for parsing
 type samlResponseXML struct {
-	XMLName   xml.Name        `xml:"Response"`
+	XMLName   xml.Name         `xml:"Response"`
 	Assertion samlAssertionXML `xml:"Assertion"`
 }
 
@@ -70,7 +72,7 @@ type samlAssertionXML struct {
 	} `xml:"Subject"`
 	AttributeStatement struct {
 		Attributes []struct {
-			Name       string   `xml:"Name,attr"`
+			Name            string   `xml:"Name,attr"`
 			AttributeValues []string `xml:"AttributeValue"`
 		} `xml:"Attribute"`
 	} `xml:"AttributeStatement"`
@@ -100,7 +102,7 @@ func (sp *ServiceProvider) ParseAssertion(rawB64 string, p *core.SAMLProvider) (
 		}
 	}
 
-	// Extract standard attributes (email, first_name, last_name)
+	// Extract standard default attributes (email, first_name, last_name)
 	email := nameID
 	if em, ok := attrMap["email"]; ok {
 		email = em
@@ -118,11 +120,102 @@ func (sp *ServiceProvider) ParseAssertion(rawB64 string, p *core.SAMLProvider) (
 		lastName = attrMap["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname"]
 	}
 
+	// Apply custom AttributeMapping rules if provider has mapping defined
+	traits := make(map[string]interface{})
+	if p != nil && len(p.AttributeMapping) > 0 {
+		for traitKey, samlAttr := range p.AttributeMapping {
+			if val, ok := attrMap[samlAttr]; ok {
+				traits[traitKey] = val
+				switch traitKey {
+				case "email":
+					email = val
+				case "first_name", "given_name":
+					firstName = val
+				case "last_name", "surname", "family_name":
+					lastName = val
+				case "subject", "name_id":
+					nameID = val
+				}
+			}
+		}
+	}
+
 	return &core.SAMLAssertion{
 		Subject:    nameID,
 		Email:      email,
 		FirstName:  firstName,
 		LastName:   lastName,
+		Traits:     traits,
 		Attributes: attrMap,
 	}, nil
 }
+
+// ParseCertificatesPEM decodes all PEM blocks, parses x509 certificates, computes expiration details and warnings.
+// Multiple certificates are supported for key rollover.
+func ParseCertificatesPEM(pemStr string) ([]core.CertificateInfo, *time.Time, []string, error) {
+	clean := strings.TrimSpace(pemStr)
+	if clean == "" {
+		return nil, nil, nil, errors.New("empty certificate PEM")
+	}
+
+	var certs []core.CertificateInfo
+	var warnings []string
+	var latestExpiry *time.Time
+
+	rest := []byte(clean)
+	now := time.Now()
+
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to parse x509 certificate: %w", err)
+		}
+
+		expired := now.After(cert.NotAfter)
+		daysUntilExpiry := int(cert.NotAfter.Sub(now).Hours() / 24)
+		expiringSoon := !expired && daysUntilExpiry <= 30
+
+		var warning string
+		if expired {
+			warning = fmt.Sprintf("Certificate '%s' expired on %s", cert.Subject.CommonName, cert.NotAfter.Format(time.RFC3339))
+			warnings = append(warnings, warning)
+		} else if expiringSoon {
+			warning = fmt.Sprintf("Certificate '%s' will expire in %d days (%s)", cert.Subject.CommonName, daysUntilExpiry, cert.NotAfter.Format(time.RFC3339))
+			warnings = append(warnings, warning)
+		}
+
+		info := core.CertificateInfo{
+			Subject:         cert.Subject.String(),
+			Issuer:          cert.Issuer.String(),
+			SerialNumber:    cert.SerialNumber.String(),
+			NotBefore:       cert.NotBefore,
+			NotAfter:        cert.NotAfter,
+			Expired:         expired,
+			ExpiringSoon:    expiringSoon,
+			DaysUntilExpiry: daysUntilExpiry,
+			Warning:         warning,
+		}
+		certs = append(certs, info)
+
+		if latestExpiry == nil || cert.NotAfter.After(*latestExpiry) {
+			t := cert.NotAfter
+			latestExpiry = &t
+		}
+	}
+
+	if len(certs) == 0 {
+		return nil, nil, nil, errors.New("no valid CERTIFICATE PEM blocks found")
+	}
+
+	return certs, latestExpiry, warnings, nil
+}
+

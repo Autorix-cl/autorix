@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	UserSchemaURN       = "urn:ietf:params:scim:schemas:core:2.0:User"
-	GroupSchemaURN      = "urn:ietf:params:scim:schemas:core:2.0:Group"
-	ListResponseURN     = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
+	UserSchemaURN      = "urn:ietf:params:scim:schemas:core:2.0:User"
+	GroupSchemaURN     = "urn:ietf:params:scim:schemas:core:2.0:Group"
+	ListResponseURN    = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
 	ServiceProviderURN = "urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"
 )
 
@@ -40,7 +40,7 @@ func (e *Engine) FormatGroup(g *core.SCIMGroup) *core.SCIMGroup {
 // ServiceProviderConfig returns RFC 7643 metadata for IdP discovery
 func (e *Engine) ServiceProviderConfig() map[string]interface{} {
 	return map[string]interface{}{
-		"schemas":       []string{ServiceProviderURN},
+		"schemas":          []string{ServiceProviderURN},
 		"documentationUri": "https://docs.autorix.io/scim",
 		"patch": map[string]bool{
 			"supported": false,
