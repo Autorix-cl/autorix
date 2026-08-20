@@ -3,6 +3,7 @@
  * Field names mirror the `apiTuple` struct's json tags exactly (snake_case).
  */
 import { z } from "zod";
+import { pagedListSchema } from "../schema";
 
 export const tupleSchema = z.object({
   namespace: z.string(),
@@ -16,7 +17,7 @@ export const tupleSchema = z.object({
 });
 export type Tuple = z.infer<typeof tupleSchema>;
 
-export const tupleListSchema = z.array(tupleSchema);
+export const tupleListSchema = pagedListSchema(tupleSchema);
 
 // POST/DELETE /tuples wrap the tuple list in { tuples: [...] } on write, but
 // the write handler's own response is a bare array (toAPITuples).

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Lock, ShieldAlert, KeyRound, ArrowRight, Building2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
@@ -14,7 +14,6 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const from = searchParams.get("from") || "/";
 
@@ -46,8 +45,7 @@ function LoginForm() {
       }
 
       toast.success(`Welcome back, ${data.operator?.name || "Operator"}`);
-      router.push(from);
-      router.refresh();
+      window.location.href = from;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Invalid email or password";
       setError(message);

@@ -5,6 +5,7 @@
  * (snake_case).
  */
 import { z } from "zod";
+import { pagedListSchema } from "../schema";
 
 // core.OAuth2Client
 export const oauth2ClientSchema = z.object({
@@ -21,7 +22,7 @@ export const oauth2ClientSchema = z.object({
 export type OAuth2Client = z.infer<typeof oauth2ClientSchema>;
 
 // GET /admin/clients
-export const oauth2ClientListSchema = z.array(oauth2ClientSchema);
+export const oauth2ClientListSchema = pagedListSchema(oauth2ClientSchema);
 
 // jwks.JWK (RFC 7517)
 export const jwkSchema = z.object({

@@ -1,9 +1,5 @@
-/**
- * Zod schemas for Ego's Identity REST API (ego/internal/transport/http/server.go,
- * structs defined in ego/internal/core). Field names mirror the Go json tags
- * exactly (snake_case).
- */
 import { z } from "zod";
+import { pagedListSchema } from "../schema";
 
 // core.Identity
 export const identitySchema = z.object({
@@ -17,7 +13,7 @@ export const identitySchema = z.object({
 export type Identity = z.infer<typeof identitySchema>;
 
 // GET /admin/identities
-export const identityListSchema = z.array(identitySchema);
+export const identityListSchema = pagedListSchema(identitySchema);
 
 // core.Session, as embedded in the registration response. Token is only
 // present at creation time.

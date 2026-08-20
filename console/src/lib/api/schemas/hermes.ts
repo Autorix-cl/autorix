@@ -5,6 +5,7 @@
  * camelCase conventions (RFC 7643/7644), not the console's usual snake_case.
  */
 import { z } from "zod";
+import { pagedListSchema } from "../schema";
 
 // core.SAMLProvider
 export const samlProviderSchema = z.object({
@@ -22,7 +23,7 @@ export const samlProviderSchema = z.object({
 export type SAMLProvider = z.infer<typeof samlProviderSchema>;
 
 // GET /admin/saml/providers
-export const samlProviderListSchema = z.array(samlProviderSchema);
+export const samlProviderListSchema = pagedListSchema(samlProviderSchema);
 
 // core.SCIMEmail
 export const scimEmailSchema = z.object({

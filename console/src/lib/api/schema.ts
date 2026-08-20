@@ -4,7 +4,7 @@
  * instead of a runtime crash deep inside a component that assumed a field
  * would always be present.
  */
-import type { z } from "zod";
+import { z } from "zod";
 import type { ApiResult } from "./client";
 import { fetchJSON, type FetchJSONOptions } from "./client";
 
@@ -37,3 +37,21 @@ export async function fetchAndParse<T>(
   if (!result.ok) return result;
   return parseWithSchema(schema, result.data);
 }
+
+/**
+ * Creates a schema that transparently handles both bare arrays and paginated
+ * envelopes ({ data: [...], has_more?: boolean }).
+ */
+export function pagedListSchema<T extends z.ZodTypeAny>(itemSchema: T) {
+  return z.union([
+    z.array(itemSchema),
+    z
+      .object({
+        data: z.array(itemSchema).nullable().optional(),
+        has_more: z.boolean().optional(),
+        next_cursor: z.string().optional(),
+      })
+      .transform((val) => val.data ?? []),
+  ]);
+}
+

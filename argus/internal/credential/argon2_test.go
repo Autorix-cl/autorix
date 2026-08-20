@@ -32,3 +32,4 @@ func TestArgon2_HashAndVerify(t *testing.T) {
 		t.Error("expected invalid password to fail verification")
 	}
 }
+

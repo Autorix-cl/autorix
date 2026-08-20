@@ -6,6 +6,7 @@
  * encoder when nil, so they're modeled as `.optional()`, not `.nullable()`.
  */
 import { z } from "zod";
+import { pagedListSchema } from "../schema";
 
 // core.APIKey
 export const apiKeySchema = z.object({
@@ -24,7 +25,7 @@ export const apiKeySchema = z.object({
 export type APIKey = z.infer<typeof apiKeySchema>;
 
 // GET /keys
-export const apiKeyListSchema = z.array(apiKeySchema);
+export const apiKeyListSchema = pagedListSchema(apiKeySchema);
 
 // core.Caveat
 export const caveatSchema = z.object({

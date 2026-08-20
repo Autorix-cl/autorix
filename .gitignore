@@ -77,6 +77,7 @@ console/test-results/
 console/playwright-report/
 console/blob-report/
 console/playwright/.cache/
+console/e2e/.auth/
 
 # Coverage
 console/coverage/
