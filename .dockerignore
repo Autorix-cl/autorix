@@ -1,0 +1,9 @@
+.git
+.agents
+.claude
+.claude-flow
+node_modules
+.next
+dist
+tmp
+coverage

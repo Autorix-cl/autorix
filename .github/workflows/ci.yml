@@ -7,30 +7,289 @@ on:
     branches: [ main ]
 
 jobs:
+  lint-go-services:
+    name: Lint & vet Go modules (P1-S5-T1)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [platform, nexus, ego, janus, aegis, vulcan, hermes, themis, argus, sdk/go]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.25
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Check gofmt
+        run: |
+          cd ${{ matrix.service }}
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: |
+          cd ${{ matrix.service }}
+          go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: ${{ matrix.service }}
+          args: --config ${{ github.workspace }}/.golangci.yml
+
   test-go-services:
     name: Test Go Core Engines & SDK
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [nexus, ego, janus, aegis, vulcan, hermes, sdk/go]
+        service: [platform, nexus, ego, janus, aegis, vulcan, hermes, themis, argus, sdk/go]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go 1.24
+      - name: Set up Go 1.25
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache: true
 
       - name: Run unit tests
         run: |
           cd ${{ matrix.service }}
-          go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+          # -short skips the testcontainers-backed integration tests (see
+          # pgtest.StartPostgres) — those run once, deliberately, in the
+          # dedicated integration-tests-postgres job below, not here too.
+          go test -v -race -short -coverprofile=coverage.txt -covermode=atomic ./...
+
+  integration-tests-postgres:
+    name: Integration tests against real Postgres (P1-S5-T3)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: platform
+            path: ./pgtest/...
+          - service: argus
+            path: ./migrations/...
+          - service: ego
+            path: ./internal/storage/postgres/...
+          - service: hermes
+            path: ./internal/storage/postgres/...
+          - service: janus
+            path: ./internal/storage/postgres/...
+          - service: nexus
+            path: ./internal/storage/postgres/...
+          - service: themis
+            path: ./internal/storage/postgres/...
+          - service: vulcan
+            path: ./internal/storage/postgres/...
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.25
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Run integration tests (testcontainers spins its own Postgres)
+        run: |
+          cd ${{ matrix.service }}
+          go test -v ${{ matrix.path }} -timeout 10m
+
+  compose-smoke-test:
+    name: Compose stack smoke test (P1-S5-T4)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run smoke test
+        run: bash scripts/ci/smoke_test.sh
+
+  e2e-console:
+    name: Console E2E against the composed stack (P1-S5-T5)
+    runs-on: ubuntu-latest
+    needs: quality-console
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: console/package-lock.json
+
+      - name: Install console dependencies
+        run: |
+          cd console
+          npm install --prefer-offline || npm install
+
+      - name: Install Playwright browsers
+        run: |
+          cd console
+          npx playwright install --with-deps chromium
+
+      - name: Bring up the full stack
+        run: docker compose up -d --build
+
+      - name: Wait for every service to be healthy
+        run: |
+          deadline=$((SECONDS + 180))
+          while true; do
+            unhealthy=$(docker compose ps --format '{{.Name}} {{.Health}}' | awk '$1 != "autorix-console" && $2 != "healthy" {print $1}')
+            if [ -z "$unhealthy" ]; then
+              echo "All services healthy."
+              break
+            fi
+            if [ $SECONDS -ge $deadline ]; then
+              echo "Timed out waiting for: $unhealthy"
+              docker compose logs
+              exit 1
+            fi
+            sleep 3
+          done
+          # Console has no healthcheck; give Next.js a moment to finish booting.
+          sleep 5
+
+      - name: Run E2E specs
+        run: |
+          cd console
+          npx playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: console/playwright-report/
+          retention-days: 14
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  coverage-ratchet-go:
+    name: Coverage ratchet — Go modules (P1-S5-T6)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [platform, nexus, ego, janus, aegis, vulcan, hermes, themis, argus, sdk/go]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.25
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Check coverage floor
+        run: python3 scripts/ci/check_coverage.py ${{ matrix.service }}
+
+  coverage-ratchet-console:
+    name: Coverage ratchet — console (P1-S5-T6)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: console/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd console
+          npm install --prefer-offline || npm install
+
+      - name: Run tests with coverage
+        run: |
+          cd console
+          npx vitest run --coverage
+
+      - name: Check coverage floor
+        run: python3 scripts/ci/check_coverage_console.py
+
+  check-helm-probe-drift:
+    name: Helm probes match registered routes (P1-S1-T8)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Check probe drift
+        run: python3 scripts/ci/check_helm_probes.py
+
+  quality-console:
+    name: Console quality gates (P1-S5-T2)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: console/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd console
+          npm install --prefer-offline || npm install
+
+      - name: Typecheck
+        run: |
+          cd console
+          npm run typecheck
+
+      - name: Lint
+        run: |
+          cd console
+          npm run lint
+
+      - name: Format check
+        run: |
+          cd console
+          npm run format:check
+
+      - name: Unit tests
+        run: |
+          cd console
+          npm test
 
   build-console:
     name: Build Next.js Console & TypeScript SDK
     runs-on: ubuntu-latest
+    needs: quality-console
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

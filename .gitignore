@@ -10,8 +10,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
+!console/src/lib/
 parts/
 sdist/
 var/
@@ -41,6 +42,7 @@ out/
 # Binaries
 bin/
 */bin/
+autorixctl
 *.exe
 *.exe~
 *.dll
@@ -69,3 +71,17 @@ Thumbs.db
 # Cache
 .npm/
 .eslintcache
+
+# Playwright
+console/test-results/
+console/playwright-report/
+console/blob-report/
+console/playwright/.cache/
+
+# Coverage
+console/coverage/
+coverage.out
+coverage.txt
+**/coverage.out
+# Local AI runtime state
+.atl/

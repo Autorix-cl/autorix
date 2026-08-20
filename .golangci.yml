@@ -1,0 +1,30 @@
+version: "2"
+
+# Shared lint config for every Go module in the repo (P1-S5-T1). Each module
+# is linted independently — `golangci-lint run --config ../.golangci.yml ./...`
+# from inside <engine>/ — since the modules are not unified under a single
+# go.work.
+linters:
+  default: standard
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - gosec
+  settings:
+    gosec:
+      # G104 (unhandled errors) is already covered by errcheck; excluding it
+      # here avoids duplicate findings for the same defect.
+      excludes:
+        - G104
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

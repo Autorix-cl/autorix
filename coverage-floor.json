@@ -1,0 +1,18 @@
+{
+  "_comment": "P1-S5-T6: per-module coverage floors. CI fails if a module's -short coverage drops below its floor. Raise a floor in the same PR that raises real coverage — this file only ratchets up, never down, by convention (not by tooling).",
+  "go": {
+    "platform": 78.0,
+    "aegis": 24.0,
+    "ego": 23.0,
+    "hermes": 24.0,
+    "janus": 20.0,
+    "nexus": 10.0,
+    "themis": 6.0,
+    "vulcan": 31.0,
+    "sdk/go": 82.0,
+    "argus": 3.0
+  },
+  "console": {
+    "statements": 57.0
+  }
+}
