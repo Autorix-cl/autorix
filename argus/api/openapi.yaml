@@ -1,0 +1,653 @@
+openapi: 3.1.0
+info:
+  title: Autorix Argus Control Plane API
+  description: Control plane registry, enrollment, fleet lifecycle, topology and real-time observability API for the Autorix IAM suite.
+  version: 1.0.0
+servers:
+  - url: http://localhost:4489
+    description: Local development instance
+paths:
+  /health/alive:
+    get:
+      summary: Liveness probe
+      description: Returns 200 if the Argus process is running. Never checks downstream dependencies.
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: pass
+
+  /health/ready:
+    get:
+      summary: Readiness probe
+      description: Returns 200 if database connections and migrations are active. Returns 503 if any check fails.
+      responses:
+        '200':
+          description: Process is ready to serve traffic
+        '503':
+          description: One or more readiness checks failed
+
+  /info:
+    get:
+      summary: Engine info
+      description: Returns engine metadata including version, build SHA, capabilities, and uptime.
+      responses:
+        '200':
+          description: Engine metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  engine:
+                    type: string
+                    example: argus
+                  version:
+                    type: string
+                    example: 1.0.0
+                  build_sha:
+                    type: string
+                  capabilities:
+                    type: array
+                    items:
+                      type: string
+
+  /v1/instances:
+    get:
+      summary: List fleet instances
+      description: Cursor-paginated list of registered engine instances, filterable by environment, engine type, and lifecycle status.
+      parameters:
+        - name: filter.environment
+          in: query
+          description: Environment slug (e.g. production, staging)
+          schema:
+            type: string
+        - name: filter.engine_type
+          in: query
+          description: Engine slug (nexus, ego, janus, aegis, vulcan, hermes, themis)
+          schema:
+            type: string
+        - name: filter.status
+          in: query
+          description: Lifecycle status
+          schema:
+            type: string
+            enum: [pending, registering, healthy, degraded, unreachable, evicted, deregistered]
+        - name: cursor
+          in: query
+          description: Cursor token for pagination
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of items to return (default 20, max 100)
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Paginated instance list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Instance'
+                  next_cursor:
+                    type: string
+                  has_more:
+                    type: boolean
+
+  /v1/instances/{id}:
+    get:
+      summary: Get instance detail
+      description: Retrieves instance details alongside its timeline events and reported dependencies.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Instance detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  instance:
+                    $ref: '#/components/schemas/Instance'
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InstanceEvent'
+                  dependencies:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InstanceDependency'
+        '404':
+          description: Instance not found
+
+  /v1/instances/manual:
+    post:
+      summary: Manual registration fallback
+      description: Registers an instance by hand for environments or engines that cannot receive an automated enrollment token. Marked as unverified.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - engine_type
+                - instance_id
+                - environment
+              properties:
+                engine_type:
+                  type: string
+                instance_id:
+                  type: string
+                environment:
+                  type: string
+                version:
+                  type: string
+                build_sha:
+                  type: string
+                schema_version:
+                  type: string
+                capabilities:
+                  type: array
+                  items:
+                    type: string
+                endpoints:
+                  $ref: '#/components/schemas/Endpoints'
+      responses:
+        '201':
+          description: Instance registered manually
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Instance'
+
+  /v1/instances/{id}/force-remove:
+    post:
+      summary: Force remove instance
+      description: Evicts an instance immediately and revokes its credentials.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '204':
+          description: Instance evicted successfully
+        '404':
+          description: Instance not found
+
+  /v1/enrollment-tokens:
+    get:
+      summary: List enrollment tokens
+      description: List active enrollment tokens filterable by engine type and environment.
+      parameters:
+        - name: filter.engine_type
+          in: query
+          schema:
+            type: string
+        - name: filter.environment
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of enrollment tokens
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EnrollmentToken'
+    post:
+      summary: Mint enrollment token
+      description: Generate a high-entropy token (prefix aet_) for engine admission. The plaintext token is returned only once in this response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - engine_type
+                - environment
+              properties:
+                engine_type:
+                  type: string
+                environment:
+                  type: string
+                uses_allowed:
+                  type: integer
+                  default: 1
+                expires_in_seconds:
+                  type: integer
+                  default: 86400
+      responses:
+        '201':
+          description: Token created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    example: aet_0123456789abcdef...
+                  token_id:
+                    type: string
+                    format: uuid
+                  engine_type:
+                    type: string
+                  environment:
+                    type: string
+                  uses_allowed:
+                    type: integer
+                  expires_at:
+                    type: string
+                    format: date-time
+
+  /v1/enrollment-tokens/{id}:
+    delete:
+      summary: Revoke enrollment token
+      description: Revoke an enrollment token so it can no longer be used to register engines.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Token revoked
+
+  /v1/enrollment-audit:
+    get:
+      summary: List enrollment audit trail
+      description: Audit log of all token mints, successful/failed registrations, and revocations.
+      parameters:
+        - name: token_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [mint, consume, consume_failed, revoke]
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EnrollmentAuditEntry'
+                  next_cursor:
+                    type: string
+                  has_more:
+                    type: boolean
+
+  /v1/topology:
+    get:
+      summary: Fleet dependency graph
+      description: Returns graph nodes (active instances) and edges (declared/probed dependencies with edge health and latencies).
+      parameters:
+        - name: environment
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Fleet topology graph
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopologyGraph'
+
+  /v1/stream:
+    get:
+      summary: Server-Sent Events stream
+      description: Real-time stream of fleet status updates.
+      responses:
+        '200':
+          description: Event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /v1/auth/status:
+    get:
+      summary: Check bootstrap status
+      description: Returns whether the control plane has been bootstrapped with at least one root owner.
+      responses:
+        '200':
+          description: Auth status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bootstrapped:
+                    type: boolean
+                  operators_count:
+                    type: integer
+
+  /v1/auth/bootstrap:
+    post:
+      summary: First-run bootstrap
+      description: Create the initial cluster root owner using the one-time server bootstrap token (abt_).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bootstrap_token, email, name, password]
+              properties:
+                bootstrap_token:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                name:
+                  type: string
+                password:
+                  type: string
+                  format: password
+      responses:
+        '201':
+          description: Root owner created and authenticated
+        '401':
+          description: Invalid or consumed bootstrap token
+
+  /v1/auth/login:
+    post:
+      summary: Local operator login
+      description: Authenticate with email and Argon2id password, returning an authenticated session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Session issued
+        '401':
+          description: Invalid credentials
+        '429':
+          description: Account locked after repeated failed attempts
+
+  /v1/auth/session:
+    get:
+      summary: Validate and touch session
+      description: Validates session token, extends idle timeout, and returns operator metadata.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Valid session
+        '401':
+          description: Expired or invalid session
+    delete:
+      summary: Revoke session (logout)
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Session revoked
+
+  /v1/operators:
+    get:
+      summary: List operators
+      description: List console operators and their roles.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of operators
+
+components:
+  schemas:
+    Endpoints:
+      type: object
+      properties:
+        rest_url:
+          type: string
+        grpc_url:
+          type: string
+
+    Instance:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        engine_type:
+          type: string
+        instance_id:
+          type: string
+        environment_id:
+          type: string
+          format: uuid
+        environment:
+          type: string
+        version:
+          type: string
+        build_sha:
+          type: string
+        schema_version:
+          type: string
+        status:
+          type: string
+          enum: [pending, registering, healthy, degraded, unreachable, evicted, deregistered]
+        endpoints:
+          $ref: '#/components/schemas/Endpoints'
+        capabilities:
+          type: array
+          items:
+            type: string
+        first_seen_at:
+          type: string
+          format: date-time
+        last_heartbeat_at:
+          type: string
+          format: date-time
+        enrolled_by:
+          type: string
+        unverified:
+          type: boolean
+
+    InstanceEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        instance_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [registered, upgraded, degraded, unreachable, deregistered, evicted, config_changed, flapping]
+        detail:
+          type: object
+        occurred_at:
+          type: string
+          format: date-time
+
+    InstanceDependency:
+      type: object
+      properties:
+        instance_id:
+          type: string
+          format: uuid
+        depends_on_engine_type:
+          type: string
+        declared:
+          type: boolean
+        last_probe_reachable:
+          type: boolean
+        last_probe_latency_ms:
+          type: number
+        last_probed_at:
+          type: string
+          format: date-time
+
+    EnrollmentToken:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        engine_type:
+          type: string
+        environment_id:
+          type: string
+          format: uuid
+        environment:
+          type: string
+        uses_allowed:
+          type: integer
+        uses_consumed:
+          type: integer
+        expires_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+
+    EnrollmentAuditEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        token_id:
+          type: string
+          format: uuid
+        engine_type:
+          type: string
+        environment_id:
+          type: string
+          format: uuid
+        actor:
+          type: string
+        origin:
+          type: string
+        action:
+          type: string
+          enum: [mint, consume, consume_failed, revoke]
+        detail:
+          type: object
+        occurred_at:
+          type: string
+          format: date-time
+
+    TopologyNode:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        instance_id:
+          type: string
+        engine_type:
+          type: string
+        environment_id:
+          type: string
+          format: uuid
+        environment:
+          type: string
+        status:
+          type: string
+        version:
+          type: string
+        endpoints:
+          $ref: '#/components/schemas/Endpoints'
+
+    TopologyEdge:
+      type: object
+      properties:
+        source_instance_id:
+          type: string
+          format: uuid
+        source_engine_type:
+          type: string
+        target_engine_type:
+          type: string
+        declared:
+          type: boolean
+        last_probe_reachable:
+          type: boolean
+        last_probe_latency_ms:
+          type: number
+        last_probed_at:
+          type: string
+          format: date-time
+
+    TopologyGraph:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopologyNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopologyEdge'

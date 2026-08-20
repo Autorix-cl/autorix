@@ -1,0 +1,163 @@
+syntax = "proto3";
+package autorix.argus.v1;
+
+option go_package = "github.com/autorix/argus/api/autorix/argus/v1;argusv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// Endpoints an instance advertises to the registry, so Argus (and later
+// the console/CLI/Terraform provider) can address it without hardcoded
+// per-environment configuration.
+message Endpoints {
+  string rest_url = 1;
+  string grpc_url = 2;
+}
+
+message RegisterRequest {
+  // One-time-use enrollment token minted via the REST admin API
+  // (POST /v1/enrollment-tokens). Consumed on success.
+  string enrollment_token = 1;
+  string engine_type = 2;
+  // Stable across restarts — derived from hostname when the engine has
+  // none configured. Used with engine_type + environment as the upsert
+  // key, so a restarting engine updates its row instead of accumulating
+  // duplicates.
+  string instance_id = 3;
+  string environment = 4;
+  string version = 5;
+  string build_sha = 6;
+  string schema_version = 7;
+  repeated string capabilities = 8;
+  Endpoints endpoints = 9;
+}
+
+message RegisterResponse {
+  string instance_uuid = 1;
+  // Long-lived, rotatable per-instance secret replacing the one-shot
+  // enrollment token. Returned exactly once — Argus stores only its hash.
+  string instance_credential = 2;
+  int32 heartbeat_interval_seconds = 3;
+}
+
+message DependencyStatus {
+  string name = 1;
+  bool reachable = 2;
+  double latency_ms = 3;
+}
+
+message HeartbeatRequest {
+  string instance_uuid = 1;
+  bool live = 2;
+  bool ready = 3;
+  repeated DependencyStatus dependencies = 4;
+  google.protobuf.Struct counters = 5;
+  // timestamp_unix + nonce + signature: HMAC(instance_credential, body)
+  // over the rest of the message, so a captured heartbeat cannot be
+  // replayed to keep a dead instance looking alive.
+  int64 timestamp_unix = 6;
+  string nonce = 7;
+  string signature = 8;
+}
+
+message HeartbeatResponse {
+  // healthy | degraded | unreachable — Argus's own view, which may lag
+  // the engine's self-reported live/ready by up to one evaluator sweep.
+  string status = 1;
+}
+
+message DeregisterRequest {
+  string instance_uuid = 1;
+  // Freeform, e.g. "sigterm", "operator requested" — what separates a
+  // graceful stop from an incident in the fleet timeline.
+  string reason = 2;
+}
+
+message DeregisterResponse {}
+
+message RotateCredentialRequest {
+  string instance_uuid = 1;
+  string current_credential = 2;
+}
+
+message RotateCredentialResponse {
+  string new_credential = 1;
+  // current_credential keeps working until this instant, so rotation is
+  // not a hard cutover.
+  google.protobuf.Timestamp overlap_until = 2;
+}
+
+message Instance {
+  string id = 1;
+  string engine_type = 2;
+  string instance_id = 3;
+  string environment = 4;
+  string version = 5;
+  string build_sha = 6;
+  string schema_version = 7;
+  repeated string capabilities = 8;
+  Endpoints endpoints = 9;
+  string status = 10;
+  google.protobuf.Timestamp first_seen_at = 11;
+  google.protobuf.Timestamp last_heartbeat_at = 12;
+}
+
+message GetInstanceRequest {
+  string instance_uuid = 1;
+}
+
+// InstanceEvent is one entry of an instance's append-only fleet timeline
+// (registered, degraded, unreachable, evicted, deregistered, ...).
+message InstanceEvent {
+  string type = 1;
+  google.protobuf.Struct detail = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+}
+
+// InstanceDependencyEdge is one declared or observed dependency of an
+// instance on another engine_type — the raw edge GetInstance returns inline,
+// so a caller does not have to fan out to a separate topology call just to
+// render one instance's dependencies.
+message InstanceDependencyEdge {
+  string depends_on_engine_type = 1;
+  bool declared = 2;
+  bool last_probe_reachable = 3;
+  double last_probe_latency_ms = 4;
+  google.protobuf.Timestamp last_probed_at = 5;
+}
+
+message GetInstanceResponse {
+  Instance instance = 1;
+  // Most recent timeline events for this instance, newest first.
+  repeated InstanceEvent events = 2;
+  // Declared/observed dependency edges for this instance.
+  repeated InstanceDependencyEdge dependencies = 3;
+}
+
+message ListInstancesRequest {
+  string environment = 1;
+  string engine_type = 2;
+  string status = 3;
+  string cursor = 4;
+  int32 limit = 5;
+}
+
+message ListInstancesResponse {
+  repeated Instance instances = 1;
+  string next_cursor = 2;
+  bool has_more = 3;
+}
+
+// ArgusService is the engine-facing hot path: registration, heartbeat and
+// query, used by the platform/registry client every engine embeds. The
+// operator-facing surface (enrollment token minting, fleet listing,
+// topology, events) is REST, mirroring Nexus/Themis's split between a
+// gRPC hot path and a REST admin surface.
+service ArgusService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc Deregister(DeregisterRequest) returns (DeregisterResponse);
+  rpc RotateCredential(RotateCredentialRequest) returns (RotateCredentialResponse);
+  rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
+  rpc ListInstances(ListInstancesRequest) returns (ListInstancesResponse);
+}
