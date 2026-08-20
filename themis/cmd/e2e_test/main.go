@@ -17,7 +17,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			log.Printf("error closing connection: %v", closeErr)
+		}
+	}()
 
 	client := pb.NewThemisServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

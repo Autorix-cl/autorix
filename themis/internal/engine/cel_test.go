@@ -146,6 +146,55 @@ func TestCELEvaluator_NonBoolExpression(t *testing.T) {
 	}
 }
 
+func TestCELEvaluator_Validate(t *testing.T) {
+	evaluator, err := NewCELEvaluator()
+	if err != nil {
+		t.Fatalf("failed to create evaluator: %v", err)
+	}
+
+	t.Run("valid expression with variables", func(t *testing.T) {
+		res, err := evaluator.Validate(`request.role == "admin" && payload.amount < 100`)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !res.Valid {
+			t.Fatalf("expected expression to be valid, got errors: %+v", res.Errors)
+		}
+		if len(res.Variables) < 2 {
+			t.Fatalf("expected variables ['payload', 'request'], got %v", res.Variables)
+		}
+	})
+
+	t.Run("invalid syntax expression with line and column", func(t *testing.T) {
+		res, err := evaluator.Validate(`payload.amount < `)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Valid {
+			t.Fatalf("expected expression to be invalid")
+		}
+		if len(res.Errors) == 0 {
+			t.Fatalf("expected at least one syntax error")
+		}
+		if res.Errors[0].Line == 0 && res.Errors[0].Column == 0 {
+			t.Fatalf("expected line/column information, got %+v", res.Errors[0])
+		}
+	})
+
+	t.Run("non-boolean expression type check", func(t *testing.T) {
+		res, err := evaluator.Validate(`payload.amount + 10`)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Valid {
+			t.Fatalf("expected non-boolean expression to be invalid")
+		}
+		if len(res.Errors) == 0 {
+			t.Fatalf("expected error for non-boolean return type")
+		}
+	})
+}
+
 func BenchmarkCELEvaluator_CachedEval(b *testing.B) {
 	evaluator, err := NewCELEvaluator()
 	if err != nil {

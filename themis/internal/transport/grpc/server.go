@@ -3,8 +3,8 @@ package grpc
 import (
 	"context"
 
-	"github.com/autorix/themis/internal/core"
 	pb "github.com/autorix/themis/api/autorix/themis/v1"
+	"github.com/autorix/themis/internal/core"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
