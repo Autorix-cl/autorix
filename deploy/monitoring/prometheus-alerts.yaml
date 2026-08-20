@@ -9,7 +9,7 @@ spec:
   groups:
     - name: autorix.rules
       rules:
-        # 1. High ReBAC Latency Alert
+        # 1. High ReBAC Latency Alert (Nexus)
         - alert: AutorixHighNexusLatency
           expr: histogram_quantile(0.99, sum(rate(autorix_nexus_check_duration_seconds_bucket[5m])) by (le)) > 0.02
           for: 2m
@@ -19,7 +19,17 @@ spec:
             summary: "Autorix Nexus ReBAC P99 latency > 20ms"
             description: "Nexus graph evaluation latency is unusually high ({{ $value }}s)."
 
-        # 2. Aegis Rate of 403 Forbidden Access
+        # 2. High ABAC Policy Evaluation Latency (Themis)
+        - alert: AutorixHighThemisLatency
+          expr: histogram_quantile(0.99, sum(rate(autorix_themis_evaluation_duration_seconds_bucket[5m])) by (le)) > 0.05
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Autorix Themis policy evaluation P99 latency > 50ms"
+            description: "Themis policy evaluation latency is unusually high ({{ $value }}s)."
+
+        # 3. Aegis Rate of 403 Forbidden Access
         - alert: AutorixHighUnauthorizedRate
           expr: sum(rate(autorix_aegis_requests_total{status="403"}[5m])) / sum(rate(autorix_aegis_requests_total[5m])) > 0.1
           for: 3m
@@ -29,12 +39,43 @@ spec:
             summary: "Autorix Aegis experiencing high 403 Forbidden rejection rate (> 10%)"
             description: "Possible brute force or misconfigured access policy."
 
-        # 3. Microservice Pod Restart Alert
+        # 4. Hermes SCIM Sync Failure Rate
+        - alert: AutorixHermesSCIMSyncFailures
+          expr: sum(rate(autorix_hermes_scim_sync_total{status="error"}[5m])) / sum(rate(autorix_hermes_scim_sync_total[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Autorix Hermes SCIM synchronization failure rate > 5%"
+            description: "Hermes SCIM directory synchronization is failing."
+
+        # 5. Vulcan Key Verification Failure Rate
+        - alert: AutorixVulcanKeyVerificationFailures
+          expr: sum(rate(autorix_vulcan_keys_verified_total{status="invalid"}[5m])) / sum(rate(autorix_vulcan_keys_verified_total[5m])) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Autorix Vulcan key verification failure rate > 10%"
+            description: "Vulcan cryptographic key verification is failing frequently."
+
+        # 6. Janus Token Issuance Failures
+        - alert: AutorixJanusTokenIssuanceFailures
+          expr: sum(rate(autorix_janus_tokens_issued_total{status="error"}[5m])) / sum(rate(autorix_janus_tokens_issued_total[5m])) > 0.05
+          for: 3m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Autorix Janus token issuance failure rate > 5%"
+            description: "Janus OIDC token issuance requests are failing."
+
+        # 7. Microservice Pod Restart Alert
         - alert: AutorixServiceCrashLooping
-          expr: rate(kube_pod_container_status_restarts_total{container=~"nexus|ego|janus|aegis|vulcan|hermes"}[5m]) > 0
+          expr: rate(kube_pod_container_status_restarts_total{container=~"nexus|ego|janus|aegis|vulcan|hermes|themis|argus"}[5m]) > 0
           for: 1m
           labels:
             severity: critical
           annotations:
             summary: "Autorix engine {{ $labels.container }} is restarting"
             description: "Pod is crash looping."
+

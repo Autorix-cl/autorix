@@ -51,6 +51,62 @@
           "legendFormat": "Active Sessions"
         }
       ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "id": 4,
+      "title": "Themis ABAC Policy Evaluation Latency (P95 / P99)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(autorix_themis_evaluation_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "P99 Latency (ms)"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(autorix_themis_evaluation_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "P95 Latency (ms)"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "id": 5,
+      "title": "Janus Tokens Issued (rate/s)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(autorix_janus_tokens_issued_total[1m])) by (grant_type)",
+          "legendFormat": "Grant {{grant_type}}"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "id": 6,
+      "title": "Vulcan Keys Verified (rate/s)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(autorix_vulcan_keys_verified_total[1m])) by (status)",
+          "legendFormat": "Status {{status}}"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 7,
+      "title": "Hermes SCIM Sync Operations (rate/s)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(autorix_hermes_scim_sync_total[1m])) by (provider, status)",
+          "legendFormat": "{{provider}} - {{status}}"
+        }
+      ]
     }
   ],
   "schemaVersion": 38,
@@ -62,5 +118,5 @@
   },
   "title": "Autorix IAM Suite: Zero Trust Telemetry",
   "uid": "autorix-telemetry",
-  "version": 1
+  "version": 2
 }

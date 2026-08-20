@@ -14,6 +14,10 @@ spec:
       app.kubernetes.io/component: ego
   template:
     metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4433"
+        prometheus.io/path: "/metrics"
       labels:
         app.kubernetes.io/name: {{ include "autorix.name" . }}
         app.kubernetes.io/component: ego
@@ -35,7 +39,7 @@ spec:
             {{- toYaml .Values.ego.resources | nindent 12 }}
           readinessProbe:
             httpGet:
-              path: /health/alive
+              path: /health/ready
               port: 4433
             initialDelaySeconds: 5
             periodSeconds: 10
@@ -53,6 +57,10 @@ metadata:
   labels:
     {{- include "autorix.labels" . | nindent 4 }}
     app.kubernetes.io/component: ego
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "4433"
+    prometheus.io/path: "/metrics"
 spec:
   type: ClusterIP
   ports:

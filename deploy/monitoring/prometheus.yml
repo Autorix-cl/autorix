@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "autorix"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets:
+          - "argus:4400"
+          - "nexus:8080"
+          - "ego:4433"
+          - "janus:4444"
+          - "vulcan:4466"
+          - "hermes:4477"
+          - "themis:4488"
+          - "aegis:4456"

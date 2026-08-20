@@ -14,6 +14,10 @@ spec:
       app.kubernetes.io/component: janus
   template:
     metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4444"
+        prometheus.io/path: "/metrics"
       labels:
         app.kubernetes.io/name: {{ include "autorix.name" . }}
         app.kubernetes.io/component: janus
@@ -37,13 +41,13 @@ spec:
             {{- toYaml .Values.janus.resources | nindent 12 }}
           readinessProbe:
             httpGet:
-              path: /.well-known/openid-configuration
+              path: /health/ready
               port: 4444
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /.well-known/jwks.json
+              path: /health/alive
               port: 4444
             initialDelaySeconds: 15
             periodSeconds: 20
@@ -55,6 +59,10 @@ metadata:
   labels:
     {{- include "autorix.labels" . | nindent 4 }}
     app.kubernetes.io/component: janus
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "4444"
+    prometheus.io/path: "/metrics"
 spec:
   type: ClusterIP
   ports:

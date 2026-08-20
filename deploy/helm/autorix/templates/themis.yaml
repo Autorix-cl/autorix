@@ -1,79 +1,81 @@
-{{- if .Values.nexus.enabled }}
+{{- if .Values.themis.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "autorix.fullname" . }}-nexus
+  name: {{ include "autorix.fullname" . }}-themis
   labels:
     {{- include "autorix.labels" . | nindent 4 }}
-    app.kubernetes.io/component: nexus
+    app.kubernetes.io/component: themis
 spec:
-  replicas: {{ .Values.nexus.replicaCount }}
+  replicas: {{ .Values.themis.replicaCount }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "autorix.name" . }}
-      app.kubernetes.io/component: nexus
+      app.kubernetes.io/component: themis
   template:
     metadata:
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
+        prometheus.io/port: "4488"
         prometheus.io/path: "/metrics"
       labels:
         app.kubernetes.io/name: {{ include "autorix.name" . }}
-        app.kubernetes.io/component: nexus
+        app.kubernetes.io/component: themis
     spec:
       containers:
-        - name: nexus
-          image: "{{ .Values.nexus.image.repository }}:{{ .Values.nexus.image.tag }}"
+        - name: themis
+          image: "{{ .Values.themis.image.repository }}:{{ .Values.themis.image.tag }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
             - name: grpc
-              containerPort: 50051
+              containerPort: 50052
               protocol: TCP
             - name: http
-              containerPort: 8080
+              containerPort: 4488
               protocol: TCP
           env:
             - name: PORT
-              value: "50051"
+              value: "50052"
+            - name: HTTP_PORT
+              value: "4488"
             - name: DATABASE_URL
-              value: "postgres://{{ .Values.global.postgresql.user }}:password@{{ .Values.global.postgresql.host }}:{{ .Values.global.postgresql.port }}/autorix_nexus?sslmode=disable"
+              value: "postgres://{{ .Values.global.postgresql.user }}:password@{{ .Values.global.postgresql.host }}:{{ .Values.global.postgresql.port }}/autorix_themis?sslmode=disable"
           resources:
-            {{- toYaml .Values.nexus.resources | nindent 12 }}
+            {{- toYaml .Values.themis.resources | nindent 12 }}
           readinessProbe:
             grpc:
-              port: 50051
+              port: 50052
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             grpc:
-              port: 50051
+              port: 50052
             initialDelaySeconds: 15
             periodSeconds: 20
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "autorix.fullname" . }}-nexus
+  name: {{ include "autorix.fullname" . }}-themis
   labels:
     {{- include "autorix.labels" . | nindent 4 }}
-    app.kubernetes.io/component: nexus
+    app.kubernetes.io/component: themis
   annotations:
     prometheus.io/scrape: "true"
-    prometheus.io/port: "8080"
+    prometheus.io/port: "4488"
     prometheus.io/path: "/metrics"
 spec:
   type: ClusterIP
   ports:
-    - port: 50051
-      targetPort: 50051
+    - port: 50052
+      targetPort: 50052
       protocol: TCP
       name: grpc
-    - port: 8080
-      targetPort: 8080
+    - port: 4488
+      targetPort: 4488
       protocol: TCP
       name: http
   selector:
     app.kubernetes.io/name: {{ include "autorix.name" . }}
-    app.kubernetes.io/component: nexus
+    app.kubernetes.io/component: themis
 {{- end }}

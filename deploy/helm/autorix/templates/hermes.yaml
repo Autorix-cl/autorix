@@ -14,6 +14,10 @@ spec:
       app.kubernetes.io/component: hermes
   template:
     metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4477"
+        prometheus.io/path: "/metrics"
       labels:
         app.kubernetes.io/name: {{ include "autorix.name" . }}
         app.kubernetes.io/component: hermes
@@ -35,13 +39,13 @@ spec:
               value: "postgres://{{ .Values.global.postgresql.user }}:password@{{ .Values.global.postgresql.host }}:{{ .Values.global.postgresql.port }}/autorix_hermes?sslmode=disable"
           readinessProbe:
             httpGet:
-              path: /saml/metadata
+              path: /health/ready
               port: 4477
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /saml/metadata
+              path: /health/alive
               port: 4477
             initialDelaySeconds: 15
             periodSeconds: 20
@@ -53,6 +57,10 @@ metadata:
   labels:
     {{- include "autorix.labels" . | nindent 4 }}
     app.kubernetes.io/component: hermes
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "4477"
+    prometheus.io/path: "/metrics"
 spec:
   type: ClusterIP
   ports:

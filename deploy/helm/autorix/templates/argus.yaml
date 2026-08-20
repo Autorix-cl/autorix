@@ -1,0 +1,90 @@
+{{- if .Values.argus.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "autorix.fullname" . }}-argus
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+    app.kubernetes.io/component: argus
+spec:
+  replicas: {{ .Values.argus.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "autorix.name" . }}
+      app.kubernetes.io/component: argus
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4400"
+        prometheus.io/path: "/metrics"
+      labels:
+        app.kubernetes.io/name: {{ include "autorix.name" . }}
+        app.kubernetes.io/component: argus
+    spec:
+      containers:
+        - name: argus
+          image: "{{ .Values.argus.image.repository }}:{{ .Values.argus.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: grpc
+              containerPort: 50053
+              protocol: TCP
+            - name: http
+              containerPort: 4400
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "50053"
+            - name: HTTP_PORT
+              value: "4400"
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.global.postgresql.user }}:password@{{ .Values.global.postgresql.host }}:{{ .Values.global.postgresql.port }}/autorix_argus?sslmode=disable"
+            # HMAC key engines' registration clients sign heartbeats with
+            # (P2-S3-T4). Not a local secret literal in values.yaml — always
+            # sourced from a Secret, since it is the credential that lets
+            # Argus tell a legitimate heartbeat from a replayed one.
+            - name: ENROLLMENT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.argus.enrollmentSigningKey.secretName }}
+                  key: {{ .Values.argus.enrollmentSigningKey.secretKey }}
+          resources:
+            {{- toYaml .Values.argus.resources | nindent 12 }}
+          readinessProbe:
+            grpc:
+              port: 50053
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            grpc:
+              port: 50053
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "autorix.fullname" . }}-argus
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+    app.kubernetes.io/component: argus
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "4400"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 50053
+      targetPort: 50053
+      protocol: TCP
+      name: grpc
+    - port: 4400
+      targetPort: 4400
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "autorix.name" . }}
+    app.kubernetes.io/component: argus
+{{- end }}

@@ -88,6 +88,51 @@ hermes:
     repository: "ghcr.io/autorix-cl/hermes"
     tag: "latest"
 
+themis:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: "ghcr.io/autorix-cl/themis"
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+argus:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: "ghcr.io/autorix-cl/argus"
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  # No PVC: Argus is stateless (all state lives in autorix_argus), same as
+  # every other engine. The enrollment signing key is the one credential it
+  # owns, and it lives in a Secret this chart references, never a literal
+  # here — see templates/argus.yaml for how it's mounted.
+  enrollmentSigningKey:
+    secretName: "argus-enrollment-signing-key"
+    secretKey: "signing-key"
+
 console:
   enabled: true
   replicaCount: 2
@@ -101,3 +146,11 @@ ingress:
   tls:
     enabled: true
     secretName: "autorix-tls-cert"
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: "15s"
+    scrapeTimeout: "10s"
+    labels: {}
+

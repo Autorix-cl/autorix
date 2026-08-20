@@ -14,6 +14,10 @@ spec:
       app.kubernetes.io/component: aegis
   template:
     metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4456"
+        prometheus.io/path: "/metrics"
       labels:
         app.kubernetes.io/name: {{ include "autorix.name" . }}
         app.kubernetes.io/component: aegis
@@ -26,21 +30,28 @@ spec:
             - name: http
               containerPort: 4455
               protocol: TCP
+            - name: admin
+              containerPort: 4456
+              protocol: TCP
           env:
             - name: PORT
               value: "4455"
+            - name: ADMIN_PORT
+              value: "4456"
             - name: RULES_PATH
               value: "/app/rules/default.rules.yaml"
           resources:
             {{- toYaml .Values.aegis.resources | nindent 12 }}
           readinessProbe:
-            tcpSocket:
-              port: 4455
+            httpGet:
+              path: /health/ready
+              port: 4456
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
-            tcpSocket:
-              port: 4455
+            httpGet:
+              path: /health/alive
+              port: 4456
             initialDelaySeconds: 15
             periodSeconds: 20
 ---
@@ -51,6 +62,10 @@ metadata:
   labels:
     {{- include "autorix.labels" . | nindent 4 }}
     app.kubernetes.io/component: aegis
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "4456"
+    prometheus.io/path: "/metrics"
 spec:
   type: ClusterIP
   ports:
@@ -58,6 +73,10 @@ spec:
       targetPort: 4455
       protocol: TCP
       name: http
+    - port: 4456
+      targetPort: 4456
+      protocol: TCP
+      name: admin
   selector:
     app.kubernetes.io/name: {{ include "autorix.name" . }}
     app.kubernetes.io/component: aegis

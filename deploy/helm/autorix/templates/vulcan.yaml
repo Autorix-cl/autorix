@@ -14,6 +14,10 @@ spec:
       app.kubernetes.io/component: vulcan
   template:
     metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4466"
+        prometheus.io/path: "/metrics"
       labels:
         app.kubernetes.io/name: {{ include "autorix.name" . }}
         app.kubernetes.io/component: vulcan
@@ -32,12 +36,14 @@ spec:
             - name: DATABASE_URL
               value: "postgres://{{ .Values.global.postgresql.user }}:password@{{ .Values.global.postgresql.host }}:{{ .Values.global.postgresql.port }}/autorix_vulcan?sslmode=disable"
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health/ready
               port: 4466
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health/alive
               port: 4466
             initialDelaySeconds: 15
             periodSeconds: 20
@@ -49,6 +55,10 @@ metadata:
   labels:
     {{- include "autorix.labels" . | nindent 4 }}
     app.kubernetes.io/component: vulcan
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "4466"
+    prometheus.io/path: "/metrics"
 spec:
   type: ClusterIP
   ports:
