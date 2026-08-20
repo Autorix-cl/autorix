@@ -5,7 +5,6 @@ export const SERVICES_CONFIG = {
     port: 50051,
     protocol: "gRPC",
     url: process.env.NEXT_PUBLIC_NEXUS_URL || "http://localhost:50051",
-    status: "healthy",
   },
   ego: {
     name: "Autorix Ego",
@@ -13,7 +12,6 @@ export const SERVICES_CONFIG = {
     port: 4433,
     protocol: "REST",
     url: process.env.NEXT_PUBLIC_EGO_URL || "http://localhost:4433",
-    status: "healthy",
   },
   janus: {
     name: "Autorix Janus",
@@ -21,7 +19,6 @@ export const SERVICES_CONFIG = {
     port: 4444,
     protocol: "REST/OIDC",
     url: process.env.NEXT_PUBLIC_JANUS_URL || "http://localhost:4444",
-    status: "healthy",
   },
   aegis: {
     name: "Autorix Aegis",
@@ -29,7 +26,6 @@ export const SERVICES_CONFIG = {
     port: 4455,
     protocol: "HTTP Proxy",
     url: process.env.NEXT_PUBLIC_AEGIS_URL || "http://localhost:4455",
-    status: "healthy",
   },
   vulcan: {
     name: "Autorix Vulcan",
@@ -37,7 +33,6 @@ export const SERVICES_CONFIG = {
     port: 4466,
     protocol: "REST",
     url: process.env.NEXT_PUBLIC_VULCAN_URL || "http://localhost:4466",
-    status: "healthy",
   },
   hermes: {
     name: "Autorix Hermes",
@@ -45,6 +40,12 @@ export const SERVICES_CONFIG = {
     port: 4477,
     protocol: "REST/XML",
     url: process.env.NEXT_PUBLIC_HERMES_URL || "http://localhost:4477",
-    status: "healthy",
+  },
+  themis: {
+    name: "Autorix Themis",
+    role: "ABAC Policy & Google CEL Rules Engine",
+    port: 4488,
+    protocol: "REST/gRPC",
+    url: process.env.NEXT_PUBLIC_THEMIS_URL || "http://localhost:4488",
   },
 };

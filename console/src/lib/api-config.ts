@@ -12,6 +12,7 @@ export const BACKEND_URLS = {
   // which the console uses to manage relation tuples and run Check.
   nexus: process.env.NEXUS_INTERNAL_URL || "http://nexus:8080",
   themis: process.env.THEMIS_INTERNAL_URL || "http://themis:4488",
+  argus: process.env.ARGUS_INTERNAL_URL || "http://argus:4400",
 };
 
 export function getServiceUrl(service: keyof typeof BACKEND_URLS): string {
@@ -28,6 +29,7 @@ export function getServiceUrl(service: keyof typeof BACKEND_URLS): string {
     aegis: 4456,
     nexus: 8080,
     themis: 4488,
+    argus: 4400,
   };
   return `http://localhost:${publicPorts[service] || 3000}`;
 }
