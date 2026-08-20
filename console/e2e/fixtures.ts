@@ -54,6 +54,13 @@ interface Fixtures {
     name?: string;
     owner_id?: string;
   }) => Promise<{ id: string; name: string }>;
+
+  seedTuple: (overrides?: {
+    namespace?: string;
+    object?: string;
+    relation?: string;
+    subjectId?: string;
+  }) => Promise<{ namespace: string; object: string; relation: string; subjectId: string }>;
 }
 
 export const test = base.extend<Fixtures>({
@@ -142,7 +149,7 @@ export const test = base.extend<Fixtures>({
     await use(async (overrides = {}) => {
       const csrf = await getCsrfToken(request);
       const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const matchPath = overrides.match_path ?? `/api/e2e/${unique}/*`;
+      const matchPath = overrides.match_path ?? `/api/e2e/${unique}/<.*>`;
 
       const res = await request.post("/api/proxy-rules", {
         headers: {
@@ -195,6 +202,35 @@ export const test = base.extend<Fixtures>({
 
       const data = await res.json();
       return { id: data.id || unique, name };
+    });
+  },
+
+  seedTuple: async ({ request }, use) => {
+    await use(async (overrides = {}) => {
+      const csrf = await getCsrfToken(request);
+      const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const namespace = overrides.namespace ?? "document";
+      const object = overrides.object ?? `doc-${unique}`;
+      const relation = overrides.relation ?? "viewer";
+      const subjectId = overrides.subjectId ?? `user_${unique}`;
+
+      const res = await request.post("/api/permissions", {
+        headers: {
+          "X-CSRF-Token": csrf,
+        },
+        data: {
+          namespace,
+          object,
+          relation,
+          subjectId,
+        },
+      });
+      expect(
+        res.ok(),
+        `seedTuple: POST /api/permissions failed (status ${res.status()}): ${await res.text()}`,
+      ).toBeTruthy();
+
+      return { namespace, object, relation, subjectId };
     });
   },
 });
