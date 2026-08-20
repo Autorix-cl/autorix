@@ -1,11 +1,45 @@
 "use client";
 
-import { useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, ShieldAlert, KeyRound, ArrowRight, Building2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const [checkingBootstrap, setCheckingBootstrap] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch("/api/auth/status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!isMounted) return;
+        if (data && data.bootstrapped === false) {
+          router.replace("/setup");
+        } else {
+          setCheckingBootstrap(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) setCheckingBootstrap(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
+
+  if (checkingBootstrap) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-[#080B10] text-slate-500 font-mono text-xs">
+        <div className="flex items-center gap-2">
+          <div className="h-4 w-4 rounded-full border-2 border-amber-500/40 border-t-amber-400 animate-spin" />
+          <span>Verifying cluster authorization state...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Suspense fallback={<div className="min-h-screen bg-[#080B10] flex items-center justify-center text-slate-500 font-mono text-xs">Authenticating...</div>}>
       <LoginForm />

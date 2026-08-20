@@ -1,14 +1,30 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 import { I18nProvider } from "@/lib/i18n";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { CommandDialog } from "@/components/layout/command-dialog";
 
+const STANDALONE_ROUTES = ["/login", "/setup", "/session-expired", "/403"];
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = React.useState(false);
+  const pathname = usePathname();
+
+  const isStandalone = STANDALONE_ROUTES.some(
+    (route) => pathname === route || pathname?.startsWith(route + "/")
+  );
+
+  if (isStandalone) {
+    return (
+      <I18nProvider>
+        <TooltipProvider>{children}</TooltipProvider>
+      </I18nProvider>
+    );
+  }
 
   return (
     <I18nProvider>

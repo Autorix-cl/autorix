@@ -89,4 +89,32 @@ test.describe("Authentication & Session Security (Argus Gateway)", () => {
     await expect(page.getByText(/corporate single sign-on/i).first()).toBeVisible();
     await expect(page.getByRole("button", { name: /continue with enterprise sso/i })).toBeVisible();
   });
+
+  test("standalone layout: login is isolated from dashboard sidebar and header", async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto("/login");
+
+    // Must NOT render dashboard sidebar navigation or global search header
+    await expect(page.locator("aside")).not.toBeVisible();
+    await expect(page.locator("button:has-text('Quick search')")).not.toBeVisible();
+    await expect(page.getByText("ZERO TRUST CONTROL PLANE")).toBeVisible();
+  });
+
+  test("bootstrap redirection: unbootstrapped state routes operator directly to setup flow", async ({ page }) => {
+    await page.route("**/api/auth/status", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ bootstrapped: false, operators_count: 0 }),
+      });
+    });
+
+    await page.context().clearCookies();
+    await page.goto("/login");
+
+    await page.waitForURL((url) => url.pathname === "/setup", { timeout: 10_000 });
+    await expect(page).toHaveURL(/\/setup$/);
+    await expect(page.getByText("INITIAL BOOTSTRAP WIZARD")).toBeVisible();
+    await expect(page.getByRole("button", { name: /initialize cluster owner/i })).toBeVisible();
+  });
 });

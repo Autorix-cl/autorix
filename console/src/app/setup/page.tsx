@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, KeyRound, Terminal, AlertCircle, ArrowRight, CheckCircle2, Lock } from "lucide-react";
 import { toast } from "sonner";
 
 export default function SetupPage() {
   const router = useRouter();
+  const [checkingStatus, setCheckingStatus] = useState(true);
   const [token, setToken] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -14,6 +15,27 @@ export default function SetupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch("/api/auth/status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!isMounted) return;
+        if (data && data.bootstrapped === true) {
+          toast.info("Cluster is already initialized. Please authenticate.");
+          router.replace("/login");
+        } else {
+          setCheckingStatus(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) setCheckingStatus(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +80,17 @@ export default function SetupPage() {
       setLoading(false);
     }
   };
+
+  if (checkingStatus) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-[#080B10] text-slate-500 font-mono text-xs">
+        <div className="flex items-center gap-2">
+          <div className="h-4 w-4 rounded-full border-2 border-amber-500/40 border-t-amber-400 animate-spin" />
+          <span>Verifying cluster bootstrap status...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4 bg-[#080B10] text-[#E2E8F0] relative overflow-hidden selection:bg-amber-500/20 selection:text-amber-300">
