@@ -113,7 +113,7 @@ func evaluateCaveat(predicate string, vCtx *core.VerificationContext) error {
 		}
 
 	case "method":
-		if vCtx.Method != "" && strings.ToUpper(vCtx.Method) != strings.ToUpper(val) {
+		if vCtx.Method != "" && !strings.EqualFold(vCtx.Method, val) {
 			return fmt.Errorf("request method %s not allowed (expected %s)", vCtx.Method, val)
 		}
 
