@@ -20,41 +20,84 @@ export interface FleetNotification {
   read: boolean;
 }
 
-const INITIAL_NOTIFICATIONS: FleetNotification[] = [
-  {
-    id: "notif-1",
-    type: "security",
-    title: "Break-Glass Operator Authenticated",
-    message: "Root owner session established via local credential fallback.",
-    timestamp: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
-    read: false,
-  },
-  {
-    id: "notif-2",
-    type: "success",
-    title: "Cluster Engines Synchronized",
-    message: "6 IAM engines discovered and registered in Argus control plane.",
-    timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-    read: true,
-  },
-];
-
 export function NotificationCenter() {
-  const [notifications, setNotifications] = React.useState<FleetNotification[]>(INITIAL_NOTIFICATIONS);
+  const [notifications, setNotifications] = React.useState<FleetNotification[]>([]);
+  const [readIds, setReadIds] = React.useState<Set<string>>(new Set());
+  const [dismissedIds, setDismissedIds] = React.useState<Set<string>>(new Set());
+  const [loading, setLoading] = React.useState(true);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  // Load read and dismissed IDs from localStorage
+  React.useEffect(() => {
+    try {
+      const storedRead = localStorage.getItem("autorix_read_notifications");
+      if (storedRead) {
+        setReadIds(new Set(JSON.parse(storedRead)));
+      }
+      const storedDismissed = localStorage.getItem("autorix_dismissed_notifications");
+      if (storedDismissed) {
+        setDismissedIds(new Set(JSON.parse(storedDismissed)));
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
+  const fetchNotifications = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/notifications");
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data?.notifications)) {
+          setNotifications(data.notifications);
+        }
+      }
+    } catch {
+      // Keep existing
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 15000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  const activeNotifications = notifications
+    .filter((n) => !dismissedIds.has(n.id))
+    .map((n) => ({
+      ...n,
+      read: n.read || readIds.has(n.id),
+    }));
+
+  const unreadCount = activeNotifications.filter((n) => !n.read).length;
 
   const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    const nextRead = new Set(readIds);
+    activeNotifications.forEach((n) => nextRead.add(n.id));
+    setReadIds(nextRead);
+    try {
+      localStorage.setItem("autorix_read_notifications", JSON.stringify(Array.from(nextRead)));
+    } catch {
+      // Ignore
+    }
   };
 
   const clearNotification = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    const nextDismissed = new Set(dismissedIds);
+    nextDismissed.add(id);
+    setDismissedIds(nextDismissed);
+    try {
+      localStorage.setItem("autorix_dismissed_notifications", JSON.stringify(Array.from(nextDismissed)));
+    } catch {
+      // Ignore
+    }
   };
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={(open) => open && fetchNotifications()}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
@@ -82,7 +125,7 @@ export function NotificationCenter() {
             <button
               type="button"
               onClick={markAllRead}
-              className="text-[11px] text-primary hover:underline font-medium"
+              className="text-[11px] text-primary hover:underline font-medium cursor-pointer"
             >
               Mark all read
             </button>
@@ -90,12 +133,16 @@ export function NotificationCenter() {
         </div>
 
         <div className="max-h-72 overflow-y-auto divide-y divide-border/50">
-          {notifications.length === 0 ? (
+          {loading && activeNotifications.length === 0 ? (
+            <div className="py-8 text-center text-xs text-muted-foreground">
+              Loading notifications...
+            </div>
+          ) : activeNotifications.length === 0 ? (
             <div className="py-8 text-center text-xs text-muted-foreground">
               No notifications in fleet inbox.
             </div>
           ) : (
-            notifications.map((n) => (
+            activeNotifications.map((n) => (
               <div
                 key={n.id}
                 className={`p-3 text-xs transition-colors flex items-start gap-2.5 ${
@@ -121,7 +168,7 @@ export function NotificationCenter() {
                 <button
                   type="button"
                   onClick={(e) => clearNotification(n.id, e)}
-                  className="text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100"
+                  className="text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100 cursor-pointer"
                 >
                   <X className="h-3 w-3" />
                 </button>
