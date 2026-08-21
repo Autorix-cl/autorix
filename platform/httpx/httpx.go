@@ -102,12 +102,30 @@ func AccessLog(logger *slog.Logger) Middleware {
 	}
 }
 
+type timeoutWriter struct {
+	http.ResponseWriter
+}
+
+func (tw *timeoutWriter) WriteHeader(code int) {
+	if code == http.StatusServiceUnavailable {
+		tw.ResponseWriter.Header().Set("Content-Type", "application/json")
+	}
+	tw.ResponseWriter.WriteHeader(code)
+}
+
 // Timeout bounds request handling to d. If the handler has not written a
 // response by then, the client gets 503 and the handler's context is
 // cancelled — the handler is expected to observe ctx.Done() and stop.
 func Timeout(d time.Duration) Middleware {
 	return func(next http.Handler) http.Handler {
-		return http.TimeoutHandler(next, d, "request timed out")
+		// Use standard TimeoutHandler, but with a JSON body string
+		th := http.TimeoutHandler(next, d, `{"error":"request timed out"}`)
+		
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Wrap w to intercept WriteHeader(503) and force Content-Type to JSON
+			tw := &timeoutWriter{ResponseWriter: w}
+			th.ServeHTTP(tw, r)
+		})
 	}
 }
 

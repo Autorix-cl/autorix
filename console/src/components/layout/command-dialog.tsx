@@ -97,22 +97,29 @@ export function CommandDialog({ open, onOpenChange }: CommandDialogProps) {
 
   const handleSelect = (href: string) => {
     router.push(href);
-    onOpenChange(false);
+    handleOpenChange(false);
   };
+
+  const handleOpenChange = React.useCallback((isOpen: boolean) => {
+    if (!isOpen) {
+      setQuery("");
+    }
+    onOpenChange(isOpen);
+  }, [onOpenChange]);
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        onOpenChange(!open);
+        handleOpenChange(!open);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onOpenChange]);
+  }, [open, handleOpenChange]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-xl p-0 gap-0 overflow-hidden border-border/80 bg-card">
         <DialogHeader className="p-4 border-b border-border/60">
           <DialogTitle className="sr-only">Quick Command Navigation</DialogTitle>

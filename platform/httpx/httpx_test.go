@@ -117,6 +117,13 @@ func TestTimeout_CancelsContextAndReturns503WhenHandlerOverruns(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503 when the handler overruns the timeout, got %d", rec.Code)
 	}
+	if rec.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("expected Content-Type application/json, got %q", rec.Header().Get("Content-Type"))
+	}
+	expectedBody := `{"error":"request timed out"}`
+	if strings.TrimSpace(rec.Body.String()) != expectedBody {
+		t.Fatalf("expected JSON body %q, got %q", expectedBody, rec.Body.String())
+	}
 }
 
 func TestTimeout_PassesThroughWhenHandlerIsFast(t *testing.T) {
