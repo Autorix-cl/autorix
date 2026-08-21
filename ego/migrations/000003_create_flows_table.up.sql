@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS identity_flows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    flow_type VARCHAR(255) NOT NULL,
+    state VARCHAR(255) NOT NULL,
+    ui_nodes JSONB NOT NULL DEFAULT '[]'::jsonb,
+    csrf_token VARCHAR(255) NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);

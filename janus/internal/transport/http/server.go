@@ -88,6 +88,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /.well-known/jwks.json", s.handleJWKS)
 
 	// OAuth2 Core
+	mux.HandleFunc("GET /oauth2/auth", s.handleAuth)
+
 	mux.HandleFunc("POST /oauth2/token", s.handleToken)
 	mux.HandleFunc("POST /oauth2/introspect", s.handleIntrospect)
 	mux.HandleFunc("POST /oauth2/revoke", s.handleRevoke)
@@ -101,6 +103,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /admin/clients/{id}/rotate-secret", s.handleRotateClientSecret)
 
 	// Admin API - Grants
+	mux.HandleFunc("PUT /admin/oauth2/auth/requests/login/accept", s.handleAcceptLogin)
+	mux.HandleFunc("PUT /admin/oauth2/auth/requests/consent/accept", s.handleAcceptConsent)
+
 	mux.HandleFunc("GET /admin/grants", s.handleListGrants)
 
 	// Admin API - Keys
@@ -653,3 +658,190 @@ func writeError(w http.ResponseWriter, status int, errCode, description string) 
 	})
 }
 
+// Add this to s.Routes() in server.go:
+// mux.HandleFunc("GET /oauth2/auth", s.handleAuth)
+// mux.HandleFunc("PUT /admin/oauth2/auth/requests/login/accept", s.handleAcceptLogin)
+// mux.HandleFunc("PUT /admin/oauth2/auth/requests/consent/accept", s.handleAcceptConsent)
+// ... also remember to add os.Getenv("LOGIN_UI_URL") logic or default in server.go ...
+
+func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Failed to parse form")
+		return
+	}
+
+	// Wait, is there a login_verifier? If yes, we process the accepted login and issue consent challenge!
+	loginVerifier := r.FormValue("login_verifier")
+	consentVerifier := r.FormValue("consent_verifier")
+	
+	if consentVerifier != "" {
+		// Consent is accepted, generate auth code and redirect to client
+		loginChallengeID := r.FormValue("login_challenge")
+		consentChallengeID := r.FormValue("consent_challenge")
+		
+		lc, err := s.repo.GetLoginChallenge(r.Context(), loginChallengeID)
+		if err != nil || lc.HandledAt == nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "Invalid login challenge")
+			return
+		}
+		cc, err := s.repo.GetConsentChallenge(r.Context(), consentChallengeID)
+		if err != nil || cc.HandledAt == nil || cc.ConsentVerifier != consentVerifier {
+			writeError(w, http.StatusBadRequest, "invalid_request", "Invalid consent challenge")
+			return
+		}
+		
+		// Generate Authorization Code
+		code := uuid.NewString()
+		codeHash := hashCode(code)
+		
+		grant := &core.Grant{
+			CodeHash:            codeHash,
+			ClientID:            lc.ClientID,
+			Subject:             cc.Subject,
+			Scopes:              cc.GrantedScopes,
+			RedirectURI:         lc.RedirectURI,
+			CodeChallenge:       lc.CodeChallenge,
+			CodeChallengeMethod: lc.CodeChallengeMethod,
+			ExpiresAt:           time.Now().Add(10 * time.Minute),
+		}
+		if err := s.repo.CreateGrant(r.Context(), grant); err != nil {
+			writeError(w, http.StatusInternalServerError, "server_error", "Failed to create grant")
+			return
+		}
+		
+		// Redirect to client
+		redirectURI := lc.RedirectURI + "?code=" + code
+		if lc.State != "" {
+			redirectURI += "&state=" + lc.State
+		}
+		http.Redirect(w, r, redirectURI, http.StatusFound)
+		return
+	}
+
+	if loginVerifier != "" {
+		// Login is accepted, create consent challenge and redirect to consent UI
+		challengeID := r.FormValue("login_challenge")
+		lc, err := s.repo.GetLoginChallenge(r.Context(), challengeID)
+		if err != nil || lc.HandledAt == nil || lc.LoginVerifier != loginVerifier {
+			writeError(w, http.StatusBadRequest, "invalid_request", "Invalid login challenge")
+			return
+		}
+		
+		cc := &core.ConsentChallenge{
+			Challenge:       uuid.NewString(),
+			LoginChallenge:  lc.Challenge,
+			ClientID:        lc.ClientID,
+			Subject:         lc.Subject,
+			RequestedScopes: lc.Scopes,
+		}
+		if err := s.repo.CreateConsentChallenge(r.Context(), cc); err != nil {
+			writeError(w, http.StatusInternalServerError, "server_error", "Failed to create consent challenge")
+			return
+		}
+		
+		// Redirect to Consent UI
+		consentUIURL := "http://localhost:3000/consent" // default or from env
+		http.Redirect(w, r, consentUIURL+"?consent_challenge="+cc.Challenge, http.StatusFound)
+		return
+	}
+
+	// Normal auth flow start: create login challenge
+	clientID := r.FormValue("client_id")
+	if clientID == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Missing client_id")
+		return
+	}
+	
+	client, err := s.repo.GetClient(r.Context(), clientID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_client", "Unknown client_id")
+		return
+	}
+
+	scopes := strings.Fields(r.FormValue("scope"))
+	if len(scopes) == 0 {
+		scopes = client.Scopes
+	}
+
+	lc := &core.LoginChallenge{
+		Challenge:           uuid.NewString(),
+		ClientID:            clientID,
+		RedirectURI:         r.FormValue("redirect_uri"),
+		ResponseType:        r.FormValue("response_type"),
+		Scopes:              scopes,
+		State:               r.FormValue("state"),
+		Nonce:               r.FormValue("nonce"),
+		CodeChallenge:       r.FormValue("code_challenge"),
+		CodeChallengeMethod: r.FormValue("code_challenge_method"),
+	}
+
+	if err := s.repo.CreateLoginChallenge(r.Context(), lc); err != nil {
+		writeError(w, http.StatusInternalServerError, "server_error", "Failed to create login challenge")
+		return
+	}
+
+	loginUIURL := "http://localhost:3000/login" // default or from env
+	http.Redirect(w, r, loginUIURL+"?login_challenge="+lc.Challenge, http.StatusFound)
+}
+
+func (s *Server) handleAcceptLogin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Challenge string `json:"challenge"`
+		Subject   string `json:"subject"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON")
+		return
+	}
+
+	lc, err := s.repo.GetLoginChallenge(r.Context(), req.Challenge)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not_found", "Login challenge not found")
+		return
+	}
+
+	now := time.Now()
+	lc.HandledAt = &now
+	lc.Subject = req.Subject
+	lc.LoginVerifier = uuid.NewString()
+
+	if err := s.repo.UpdateLoginChallenge(r.Context(), lc); err != nil {
+		writeError(w, http.StatusInternalServerError, "server_error", "Failed to update login challenge")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"redirect_to": s.issuer + "/oauth2/auth?login_challenge=" + lc.Challenge + "&login_verifier=" + lc.LoginVerifier,
+	})
+}
+
+func (s *Server) handleAcceptConsent(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Challenge     string   `json:"challenge"`
+		GrantedScopes []string `json:"granted_scopes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON")
+		return
+	}
+
+	cc, err := s.repo.GetConsentChallenge(r.Context(), req.Challenge)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not_found", "Consent challenge not found")
+		return
+	}
+
+	now := time.Now()
+	cc.HandledAt = &now
+	cc.GrantedScopes = req.GrantedScopes
+	cc.ConsentVerifier = uuid.NewString()
+
+	if err := s.repo.UpdateConsentChallenge(r.Context(), cc); err != nil {
+		writeError(w, http.StatusInternalServerError, "server_error", "Failed to update consent challenge")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"redirect_to": s.issuer + "/oauth2/auth?login_challenge=" + cc.LoginChallenge + "&consent_challenge=" + cc.Challenge + "&consent_verifier=" + cc.ConsentVerifier,
+	})
+}

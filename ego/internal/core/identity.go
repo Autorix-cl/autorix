@@ -127,3 +127,32 @@ type UpdateSchemaPayload struct {
 }
 
 
+
+// FlowUINode represents a single UI element (input field, text, etc)
+type FlowUINode struct {
+	Type       string                 `json:"type"`  // "input", "text", "script"
+	Group      string                 `json:"group"` // "default", "password", "webauthn"
+	Attributes map[string]interface{} `json:"attributes"`
+	Messages   []interface{}          `json:"messages,omitempty"`
+	Meta       map[string]interface{}  `json:"meta,omitempty"`
+}
+
+// IdentityFlow represents a state-machine flow (e.g. registration, login, settings)
+type IdentityFlow struct {
+	ID        uuid.UUID    `json:"id"`
+	FlowType  string       `json:"type"`  // "registration", "login", etc
+	State     string       `json:"state"` // "choose_method", "passed_challenge"
+	UINodes   []FlowUINode `json:"ui_nodes"`
+	CSRFToken string       `json:"-"`
+	ExpiresAt time.Time    `json:"expires_at"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
+}
+
+// FlowSubmitPayload is used to submit data to a flow
+type FlowSubmitPayload struct {
+	Method    string                 `json:"method"` // "password", "webauthn"
+	CSRFToken string                 `json:"csrf_token"`
+	Traits    map[string]interface{} `json:"traits,omitempty"`
+	Password  string                 `json:"password,omitempty"`
+}

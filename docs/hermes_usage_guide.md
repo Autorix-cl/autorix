@@ -1,6 +1,6 @@
 # Autorix Hermes: Enterprise SAML 2.0 & SCIM 2.0 Federation Manual
 
-**Autorix Hermes** is an enterprise identity federation bridge inspired by Ory Polis. It bridges enterprise Identity Providers (Okta, Microsoft Entra ID / Azure AD, Google Workspace, PingIdentity) to the Autorix IAM suite via **SAML 2.0** and **SCIM 2.0 (RFC 7643 / RFC 7644)** automated user provisioning.
+**Autorix Hermes** is an enterprise identity federation bridge inspired by Ory Polis. It connects enterprise Identity Providers (Okta, Microsoft Entra ID / Azure AD, Google Workspace, PingIdentity) to the Autorix IAM suite via **SAML 2.0 Web SSO** and **SCIM 2.0 (RFC 7643 / RFC 7644)** automated user provisioning.
 
 ---
 
@@ -9,7 +9,7 @@
 ```text
    [ Enterprise IdP ] (Okta / Entra ID / Google)
            │                                 │
-           ▼ (SAML 2.0 Web SSO)              ▼ (SCIM 2.0 Continuous Sync RFC 7644)
+           ▼ (SAML 2.0 Web SSO)              ▼ (SCIM 2.0 Inbound Sync RFC 7644)
    ┌────────────────────────────────────────────────────────────────────────┐
    │                          Autorix Hermes                                │
    │                                                                        │
@@ -21,149 +21,97 @@
                     │                                  │
                     ▼                                  ▼
            [ Autorix Ego ] ◄───────────────────────────┘
-           (Creates & syncs identities and groups in Ego)
+           (Synchronizes users & groups into Ego Identity database)
 ```
 
 ---
 
 ## 🏢 2. SAML 2.0 Single Sign-On (SSO)
 
-Hermes acts as a SAML 2.0 **Service Provider (SP)**. It generates signed `AuthnRequest` XML envelopes and parses incoming assertions from IdPs at its Assertion Consumer Service (ACS).
+Hermes acts as a SAML 2.0 **Service Provider (SP)**. It generates signed `AuthnRequest` XML messages and parses incoming assertions from IdPs at its Assertion Consumer Service (ACS).
 
-### 2.1 Service Provider (SP) Metadata
+### 2.1 Service Provider Metadata (`GET /saml/metadata`)
 
-Enterprise administrators can download Hermes SP metadata for import into Okta/Azure:
+Enterprise identity administrators download Hermes SP metadata for import into Okta, Azure AD, or Google Workspace:
 
 ```bash
 curl -s http://localhost:4477/saml/metadata
 ```
 
-**XML Response:**
-```xml
-<EntityDescriptor entityID="http://localhost:4477/saml/metadata" xmlns="urn:oasis:names:tc:SAML:2.0:metadata">
-  <SPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
-    <NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</NameIDFormat>
-    <AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
-                              Location="http://localhost:4477/saml/acs"
-                              index="1" isDefault="true"/>
-  </SPSSODescriptor>
-</EntityDescriptor>
-```
+---
 
-### 2.2 Registering an Enterprise SAML IdP
+## 👥 3. SCIM 2.0 Directory Synchronization (RFC 7643 / RFC 7644)
 
-```bash
-curl -X POST http://localhost:4477/admin/saml/providers \
-  -H "Content-Type: application/json" \
-  -d '{
-    "id": "idp_okta_enterprise",
-    "name": "Acme Corp Okta",
-    "entity_id": "http://www.okta.com/exk123456789",
-    "sso_url": "https://acme.okta.com/app/acme_autorix/sso/saml",
-    "x509_cert": "-----BEGIN CERTIFICATE-----\nMIIDpDCCAoygAwIBAgIGAX...\n-----END CERTIFICATE-----",
-    "attribute_mapping": {
-      "email": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
-      "name": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
-      "department": "department"
-    }
-  }'
+SCIM enables continuous, automated user and group provisioning and deprovisioning when employees join, change roles, or leave the company.
+
+---
+
+## 📡 4. Complete REST & XML API Reference
+
+Hermes operates on port `4477`.
+
+### 4.1 SAML 2.0 Endpoints
+
+- `GET /saml/metadata`: Returns SP metadata XML envelope.
+- `GET /saml/login?provider={id}`: Generates an `AuthnRequest` URL and redirects the browser to the enterprise IdP.
+- `POST /saml/acs`: Assertion Consumer Service endpoint handling incoming `SAMLResponse` form submissions.
+
+---
+
+### 4.2 SAML IdP Provider Administration
+
+- `POST /admin/saml/providers`: Register a new SAML IdP provider.
+- `GET /admin/saml/providers`: List registered SAML providers with pagination.
+- `GET /admin/saml/providers/{id}`: Get provider configuration.
+- `PATCH /admin/saml/providers/{id}`: Update provider settings or attribute mappings.
+- `DELETE /admin/saml/providers/{id}`: Remove a provider.
+- `POST /admin/saml/providers/{id}/enable`: Enable provider.
+- `POST /admin/saml/providers/{id}/disable`: Disable provider.
+
+#### Register SAML Provider Request Body
+```json
+{
+  "id": "idp_okta_enterprise",
+  "display_name": "Acme Corp Okta",
+  "idp_entity_id": "http://www.okta.com/exk123456789",
+  "idp_sso_url": "https://acme.okta.com/app/acme_autorix/sso/saml",
+  "idp_certificate_pem": "-----BEGIN CERTIFICATE-----\nMIIDpDCCAoygAwIBAgIGAX...\n-----END CERTIFICATE-----",
+  "attribute_mapping": {
+    "email": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+    "name": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
+    "department": "department"
+  },
+  "enabled": true
+}
 ```
 
 ---
 
-## 👥 3. SCIM 2.0 User & Group Synchronization (RFC 7643 / 7644)
+### 4.3 SCIM 2.0 Endpoints
 
-SCIM (System for Cross-domain Identity Management) enables automated identity provisioning and deprovisioning when employees join, change roles, or leave an enterprise.
+- `GET /scim/v2/ServiceProviderConfig`: Returns SCIM capabilities (filter, patch, authentication schemes).
+- `GET /scim/v2/Users`: Lists SCIM users formatted according to RFC 7643.
+- `POST /scim/v2/Users`: Provisions a new user identity.
+- `GET /scim/v2/Groups`: Lists SCIM groups.
+- `POST /scim/v2/Groups`: Provisions a new group.
+- `GET /scim/v2/Groups/{id}`: Retrieves a group by UUID.
+- `PUT /scim/v2/Groups/{id}` & `PATCH /scim/v2/Groups/{id}`: Updates group members and display name.
+- `DELETE /scim/v2/Groups/{id}`: Deletes a group.
 
-### 3.1 Service Provider Configuration (`GET /scim/v2/ServiceProviderConfig`)
+---
 
-```bash
-curl -s http://localhost:4477/scim/v2/ServiceProviderConfig
-```
+### 4.4 SCIM Sync History & Auditing
 
-**Response:**
-```json
-{
-  "schemas": ["urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"],
-  "patch": { "supported": true },
-  "bulk": { "supported": false },
-  "filter": { "supported": true, "maxResults": 100 },
-  "changePassword": { "supported": false },
-  "sort": { "supported": false },
-  "etag": { "supported": false },
-  "authenticationSchemes": [
-    {
-      "name": "OAuth Bearer Token",
-      "description": "Authentication scheme using the OAuth Bearer Standard",
-      "specUri": "http://www.rfc-editor.org/info/rfc6750",
-      "type": "oauthbearertoken",
-      "primary": true
-    }
-  ]
-}
-```
+- `GET /admin/scim/sync-history`: Retrieves execution logs of past directory sync webhooks.
+- `POST /admin/scim/sync-history`: Records a synchronization audit batch.
 
-### 3.2 Provisioning a User via SCIM (`POST /scim/v2/Users`)
+---
 
-```bash
-curl -X POST http://localhost:4477/scim/v2/Users \
-  -H "Content-Type: application/scim+json" \
-  -H "Authorization: Bearer <scim_api_token>" \
-  -d '{
-    "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
-    "userName": "john.wick@continental.com",
-    "name": {
-      "givenName": "John",
-      "familyName": "Wick"
-    },
-    "emails": [
-      {
-        "value": "john.wick@continental.com",
-        "primary": true
-      }
-    ],
-    "active": true
-  }'
-```
+## 🛠️ 5. Production Recipes
 
-**Response (`201 Created`):**
-```json
-{
-  "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
-  "id": "usr_scim_998877",
-  "userName": "john.wick@continental.com",
-  "name": { "givenName": "John", "familyName": "Wick" },
-  "active": true,
-  "meta": {
-    "resourceType": "User",
-    "created": "2026-08-20T09:00:00Z",
-    "location": "http://localhost:4477/scim/v2/Users/usr_scim_998877"
-  }
-}
-```
-
-### 3.3 Deactivating a Deprovisioned User (`PATCH /scim/v2/Users/{id}`)
-
-```bash
-curl -X PATCH http://localhost:4477/scim/v2/Users/usr_scim_998877 \
-  -H "Content-Type: application/scim+json" \
-  -H "Authorization: Bearer <scim_api_token>" \
-  -d '{
-    "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
-    "Operations": [
-      {
-        "op": "replace",
-        "path": "active",
-        "value": false
-      }
-    ]
-  }'
-```
-
-Hermes immediately updates the identity state in Ego to `suspended` and revokes all active sessions.
-
-### 3.4 Group Management (`/scim/v2/Groups`)
-
-* `GET /scim/v2/Groups`: Lists synchronized directory groups.
-* `POST /scim/v2/Groups`: Creates a group with initial members.
-* `PATCH /scim/v2/Groups/{id}`: Adds or removes group members.
+### Okta SAML 2.0 Integration Recipe
+1. In Okta Admin Console, create a new SAML 2.0 Application.
+2. Set Single Sign-On URL to `http://<hermes-host>:4477/saml/acs`.
+3. Set Audience URI (SP Entity ID) to `http://<hermes-host>:4477/saml/metadata`.
+4. Copy Okta's Identity Provider Single Sign-On URL and X.509 Certificate.
+5. Register provider in Hermes via `POST /admin/saml/providers`.

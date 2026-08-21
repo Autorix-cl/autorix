@@ -48,7 +48,9 @@ If a network partition occurs and retries are exhausted, the SDK **always return
 
 ### 2. Resilience: Exponential Backoff & Full Jitter
 To prevent *Thundering Herd* spikes against the database during cluster failovers, all SDKs implement randomized jitter backoff:
-$$\text{Sleep Delay} = \text{UniformRandom}(0, \min(\text{InitialDelay} \times \text{Factor}^{\text{Attempt}}, \text{MaxDelay}))$$
+```text
+Sleep Delay = UniformRandom(0, min(InitialDelay * Factor^Attempt, MaxDelay))
+```
 
 ### 3. Vectorized Parallel Execution (`BatchCheck`)
 Instead of executing sequential HTTP round-trips for each resource on a page, batch checks evaluate all permissions concurrently across worker pools.

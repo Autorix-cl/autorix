@@ -497,3 +497,131 @@ func decodeClientCursor(cursor string) (time.Time, string, error) {
 	}
 	return createdAt, parts[1], nil
 }
+// CreateLoginChallenge stores a new login challenge
+func (r *Repository) CreateLoginChallenge(ctx context.Context, challenge *core.LoginChallenge) error {
+	now := time.Now()
+	query := `
+		INSERT INTO oauth2_login_challenges (
+			challenge, client_id, redirect_uri, response_type, scopes, state, nonce,
+			code_challenge, code_challenge_method, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+	_, err := r.pool.Exec(ctx, query,
+		challenge.Challenge, challenge.ClientID, challenge.RedirectURI, challenge.ResponseType,
+		challenge.Scopes, challenge.State, challenge.Nonce, challenge.CodeChallenge,
+		challenge.CodeChallengeMethod, now,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert login challenge: %w", err)
+	}
+	challenge.CreatedAt = now
+	return nil
+}
+
+// GetLoginChallenge retrieves a login challenge
+func (r *Repository) GetLoginChallenge(ctx context.Context, challenge string) (*core.LoginChallenge, error) {
+	query := `
+		SELECT challenge, client_id, redirect_uri, response_type, scopes, state, nonce,
+		       code_challenge, code_challenge_method, subject, login_verifier, handled_at, created_at
+		FROM oauth2_login_challenges
+		WHERE challenge = $1
+	`
+	var c core.LoginChallenge
+	var subject, loginVerifier *string
+	err := r.pool.QueryRow(ctx, query, challenge).Scan(
+		&c.Challenge, &c.ClientID, &c.RedirectURI, &c.ResponseType, &c.Scopes, &c.State, &c.Nonce,
+		&c.CodeChallenge, &c.CodeChallengeMethod, &subject, &loginVerifier, &c.HandledAt, &c.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to query login challenge: %w", err)
+	}
+	if subject != nil {
+		c.Subject = *subject
+	}
+	if loginVerifier != nil {
+		c.LoginVerifier = *loginVerifier
+	}
+	return &c, nil
+}
+
+// UpdateLoginChallenge updates a login challenge (e.g., when accepted)
+func (r *Repository) UpdateLoginChallenge(ctx context.Context, c *core.LoginChallenge) error {
+	query := `
+		UPDATE oauth2_login_challenges
+		SET subject = $2, login_verifier = $3, handled_at = $4
+		WHERE challenge = $1
+	`
+	tag, err := r.pool.Exec(ctx, query, c.Challenge, c.Subject, c.LoginVerifier, c.HandledAt)
+	if err != nil {
+		return fmt.Errorf("failed to update login challenge: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// CreateConsentChallenge stores a new consent challenge
+func (r *Repository) CreateConsentChallenge(ctx context.Context, challenge *core.ConsentChallenge) error {
+	now := time.Now()
+	query := `
+		INSERT INTO oauth2_consent_challenges (
+			challenge, login_challenge, client_id, subject, requested_scopes, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6)
+	`
+	_, err := r.pool.Exec(ctx, query,
+		challenge.Challenge, challenge.LoginChallenge, challenge.ClientID, challenge.Subject,
+		challenge.RequestedScopes, now,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert consent challenge: %w", err)
+	}
+	challenge.CreatedAt = now
+	return nil
+}
+
+// GetConsentChallenge retrieves a consent challenge
+func (r *Repository) GetConsentChallenge(ctx context.Context, challenge string) (*core.ConsentChallenge, error) {
+	query := `
+		SELECT challenge, login_challenge, client_id, subject, requested_scopes, granted_scopes,
+		       consent_verifier, handled_at, created_at
+		FROM oauth2_consent_challenges
+		WHERE challenge = $1
+	`
+	var c core.ConsentChallenge
+	var consentVerifier *string
+	err := r.pool.QueryRow(ctx, query, challenge).Scan(
+		&c.Challenge, &c.LoginChallenge, &c.ClientID, &c.Subject, &c.RequestedScopes, &c.GrantedScopes,
+		&consentVerifier, &c.HandledAt, &c.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to query consent challenge: %w", err)
+	}
+	if consentVerifier != nil {
+		c.ConsentVerifier = *consentVerifier
+	}
+	return &c, nil
+}
+
+// UpdateConsentChallenge updates a consent challenge (e.g., when accepted)
+func (r *Repository) UpdateConsentChallenge(ctx context.Context, c *core.ConsentChallenge) error {
+	query := `
+		UPDATE oauth2_consent_challenges
+		SET granted_scopes = $2, consent_verifier = $3, handled_at = $4
+		WHERE challenge = $1
+	`
+	tag, err := r.pool.Exec(ctx, query, c.Challenge, c.GrantedScopes, c.ConsentVerifier, c.HandledAt)
+	if err != nil {
+		return fmt.Errorf("failed to update consent challenge: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

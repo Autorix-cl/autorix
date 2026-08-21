@@ -79,3 +79,32 @@ type TokenResponse struct {
 	IDToken      string `json:"id_token,omitempty"`
 	Scope        string `json:"scope"`
 }
+// LoginChallenge represents a decoupled login request
+type LoginChallenge struct {
+	Challenge           string     `json:"challenge"`
+	ClientID            string     `json:"client_id"`
+	RedirectURI         string     `json:"redirect_uri"`
+	ResponseType        string     `json:"response_type"`
+	Scopes              []string   `json:"scopes"`
+	State               string     `json:"state"`
+	Nonce               string     `json:"nonce"`
+	CodeChallenge       string     `json:"code_challenge"`
+	CodeChallengeMethod string     `json:"code_challenge_method"`
+	Subject             string     `json:"subject"`
+	LoginVerifier       string     `json:"login_verifier"`
+	HandledAt           *time.Time `json:"handled_at"`
+	CreatedAt           time.Time  `json:"created_at"`
+}
+
+// ConsentChallenge represents a decoupled consent request
+type ConsentChallenge struct {
+	Challenge       string     `json:"challenge"`
+	LoginChallenge  string     `json:"login_challenge"`
+	ClientID        string     `json:"client_id"`
+	Subject         string     `json:"subject"`
+	RequestedScopes []string   `json:"requested_scopes"`
+	GrantedScopes   []string   `json:"granted_scopes"`
+	ConsentVerifier string     `json:"consent_verifier"`
+	HandledAt       *time.Time `json:"handled_at"`
+	CreatedAt       time.Time  `json:"created_at"`
+}

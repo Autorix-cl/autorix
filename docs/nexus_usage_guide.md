@@ -1,6 +1,6 @@
 # Autorix Nexus: Zanzibar ReBAC & Authorization Engine Manual
 
-**Autorix Nexus** is an ultra-low latency authorization engine combining **Google Zanzibar** relation graphs with **Attribute-Based Access Control (ABAC)** powered by Google Common Expression Language (CEL). It evaluates complex hierarchical permissions across millions of entities in sub-5ms latency.
+**Autorix Nexus** is an ultra-low latency, fine-grained authorization engine combining **Google Zanzibar** relation graphs with **Attribute-Based Access Control (ABAC)** powered by Google Common Expression Language (CEL). It evaluates complex hierarchical permissions across millions of entities with sub-5ms latency.
 
 ---
 
@@ -8,24 +8,26 @@
 
 Unlike legacy RBAC systems that assign flat roles to users (`alice -> role:admin`), Nexus represents permissions as a **directed graph of relationships**:
 
-$$\text{namespace:object\#relation@subject\_namespace:subject\_id[\#subject\_relation] [with caveat]}$$
+```text
+namespace:object#relation@subject_namespace:subject_id[#subject_relation] [with caveat]
+```
 
 ### 1.1 The Zanzibar Tuple Structure
 
-| Field | Type | Description | Example |
-| :--- | :--- | :--- | :--- |
-| `namespace` | `string` | The resource category or domain boundary. | `documents`, `organizations`, `projects` |
-| `object` | `string` | Unique identifier of the resource instance. | `roadmap_2026_q3`, `org_enterprise_corp` |
-| `relation` | `string` | The named edge linking subject to object. | `owner`, `editor`, `viewer`, `parent` |
-| `subject_namespace` | `string` | Namespace of the subject (defaults to `user`). | `user`, `group`, `service_account` |
-| `subject_id` | `string` | Unique identifier of the subject. | `usr_4455`, `grp_engineering` |
-| `subject_relation` | `string` *(optional)* | Subject set indirection (for group membership). | `member`, `admin` |
-| `caveat_name` | `string` *(optional)* | Name of a registered CEL condition for ABAC. | `require_work_hours`, `ip_in_subnet` |
-| `caveat_context` | `map` *(optional)* | Static binding parameters for the caveat. | `{"allowed_ip": "10.0.0.0/8"}` |
+| Field | Type | Required | Description | Example |
+| :--- | :--- | :--- | :--- | :--- |
+| `namespace` | `string` | **Yes** | The resource category or domain boundary. | `documents`, `organizations`, `projects` |
+| `object` | `string` | **Yes** | Unique identifier of the resource instance. | `roadmap_2026_q3`, `org_enterprise_corp` |
+| `relation` | `string` | **Yes** | The named edge linking subject to object. | `owner`, `editor`, `viewer`, `member`, `parent` |
+| `subject_namespace` | `string` | No (default: `user`) | Namespace of the subject. | `user`, `group`, `service_account` |
+| `subject_id` | `string` | **Yes** | Unique identifier of the subject. | `usr_4455`, `grp_engineering` |
+| `subject_relation` | `string` | No | Subject set indirection (for group membership inheritance). | `member`, `admin` |
+| `caveat_name` | `string` | No | Name of a registered CEL condition for contextual evaluation. | `require_work_hours`, `ip_in_subnet` |
+| `caveat_context` | `object` | No | Static binding parameters for the caveat. | `{"allowed_ip": "10.0.0.0/8"}` |
 
 ### 1.2 Subject Sets & Transitive Inheritance
 
-Nexus natively supports **Subject Sets** (users-in-usersets) allowing infinite hierarchical inheritance without duplicating permissions:
+Nexus natively supports **Subject Sets** (users-in-usersets), allowing infinite hierarchical inheritance without duplicating permissions:
 
 ```text
   [ user:alice ] ──(member)──► [ group:engineering ] ──(editor)──► [ document:roadmap_2026 ]
@@ -40,7 +42,7 @@ When querying `Check(document:roadmap_2026, editor, user:alice)`, Nexus traverse
 
 ## ⚙️ 2. PostgreSQL Storage Engine & Optimization
 
-Nexus stores tuples in the `relation_tuples` table in `autorix_nexus`:
+Nexus stores relation tuples in PostgreSQL (`autorix_nexus` database) with specialized B-tree indexing:
 
 ```sql
 CREATE TABLE relation_tuples (
@@ -92,8 +94,8 @@ curl -X POST http://localhost:8080/admin/namespaces \
   }'
 ```
 
-* **Union**: Grants permission if the subject holds any of the specified relations (e.g. `owner` automatically implies `editor` and `viewer`).
-* **TupleToUserset (`parent.viewer`)**: Inherits permissions from a linked parent resource (e.g. all viewers of a folder can view documents inside it).
+* **Union**: Grants permission if the subject holds any of the specified relations (e.g., `owner` automatically implies `editor` and `viewer`).
+* **TupleToUserset (`parent.viewer`)**: Inherits permissions from a linked parent resource (e.g., all viewers of a parent folder can view documents inside it).
 
 ---
 
@@ -135,32 +137,51 @@ curl -X POST http://localhost:8080/tuples \
 
 ## 📡 5. Complete REST & gRPC API Reference
 
-### 5.1 Evaluate Permission (`POST /check` or gRPC `Check`)
+Nexus exposes both a high-throughput REST API on port `8080` and a gRPC interface on port `50051`.
 
-```bash
-curl -X POST http://localhost:8080/check \
-  -H "Content-Type: application/json" \
-  -d '{
-    "namespace": "databases",
-    "object": "prod_customer_db",
-    "relation": "operator",
-    "subject_namespace": "user",
-    "subject_id": "usr_bob",
-    "request_context": {
-      "hour": 14,
-      "ip": "10.0.4.100"
-    },
-    "explain": true
-  }'
+### 5.1 Evaluate Permission (`POST /check`)
+
+Evaluates whether a subject has a relation on a resource instance, executing graph traversal and CEL caveat validation.
+
+* **Method**: `POST`
+* **Path**: `/check`
+* **Headers**: `Content-Type: application/json`
+
+#### Request Body
+```json
+{
+  "namespace": "documents",
+  "object": "roadmap_2026",
+  "relation": "editor",
+  "subject_namespace": "user",
+  "subject_id": "usr_alice",
+  "subject_relation": "",
+  "request_context": {
+    "hour": 14,
+    "ip": "10.0.4.100"
+  },
+  "explain": true
+}
 ```
 
-**Response (`200 OK`):**
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `namespace` | `string` | **Yes** | Target resource namespace. |
+| `object` | `string` | **Yes** | Target resource instance ID. |
+| `relation` | `string` | **Yes** | Relation or permission being checked. |
+| `subject_namespace` | `string` | No (default `user`) | Namespace of the subject entity. |
+| `subject_id` | `string` | **Yes** | ID of the subject entity. |
+| `subject_relation` | `string` | No | Subject set relation indirection. |
+| `request_context` | `object` | No | Environmental variables passed to CEL caveats. |
+| `explain` | `boolean` | No | If `true`, returns the decision trace. |
+
+#### Response (`200 OK`)
 ```json
 {
   "allowed": true,
   "reason": "caveat_passed",
   "trace": {
-    "node": "databases:prod_customer_db#operator@user:usr_bob",
+    "node": "documents:roadmap_2026#editor@user:usr_alice",
     "depth": 1,
     "caveat_evaluated": "is_business_hours_and_corp_ip",
     "result": true
@@ -168,36 +189,183 @@ curl -X POST http://localhost:8080/check \
 }
 ```
 
-### 5.2 Expand Permission Tree (`POST /expand` or gRPC `Expand`)
+---
 
-Visualizes the complete tree of users and groups that have a given permission:
+### 5.2 List Relation Tuples (`GET /tuples`)
 
-```bash
-curl -X POST http://localhost:8080/expand \
-  -H "Content-Type: application/json" \
-  -d '{
+Lists relation tuples with cursor-based pagination and namespace filtering.
+
+* **Method**: `GET`
+* **Path**: `/tuples`
+* **Query Parameters**:
+  - `namespace` *(string, optional)*: Filter by resource namespace.
+  - `limit` *(integer, optional, default: 50)*: Number of records.
+  - `cursor` *(string, optional)*: Pagination cursor.
+
+#### Response (`200 OK`)
+```json
+{
+  "data": [
+    {
+      "namespace": "documents",
+      "object": "roadmap_2026",
+      "relation": "owner",
+      "subject_namespace": "user",
+      "subject_id": "usr_alice"
+    }
+  ],
+  "next_cursor": "eyJ0IjoiMjAyNi0wOC0yMFQwODozMDowMFoiLCJucyI6ImRvY3VtZW50cyJ9",
+  "has_more": false
+}
+```
+
+---
+
+### 5.3 Write Relation Tuples (`POST /tuples`)
+
+Inserts one or more relation tuples into the graph.
+
+* **Method**: `POST`
+* **Path**: `/tuples`
+* **Headers**: `Content-Type: application/json`
+
+#### Request Body
+```json
+{
+  "tuples": [
+    {
+      "namespace": "documents",
+      "object": "roadmap_2026",
+      "relation": "viewer",
+      "subject_namespace": "group",
+      "subject_id": "grp_engineering",
+      "subject_relation": "member"
+    }
+  ]
+}
+```
+
+#### Response (`201 Created`)
+```json
+[
+  {
     "namespace": "documents",
     "object": "roadmap_2026",
-    "relation": "viewer"
-  }'
+    "relation": "viewer",
+    "subject_namespace": "group",
+    "subject_id": "grp_engineering",
+    "subject_relation": "member"
+  }
+]
 ```
 
-### 5.3 Reverse Lookup: Find Accessible Resources (`POST /lookup/resources`)
+---
 
-Returns all resources of a given type that a user can access:
+### 5.4 Delete Relation Tuples (`DELETE /tuples`)
 
-```bash
-curl -X POST http://localhost:8080/lookup/resources \
-  -H "Content-Type: application/json" \
-  -d '{
-    "namespace": "documents",
-    "relation": "editor",
-    "subject_namespace": "user",
-    "subject_id": "usr_alice"
-  }'
+Removes relation tuples from the graph.
+
+* **Method**: `DELETE`
+* **Path**: `/tuples`
+* **Headers**: `Content-Type: application/json`
+
+#### Request Body
+```json
+{
+  "tuples": [
+    {
+      "namespace": "documents",
+      "object": "roadmap_2026",
+      "relation": "viewer",
+      "subject_namespace": "group",
+      "subject_id": "grp_engineering",
+      "subject_relation": "member"
+    }
+  ]
+}
 ```
 
-**Response:**
+#### Response (`200 OK`)
+```json
+{
+  "status": "deleted"
+}
+```
+
+---
+
+### 5.5 Expand Permission Tree (`POST /expand` / `GET /expand`)
+
+Traverses the graph and returns the full expansion tree of subjects holding a relationship.
+
+* **Method**: `POST` or `GET`
+* **Path**: `/expand`
+* **Query Parameters / JSON Body**: `namespace`, `object`, `relation`.
+
+#### Response (`200 OK`)
+```json
+{
+  "tree": {
+    "type": "union",
+    "children": [
+      {
+        "type": "leaf",
+        "tuple": {
+          "namespace": "documents",
+          "object": "roadmap_2026",
+          "relation": "owner",
+          "subject_namespace": "user",
+          "subject_id": "usr_alice"
+        }
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 5.6 Reverse Lookup: Find Authorized Subjects (`POST /lookup/subjects` / `GET /lookup/subjects`)
+
+Returns all subjects who have a specific relation on a resource instance.
+
+* **Method**: `POST` or `GET`
+* **Path**: `/lookup/subjects`
+* **Request Body / Query Params**:
+```json
+{
+  "namespace": "documents",
+  "object": "roadmap_2026",
+  "relation": "viewer"
+}
+```
+
+#### Response (`200 OK`)
+```json
+{
+  "subjects": ["user:usr_alice", "user:usr_bob", "group:grp_engineering#member"]
+}
+```
+
+---
+
+### 5.7 Reverse Lookup: Find Accessible Resources (`POST /lookup/resources` / `GET /lookup/resources`)
+
+Returns all resource IDs of a given namespace that a subject can access.
+
+* **Method**: `POST` or `GET`
+* **Path**: `/lookup/resources`
+* **Request Body / Query Params**:
+```json
+{
+  "namespace": "documents",
+  "relation": "editor",
+  "subject_namespace": "user",
+  "subject_id": "usr_alice"
+}
+```
+
+#### Response (`200 OK`)
 ```json
 {
   "resources": [
@@ -208,23 +376,73 @@ curl -X POST http://localhost:8080/lookup/resources \
 }
 ```
 
-### 5.4 Reverse Lookup: Find Authorized Subjects (`POST /lookup/subjects`)
+---
 
-Returns all subjects who hold a relationship with an object:
+### 5.8 Admin: Namespace Management
 
-```bash
-curl -X POST http://localhost:8080/lookup/subjects \
-  -H "Content-Type: application/json" \
-  -d '{
-    "namespace": "documents",
-    "object": "roadmap_2026",
-    "relation": "viewer"
-  }'
-```
+- `GET /admin/namespaces`: List all namespace schemas.
+- `POST /admin/namespaces`: Create or update a namespace schema.
+- `GET /admin/namespaces/{name}`: Get a specific namespace schema.
+- `DELETE /admin/namespaces/{name}`: Delete a namespace schema.
 
 ---
 
-## 🛠️ 6. Production Recipes
+### 5.9 Admin: Caveat Management
+
+- `GET /admin/caveats`: List registered CEL caveat definitions.
+- `POST /admin/caveats`: Register or update a CEL caveat.
+- `GET /admin/caveats/{name}`: Get a caveat definition.
+- `DELETE /admin/caveats/{name}`: Delete a caveat definition.
+
+---
+
+### 5.10 gRPC Interface (`:50051`)
+
+Nexus implements `nexus.v1.NexusService` defined in `nexus/proto/nexus.proto`:
+- `Check(CheckRequest) returns (CheckResponse)`
+- `Expand(ExpandRequest) returns (ExpandResponse)`
+- `LookupSubjects(LookupSubjectsRequest) returns (LookupSubjectsResponse)`
+- `LookupResources(LookupResourcesRequest) returns (LookupResourcesResponse)`
+
+---
+
+## 📜 6. Autorix Permission Language (APL)
+
+Nexus includes a built-in Lexer/Parser for **Autorix Permission Language (APL)**, providing Ory Keto OPL parity. Instead of handcrafting complex JSON schemas for userset rewrites, you can define relationships and permissions using clean TypeScript-like class syntax:
+
+```typescript
+import { Namespace, Context } from "@autorix/nexus-types"
+
+class Document implements Namespace {
+  related: {
+    owner: User[]
+    editor: User[]
+    viewer: User[]
+    parent: Folder[]
+  }
+
+  permits = {
+    view: (ctx: Context): boolean =>
+      this.related.viewer.includes(ctx.subject) ||
+      this.related.editor.includes(ctx.subject) ||
+      this.related.owner.includes(ctx.subject) ||
+      this.related.parent.traverse((p) => p.related.view),
+
+    edit: (ctx: Context): boolean =>
+      this.related.editor.includes(ctx.subject) ||
+      this.related.owner.includes(ctx.subject),
+
+    owner: (ctx: Context): boolean =>
+      this.related.owner.includes(ctx.subject)
+  }
+}
+```
+
+The APL compiler transforms this directly into Zanzibar `computed_userset`, `tuple_to_userset`, and `union` rewrite rules stored in `namespace_schemas`.
+
+---
+
+## 🛠️ 7. Production Recipes
 
 ### Multi-Tenant Document Hierarchy Recipe
 

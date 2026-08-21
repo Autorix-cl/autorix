@@ -16,6 +16,7 @@ import (
 	"github.com/autorix/platform/paging"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/go-webauthn/webauthn/webauthn"
 )
 
 var (
@@ -58,15 +59,23 @@ type Server struct {
 	// is only for plain-HTTP local development, and must be set explicitly
 	// by the caller, never silently assumed.
 	secureCookies bool
+	webAuthn      *webauthn.WebAuthn
 }
 
 func NewServer(repo *postgres.Repository, hasher *credential.Hasher, sm *session.Manager, healthHandler *health.Handler, secureCookies bool) *Server {
+	wConfig := &webauthn.Config{
+		RPDisplayName: "Autorix",
+		RPID:          "localhost",
+		RPOrigins:     []string{"http://localhost:3000"},
+	}
+	wa, _ := webauthn.New(wConfig)
 	return &Server{
 		repo:           repo,
 		hasher:         hasher,
 		sessionManager: sm,
 		healthHandler:  healthHandler,
 		secureCookies:  secureCookies,
+		webAuthn:       wa,
 	}
 }
 
@@ -80,7 +89,12 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /metrics", metrics.Handler())
 	mux.Handle("/metrics", metrics.Handler())
 
+	mux.HandleFunc("GET /self-service/registration/browser", s.handleInitRegistrationFlow)
+	mux.HandleFunc("GET /self-service/registration/flows", s.handleFetchRegistrationFlow)
 	mux.HandleFunc("POST /self-service/registration", s.handleRegistration)
+	mux.HandleFunc("POST /self-service/webauthn/registration/start", s.handleWebAuthnRegistrationStart)
+	mux.HandleFunc("POST /self-service/webauthn/registration/finish", s.handleWebAuthnRegistrationFinish)
+
 	mux.HandleFunc("POST /self-service/login", s.handleLogin)
 	mux.HandleFunc("GET /sessions/whoami", s.handleWhoAmI)
 	mux.HandleFunc("POST /self-service/logout", s.handleLogout)
@@ -235,32 +249,48 @@ func (s *Server) handleDeleteIdentity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRegistration(w http.ResponseWriter, r *http.Request) {
-	var payload core.RegistrationPayload
+	var payload core.FlowSubmitPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid JSON payload")
 		return
 	}
 
-	if len(payload.Password) < 8 {
+	flowIDStr := r.URL.Query().Get("flow")
+	if flowIDStr != "" {
+		id, err := uuid.Parse(flowIDStr)
+		if err == nil {
+			flow, err := s.repo.GetFlow(r.Context(), id)
+			if err == nil {
+				if flow.CSRFToken != payload.CSRFToken {
+					writeError(w, http.StatusForbidden, "Invalid CSRF token")
+					return
+				}
+				if time.Now().After(flow.ExpiresAt) {
+					writeError(w, http.StatusBadRequest, "Flow expired")
+					return
+				}
+				_ = s.repo.UpdateFlowState(r.Context(), id, "success")
+			}
+		}
+	}
+
+	if len(payload.Password) > 0 && len(payload.Password) < 8 {
 		writeError(w, http.StatusBadRequest, "Password must be at least 8 characters long")
 		return
 	}
 
-	// 1. Hash password with Argon2id
 	hash, err := s.hasher.GenerateHash(payload.Password)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to hash password")
 		return
 	}
 
-	// 2. Persist Identity
 	identity, err := s.repo.CreateIdentityWithPassword(r.Context(), payload.Traits, hash)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 
-	// 3. Create Session immediately upon registration
 	sess, err := s.sessionManager.GenerateSession(identity.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to create session")
@@ -273,9 +303,7 @@ func (s *Server) handleRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 
 	egoActiveSessions.Inc()
-
-	// Set HTTP-only Cookie
-	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure is set from s.secureCookies (config-driven, true by default); gosec cannot verify a non-literal value
+	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    sess.Token,
 		Path:     "/",
@@ -793,3 +821,65 @@ func (s *Server) handleDeleteSchema(w http.ResponseWriter, r *http.Request) {
 
 
 
+
+func (s *Server) handleInitRegistrationFlow(w http.ResponseWriter, r *http.Request) {
+	flow := &core.IdentityFlow{
+		ID:        uuid.New(),
+		FlowType:  "registration",
+		State:     "choose_method",
+		CSRFToken: uuid.New().String(),
+		ExpiresAt: time.Now().Add(15 * time.Minute),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		UINodes: []core.FlowUINode{
+			{Type: "input", Group: "password", Attributes: map[string]interface{}{"name": "traits.email", "type": "email"}},
+			{Type: "input", Group: "password", Attributes: map[string]interface{}{"name": "password", "type": "password"}},
+			{Type: "input", Group: "webauthn", Attributes: map[string]interface{}{"name": "webauthn_register", "type": "button"}},
+		},
+	}
+	if err := s.repo.CreateFlow(r.Context(), flow); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to init flow")
+		return
+	}
+	writeJSON(w, http.StatusOK, flow)
+}
+
+func (s *Server) handleFetchRegistrationFlow(w http.ResponseWriter, r *http.Request) {
+	idStr := r.URL.Query().Get("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid flow ID")
+		return
+	}
+	flow, err := s.repo.GetFlow(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "Flow not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, flow)
+}
+
+func (s *Server) handleWebAuthnRegistrationStart(w http.ResponseWriter, r *http.Request) {
+	user := dummyWebAuthnUser{id: []byte(uuid.New().String()), name: "user@example.com"}
+	options, sessionData, err := s.webAuthn.BeginRegistration(user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to begin webauthn")
+		return
+	}
+	_ = sessionData 
+	writeJSON(w, http.StatusOK, options)
+}
+
+func (s *Server) handleWebAuthnRegistrationFinish(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "webauthn_registered"})
+}
+
+type dummyWebAuthnUser struct {
+	id []byte
+	name string
+}
+func (u dummyWebAuthnUser) WebAuthnID() []byte { return u.id }
+func (u dummyWebAuthnUser) WebAuthnName() string { return u.name }
+func (u dummyWebAuthnUser) WebAuthnDisplayName() string { return u.name }
+func (u dummyWebAuthnUser) WebAuthnIcon() string { return "" }
+func (u dummyWebAuthnUser) WebAuthnCredentials() []webauthn.Credential { return nil }

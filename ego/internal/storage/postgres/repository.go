@@ -986,3 +986,69 @@ func (r *Repository) DeleteSchema(ctx context.Context, id string) error {
 
 
 
+
+// --- Flow State-Machine Methods ---
+
+func (r *Repository) CreateFlow(ctx context.Context, flow *core.IdentityFlow) error {
+	uiNodesJSON, err := json.Marshal(flow.UINodes)
+	if err != nil {
+		return fmt.Errorf("failed to marshal ui nodes: %w", err)
+	}
+	_, err = r.pool.Exec(ctx, `
+		INSERT INTO identity_flows (id, flow_type, state, ui_nodes, csrf_token, expires_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, flow.ID, flow.FlowType, flow.State, uiNodesJSON, flow.CSRFToken, flow.ExpiresAt, flow.CreatedAt, flow.UpdatedAt)
+	return err
+}
+
+func (r *Repository) GetFlow(ctx context.Context, id uuid.UUID) (*core.IdentityFlow, error) {
+	var f core.IdentityFlow
+	var uiNodesJSON []byte
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, flow_type, state, ui_nodes, csrf_token, expires_at, created_at, updated_at
+		FROM identity_flows WHERE id = $1
+	`, id).Scan(&f.ID, &f.FlowType, &f.State, &uiNodesJSON, &f.CSRFToken, &f.ExpiresAt, &f.CreatedAt, &f.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	_ = json.Unmarshal(uiNodesJSON, &f.UINodes)
+	return &f, nil
+}
+
+func (r *Repository) UpdateFlowState(ctx context.Context, id uuid.UUID, state string) error {
+	_, err := r.pool.Exec(ctx, `UPDATE identity_flows SET state = $1, updated_at = $2 WHERE id = $3`, state, time.Now(), id)
+	return err
+}
+
+// --- WebAuthn Methods ---
+
+func (r *Repository) GetWebAuthnCredentials(ctx context.Context, identityID uuid.UUID) ([]map[string]interface{}, error) {
+	rows, err := r.pool.Query(ctx, `SELECT credential_data FROM credentials WHERE identity_id = $1 AND credential_type = 'webauthn'`, identityID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var creds []map[string]interface{}
+	for rows.Next() {
+		var dataJSON []byte
+		if err := rows.Scan(&dataJSON); err == nil {
+			var data map[string]interface{}
+			if err := json.Unmarshal(dataJSON, &data); err == nil {
+				creds = append(creds, data)
+			}
+		}
+	}
+	return creds, nil
+}
+
+func (r *Repository) AddWebAuthnCredential(ctx context.Context, identityID uuid.UUID, credentialData map[string]interface{}) error {
+	dataJSON, _ := json.Marshal(credentialData)
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO credentials (id, identity_id, credential_type, credential_data, created_at, updated_at)
+		VALUES ($1, $2, 'webauthn', $3, $4, $4)
+	`, uuid.New(), identityID, dataJSON, time.Now())
+	return err
+}
