@@ -1,10 +1,25 @@
-# Autorix: Next-Generation Zero-Trust IAM Ecosystem
+# Autorix: Next-Generation Zero-Trust IAM
 
-**Autorix** is a high-performance, modular Zero-Trust Identity and Access Management (IAM) suite engineered in Go and TypeScript/Next.js. Inspired by the Ory architecture and Google Zanzibar, Autorix delivers decoupled microservices providing authentication, ReBAC/ABAC authorization, OAuth2/OIDC, reverse proxy PEP enforcement, high-entropy Macaroon API keys, enterprise SAML/SCIM directory federation, cryptographic immutable audit logging, and continuous SOC 2/ISO 27001 compliance verification.
+Autorix is a high-performance, modular Identity and Access Management (IAM) suite. It provides authentication, authorization (ReBAC/ABAC), OAuth2/OIDC, and Zero-Trust proxy enforcement, all backed by cryptographic audit logging.
 
----
+## Quick start
 
-## 🏛️ Ecosystem Architecture
+Launch the entire 9-service cluster (with isolated PostgreSQL databases and Prometheus monitoring) in one command:
+
+```bash
+docker compose up -d --build
+```
+
+1. Open **[http://localhost:3000](http://localhost:3000)** in your browser.
+2. Get your bootstrap token from the logs:
+   ```bash
+   docker logs autorix-argus | grep "Bootstrap token"
+   ```
+3. Complete the setup wizard to create your root administrator account.
+
+> **Default Local Credentials:** `admin@autorix.local` / `SecretMasterKey#2026`
+
+## Architecture at a glance
 
 ```text
                                          [ EXTERNAL TRAFFIC ]
@@ -32,66 +47,35 @@
                         └──────────────┘    └──────────────┘    └──────────────┘
 ```
 
-### Microservice Catalog
+## Core Engines
 
-| Component | Ports | Protocol | Role & Architecture |
-| :--- | :--- | :--- | :--- |
-| **Autorix Argus** | `4400` (HTTP) / `50053` (gRPC) | REST / gRPC | **Fleet Control Plane & Governance**: Token enrollment (`aet_...`), instance registry, heartbeats, topology, operator sessions, SHA-256 chained audit trail, continuous compliance. |
-| **Autorix Console** | `3000` | HTTP / React | **Administrative Control Plane UI**: Next.js 15 App Router, isolated `/login` & `/setup` shells, Studio management interfaces, live Merkle audit verification, real-time fleet notifications. |
-| **Autorix Nexus** | `50051` (gRPC) / `8080` (HTTP) | gRPC / REST | **Fine-Grained ReBAC Engine**: Google Zanzibar relation tuples (`user:X#member@group:Y`), graph traversal, high-throughput Check API. |
-| **Autorix Ego** | `4433` | REST | **Identity & Lifecycle Engine**: Dynamic JSON schema identity traits, Argon2id password hashing, TOTP MFA, recovery codes, secure sessions. |
-| **Autorix Janus** | `4444` | REST / OIDC | **OAuth 2.0 & OIDC Server**: PKCE S256, RS256 JWKS asymmetric keys, authorization code, client credentials, refresh token flows. |
-| **Autorix Aegis** | `4455` (Proxy) / `4456` (Admin) | HTTP Reverse PEP | **Zero-Trust Access Proxy**: Intercepts requests, enforces Bearer/API-key authenticators, evaluates Nexus/Themis authorizers, mutates upstream headers. |
-| **Autorix Vulcan** | `4466` | REST | **Capability & API Key Engine**: High-entropy prefixed keys (`av_live_...`), HMAC-SHA256 chained Macaroons with offline caveat attenuation. |
-| **Autorix Hermes** | `4477` | REST / XML | **Enterprise Federation Bridge**: SAML 2.0 SP/IdP bridge, SCIM 2.0 (RFC 7643/RFC 7644) automated user/group directory synchronization. |
-| **Autorix Themis** | `50052` (gRPC) / `4488` (HTTP) | gRPC / REST | **ABAC Policy Engine**: Google Common Expression Language (CEL) policy evaluator with priority ranking and context injection. |
-| **Prometheus** | `9090` | HTTP | **Telemetry & Observability**: Standard RED metrics (Rate, Errors, Duration) across all 7 engines and Argus control plane. |
+| Component | Role | Protocols |
+|-----------|------|-----------|
+| **Argus** | Fleet Control Plane, Governance & Audit | REST / gRPC |
+| **Console** | Admin UI (Next.js 15) | HTTP |
+| **Nexus** | Fine-Grained ReBAC (Google Zanzibar) | gRPC / REST |
+| **Ego** | Identity, Traits & MFA | REST |
+| **Janus** | OAuth 2.0 & OIDC Server | REST |
+| **Aegis** | Zero-Trust Proxy (PEP) | HTTP |
+| **Vulcan** | API Keys & Macaroons | REST |
+| **Hermes** | SAML/SCIM Federation | REST / XML |
+| **Themis** | ABAC Policy Engine (CEL) | gRPC / REST |
 
----
+## Security Guarantees
 
-## 🚀 Quick Start (Docker Compose)
+- [x] **Zero Standing Privileges**: Validated at ingress (Aegis) and engine level (Nexus/Themis).
+- [x] **Tamper-Evident Logs**: SHA-256 linked audit records verifiable via `/v1/audit/verify`.
+- [x] **Memory-Hard Crypto**: Argon2id for passwords (64MB memory cost).
+- [x] **Decentralized Attenuation**: API keys use HMAC-SHA256 Macaroons.
 
-Launch the entire 9-service cluster with isolated PostgreSQL databases and Prometheus monitoring with a single command:
+## Testing
 
-```bash
-docker compose up -d --build
-```
-
-### Initial Bootstrap & Root Owner Setup
-
-1. Open your browser and navigate to the Console:
-   ```text
-   http://localhost:3000
-   ```
-2. **First-Time Setup**: If no root administrator exists, Autorix automatically redirects you to the Initial Bootstrap Wizard (`/setup`).
-3. Enter the bootstrap token generated by Argus (visible in Docker logs or configured during deployment):
-   ```bash
-   docker logs autorix-argus | grep "Bootstrap token generated"
-   ```
-4. Create the Master Administrator account. Once created, the cluster is locked and ready for operation.
-
-### Default Local Development Credentials
-
-| Role | Email | Password |
-| :--- | :--- | :--- |
-| **Master Owner** | `admin@autorix.local` | `SecretMasterKey#2026` |
-
----
-
-## 🧪 Testing & Validation
-
-All microservices adhere to strict test coverage requirements (unit tests, integration testcontainers, and Playwright E2E suites):
+<details>
+<summary>Click to view testing commands</summary>
 
 ```bash
 # Run backend tests
-(cd argus && go test -v ./...)
-(cd nexus && go test -v ./...)
-(cd ego && go test -v ./...)
-(cd janus && go test -v ./...)
-(cd aegis && go test -v ./...)
-(cd vulcan && go test -v ./...)
-(cd hermes && go test -v ./...)
-(cd themis && go test -v ./...)
+for dir in argus nexus ego janus aegis vulcan hermes themis; do (cd $dir && go test -v ./...); done
 
 # Run console unit tests and production build
 (cd console && npm test && npm run build)
@@ -99,31 +83,13 @@ All microservices adhere to strict test coverage requirements (unit tests, integ
 # Run console Playwright E2E acceptance tests
 (cd console && npx playwright test)
 ```
+</details>
 
----
+## Next steps
 
-## 📚 Documentation & User Manuals
+- 📘 [Master API Reference](docs/api_reference_and_integration_guide.md)
+- 🛠️ [Operations & Runbook](docs/operations_and_runbook.md)
+- ☸️ [Kubernetes Deployment](docs/production_k8s_guide.md)
+- 📦 [SDK Integration](docs/sdks_integration_guide.md)
 
-* 📘 [Master API Reference & Integration Guide](docs/api_reference_and_integration_guide.md)
-* 🎯 [Autorix Argus: Control Plane, Audit Trail & Compliance Guide](docs/argus_usage_guide.md)
-* 🖥️ [Autorix Console: Administration & Studio User Guide](docs/console_usage_guide.md)
-* ⚖️ [Autorix Themis: ABAC CEL Policy Engine Guide](docs/themis_usage_guide.md)
-* 🧠 [Autorix Nexus: Zanzibar ReBAC & Authorization Guide](docs/nexus_usage_guide.md)
-* 👤 [Autorix Ego: Identity, Argon2id & MFA Guide](docs/ego_usage_guide.md)
-* 🔑 [Autorix Janus: OAuth2 & OpenID Connect Server Guide](docs/janus_usage_guide.md)
-* 🛡️ [Autorix Aegis: Zero-Trust Reverse PEP Proxy Guide](docs/aegis_usage_guide.md)
-* ⚡ [Autorix Vulcan: Macaroons & API Key Management Guide](docs/vulcan_usage_guide.md)
-* 🏢 [Autorix Hermes: SAML 2.0 & SCIM 2.0 Federation Guide](docs/hermes_usage_guide.md)
-* 🛠️ [Operations, Deployment & Troubleshooting Runbook](docs/operations_and_runbook.md)
-* ☸️ [Production Kubernetes Deployment Guide](docs/production_k8s_guide.md)
-* 📦 [SDKs & Client Libraries Integration Guide](docs/sdks_integration_guide.md)
-
----
-
-## 🔒 Security Principles
-
-* **Zero Standing Privileges**: Access is checked continuously at ingress (Aegis PEP) and evaluated at the engine level (Nexus/Themis).
-* **Never Fake a Signal**: All telemetry, latency figures, audit trails, and compliance controls are backed by real database records and cryptographic proofs.
-* **Tamper-Evident Hash Chains**: Every administrative modification in Argus creates a SHA-256 linked audit record verifiable via `/v1/audit/verify`.
-* **Memory-Hard Cryptography**: Passwords enforce Argon2id (64MB memory cost, 3 iterations).
-* **Decentralized Attenuation**: API keys use HMAC-SHA256 Macaroons that can be restricted with caveats by clients without database lookups.
+*(For detailed documentation on specific engines like Ego, Nexus, or Aegis, browse the [`docs/`](docs/) directory).*
