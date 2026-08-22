@@ -1,14 +1,10 @@
 /**
- * Zod parsing at the API boundary (P1-S3-T4). A contract change in an
- * engine now surfaces as a precise validation ApiError here, at the edge —
- * instead of a runtime crash deep inside a component that assumed a field
- * would always be present.
+ * Zod parsing at the API boundary (P1-S3-T4).
  */
 import { z } from "zod";
 import type { ApiResult } from "./client";
 import { fetchJSON, type FetchJSONOptions } from "./client";
 
-/** Parses data against schema, returning an ApiResult instead of throwing. */
 export function parseWithSchema<T>(schema: z.ZodType<T>, data: unknown): ApiResult<T> {
   const result = schema.safeParse(data);
   if (result.success) {
@@ -23,11 +19,6 @@ export function parseWithSchema<T>(schema: z.ZodType<T>, data: unknown): ApiResu
   };
 }
 
-/**
- * Fetches url and parses the response against schema. A transport failure
- * (network, timeout, 4xx/5xx) short-circuits with that ApiError untouched;
- * only a structurally successful response is validated against schema.
- */
 export async function fetchAndParse<T>(
   url: string,
   schema: z.ZodType<T>,
@@ -39,8 +30,7 @@ export async function fetchAndParse<T>(
 }
 
 /**
- * Creates a schema that transparently handles both bare arrays and paginated
- * envelopes ({ data: [...], has_more?: boolean }).
+ * Flattens paginated envelopes to just an array. (Legacy, for components not yet upgraded to server-side pagination).
  */
 export function pagedListSchema<T extends z.ZodTypeAny>(itemSchema: T) {
   return z.union([
@@ -55,3 +45,13 @@ export function pagedListSchema<T extends z.ZodTypeAny>(itemSchema: T) {
   ]);
 }
 
+/**
+ * Retains paginated envelope data for use with server-side pagination DataTables.
+ */
+export function paginatedListSchema<T extends z.ZodTypeAny>(itemSchema: T) {
+  return z.object({
+    data: z.array(itemSchema).nullable().transform((val) => val ?? []),
+    has_more: z.boolean().optional().default(false),
+    next_cursor: z.string().optional().default(""),
+  });
+}

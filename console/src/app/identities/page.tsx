@@ -9,26 +9,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { CodeBlock } from "@/components/ui/code-block";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { useApiMutation } from "@/lib/query/use-api-mutation";
 import { fetchAndParse } from "@/lib/api/schema";
-import { identityListSchema, registrationResponseSchema, type Identity } from "@/lib/api/schemas/identity";
-import { LoadingState } from "@/components/state/loading-state";
-import { EmptyState } from "@/components/state/empty-state";
+import { paginatedIdentityListSchema, registrationResponseSchema, type Identity, type PaginatedIdentities } from "@/lib/api/schemas/identity";
 import { ErrorState } from "@/components/state/error-state";
 import { NotConnectedState } from "@/components/state/not-connected-state";
 import { NotConnectedEngine } from "@/components/resources/not-connected-engine";
 import { useCapabilities } from "@/lib/capabilities/capability-context";
-
-interface IdentityItem {
-  id: string;
-  email: string;
-  name: string;
-  state: string;
-  createdAt: string;
-}
+import { DataTable } from "@/components/ui/data-table";
+import { getColumns, IdentityItem } from "./columns";
+import { IdentitySheet } from "./identity-sheet";
 
 function toIdentityItem(item: Identity): IdentityItem {
   const traits = item.traits as { email?: string; name?: { first?: string; last?: string } };
@@ -40,6 +32,7 @@ function toIdentityItem(item: Identity): IdentityItem {
       : traits?.email?.split("@")[0] || "User",
     state: item.state || "active",
     createdAt: item.created_at ? new Date(item.created_at).toLocaleString() : "Recently",
+    original: item,
   };
 }
 
@@ -52,7 +45,24 @@ export default function IdentitiesPage() {
   const [firstName, setFirstName] = React.useState("");
   const [lastName, setLastName] = React.useState("");
   const [password, setPassword] = React.useState("");
+  
+  const [searchQueryInput, setSearchQueryInput] = React.useState("");
+  // Simple custom hook alternative or just standard useEffect for debounce
   const [searchQuery, setSearchQuery] = React.useState("");
+
+  React.useEffect(() => {
+    const handler = setTimeout(() => {
+      setSearchQuery(searchQueryInput);
+      setCursor("");
+      setCursorHistory([]);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchQueryInput]);
+
+  const [cursor, setCursor] = React.useState("");
+  const [cursorHistory, setCursorHistory] = React.useState<string[]>([]);
+  
+  const [selectedIdentity, setSelectedIdentity] = React.useState<IdentityItem | null>(null);
 
   const {
     data: identitiesRaw,
@@ -61,9 +71,17 @@ export default function IdentitiesPage() {
     isError,
     error,
     refetch,
-  } = useApiQuery(["identities"], () => fetchAndParse<Identity[]>("/api/identities", identityListSchema));
+  } = useApiQuery(
+    ["identities", { q: searchQuery, cursor }],
+    () => fetchAndParse<PaginatedIdentities>(
+      `/api/identities?q=${encodeURIComponent(searchQuery)}&cursor=${encodeURIComponent(cursor)}`, 
+      paginatedIdentityListSchema
+    )
+  );
 
-  const identities: IdentityItem[] = React.useMemo(() => (identitiesRaw ?? []).map(toIdentityItem), [identitiesRaw]);
+  const identities: IdentityItem[] = React.useMemo(() => (identitiesRaw?.data ?? []).map(toIdentityItem), [identitiesRaw]);
+  
+  const columns = React.useMemo(() => getColumns((identity) => setSelectedIdentity(identity)), []);
 
   const createIdentity = useApiMutation(
     (vars: { email: string; firstName: string; lastName: string; password: string }) =>
@@ -89,13 +107,6 @@ export default function IdentitiesPage() {
     if (!email || !password) return;
     createIdentity.mutate({ email, firstName, lastName, password });
   };
-
-  const filteredIdentities = identities.filter(
-    (item) =>
-      item.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.id.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
 
   const schemaJson = `{
   "$id": "https://schemas.autorix.io/default.identity.schema.json",
@@ -135,8 +146,30 @@ export default function IdentitiesPage() {
     );
   }
 
+  const handleNextPage = () => {
+    if (identitiesRaw?.has_more && identitiesRaw.next_cursor) {
+      setCursorHistory((prev) => [...prev, cursor]);
+      setCursor(identitiesRaw.next_cursor);
+    }
+  };
+
+  const handlePrevPage = () => {
+    setCursorHistory((prev) => {
+      const newHistory = [...prev];
+      const prevCursor = newHistory.pop() || "";
+      setCursor(prevCursor);
+      return newHistory;
+    });
+  };
+
   return (
     <div className="space-y-6">
+      <IdentitySheet 
+        identity={selectedIdentity} 
+        isOpen={!!selectedIdentity} 
+        onOpenChange={(open) => !open && setSelectedIdentity(null)} 
+      />
+
       {/* Page Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -270,9 +303,6 @@ export default function IdentitiesPage() {
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <Users className="h-4 w-4 text-blue-400" />
                 <span>{t("identities.tableTitle")}</span>
-                <Badge variant="secondary" className="font-mono text-[10px]">
-                  {identities.length}
-                </Badge>
               </CardTitle>
               <CardDescription className="text-xs">{t("identities.tableDesc")}</CardDescription>
             </div>
@@ -284,8 +314,8 @@ export default function IdentitiesPage() {
                 <Input
                   id="searchQuery"
                   placeholder={t("identities.searchPlaceholder")}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  value={searchQueryInput}
+                  onChange={(e) => setSearchQueryInput(e.target.value)}
                   className="pl-8 h-8 text-xs bg-muted/30"
                 />
               </div>
@@ -294,59 +324,22 @@ export default function IdentitiesPage() {
         </CardHeader>
 
         <CardContent className="p-6 pt-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("identities.colUuid")}</TableHead>
-                <TableHead>{t("identities.colEmail")}</TableHead>
-                <TableHead>{t("identities.colName")}</TableHead>
-                <TableHead>{t("identities.colState")}</TableHead>
-                <TableHead>{t("identities.colCreated")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="p-0">
-                    <LoadingState label="Connecting to Ego PostgreSQL storage..." />
-                  </TableCell>
-                </TableRow>
-              ) : isError ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="p-0">
-                    {error?.kind === "engine-unreachable" ? (
-                      <NotConnectedState engineName="Ego" onRetry={refetch} />
-                    ) : (
-                      <ErrorState error={error} onRetry={refetch} />
-                    )}
-                  </TableCell>
-                </TableRow>
-              ) : filteredIdentities.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="p-0">
-                    <EmptyState
-                      title={t("identities.tableTitle")}
-                      description="No registered identities found in PostgreSQL database."
-                    />
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredIdentities.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-mono text-xs text-blue-400 font-medium">{item.id}</TableCell>
-                    <TableCell className="font-semibold text-foreground">{item.email}</TableCell>
-                    <TableCell className="text-muted-foreground">{item.name}</TableCell>
-                    <TableCell>
-                      <Badge variant={item.state === "active" ? "success" : "secondary"} className="text-[10px]">
-                        {item.state === "active" ? t("common.active") : t("common.inactive")}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs font-mono">{item.createdAt}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+          {isError && error?.kind === "engine-unreachable" ? (
+            <NotConnectedState engineName="Ego" onRetry={refetch} />
+          ) : isError ? (
+            <ErrorState error={error} onRetry={refetch} />
+          ) : (
+            <DataTable 
+              columns={columns} 
+              data={identities} 
+              isLoading={isLoading || isFetching}
+              manualPagination={true}
+              onNextPage={handleNextPage}
+              onPreviousPage={handlePrevPage}
+              canNextPage={!!identitiesRaw?.has_more}
+              canPreviousPage={cursorHistory.length > 0}
+            />
+          )}
         </CardContent>
       </Card>
     </div>

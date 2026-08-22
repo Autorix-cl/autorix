@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pagedListSchema } from "../schema";
+import { pagedListSchema, paginatedListSchema } from "../schema";
 
 // core.Identity
 export const identitySchema = z.object({
@@ -12,8 +12,12 @@ export const identitySchema = z.object({
 });
 export type Identity = z.infer<typeof identitySchema>;
 
-// GET /admin/identities
+// GET /admin/identities (legacy flat array)
 export const identityListSchema = pagedListSchema(identitySchema);
+
+// GET /admin/identities (paginated envelope)
+export const paginatedIdentityListSchema = paginatedListSchema(identitySchema);
+export type PaginatedIdentities = z.infer<typeof paginatedIdentityListSchema>;
 
 // core.Session, as embedded in the registration response. Token is only
 // present at creation time.

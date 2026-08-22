@@ -1,9 +1,22 @@
 import { NextRequest } from "next/server";
 import { proxyRequest } from "@/lib/api/proxy";
-import { identityListSchema, registrationResponseSchema } from "@/lib/api/schemas/identity";
+import { paginatedIdentityListSchema, registrationResponseSchema } from "@/lib/api/schemas/identity";
 
-export async function GET() {
-  return proxyRequest("ego", "/admin/identities", identityListSchema);
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const q = searchParams.get("q") || "";
+  const cursor = searchParams.get("cursor") || "";
+  const limit = searchParams.get("limit") || "50";
+  const state = searchParams.get("state") || "";
+
+  const query = new URLSearchParams();
+  if (q) query.set("q", q);
+  if (cursor) query.set("cursor", cursor);
+  if (limit) query.set("limit", limit);
+  if (state) query.set("state", state);
+
+  const path = `/admin/identities?${query.toString()}`;
+  return proxyRequest("ego", path, paginatedIdentityListSchema);
 }
 
 export async function POST(req: NextRequest) {
