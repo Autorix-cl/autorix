@@ -1,9 +1,18 @@
 import { NextRequest } from "next/server";
 import { proxyRequest } from "@/lib/api/proxy";
-import { apiKeyListSchema, createKeyResponseSchema } from "@/lib/api/schemas/vulcan";
+import { paginatedApiKeyListSchema, createKeyResponseSchema } from "@/lib/api/schemas/vulcan";
 
-export async function GET() {
-  return proxyRequest("vulcan", "/keys", apiKeyListSchema);
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const cursor = searchParams.get("cursor") || "";
+  const limit = searchParams.get("limit") || "50";
+
+  const query = new URLSearchParams();
+  if (cursor) query.set("cursor", cursor);
+  if (limit) query.set("limit", limit);
+
+  const qs = query.toString() ? `?${query.toString()}` : "";
+  return proxyRequest("vulcan", `/keys${qs}`, paginatedApiKeyListSchema);
 }
 
 export async function POST(req: NextRequest) {

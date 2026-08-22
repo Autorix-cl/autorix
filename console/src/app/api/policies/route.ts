@@ -1,10 +1,19 @@
 import { NextRequest } from "next/server";
 import { proxyRequest } from "@/lib/api/proxy";
-import { policyListSchema, policySchema } from "@/lib/api/schemas/themis";
+import { paginatedPolicyListSchema, policySchema } from "@/lib/api/schemas/themis";
 
 export async function GET(req: NextRequest) {
-  const tenantId = req.nextUrl.searchParams.get("tenant_id") || "default";
-  return proxyRequest("themis", `/policies?tenant_id=${encodeURIComponent(tenantId)}`, policyListSchema);
+  const { searchParams } = new URL(req.url);
+  const tenantId = searchParams.get("tenant_id") || "default";
+  const cursor = searchParams.get("cursor") || "";
+  const limit = searchParams.get("limit") || "50";
+
+  const query = new URLSearchParams();
+  query.set("tenant_id", tenantId);
+  if (cursor) query.set("cursor", cursor);
+  if (limit) query.set("limit", limit);
+
+  return proxyRequest("themis", `/policies?${query.toString()}`, paginatedPolicyListSchema);
 }
 
 export async function POST(req: NextRequest) {

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pagedListSchema } from "../schema";
+import { pagedListSchema, paginatedListSchema } from "../schema";
 
 export const policySchema = z.object({
   ID: z.string(),
@@ -17,6 +17,8 @@ export const policySchema = z.object({
 export type Policy = z.infer<typeof policySchema>;
 
 export const policyListSchema = pagedListSchema(policySchema);
+export const paginatedPolicyListSchema = paginatedListSchema(policySchema);
+export type PaginatedPolicies = z.infer<typeof paginatedPolicyListSchema>;
 
 export const policyResultSchema = z.object({
   PolicyID: z.string().optional().default(""),
