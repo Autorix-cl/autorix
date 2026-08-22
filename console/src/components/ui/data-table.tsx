@@ -6,11 +6,11 @@ import {
   RowData,
 } from "@tanstack/react-table";
 import {
-  useLegacyTable as useReactTable,
+  useReactTable,
   getCoreRowModel,
   getPaginationRowModel,
-  LegacyColumnDef as ColumnDef,
-} from "@tanstack/react-table/legacy";
+  ColumnDef,
+} from "@tanstack/react-table";
 
 import {
   Table,
@@ -48,7 +48,6 @@ export function DataTable<TData extends RowData, TValue>({
 }: DataTableProps<TData, TValue>) {
   const table = useReactTable({
     data,
-    // @ts-expect-error Tanstack v9 generic constraints
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),

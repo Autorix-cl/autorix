@@ -1,6 +1,6 @@
 "use client";
 
-import { LegacyColumnDef as ColumnDef } from "@tanstack/react-table/legacy";
+import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MoreHorizontal } from "lucide-react";
@@ -15,7 +15,7 @@ export interface IdentityItem {
   original: Identity;
 }
 
-export const getColumns = (onSelect: (identity: IdentityItem) => void): ColumnDef<IdentityItem>[] => [
+export const getColumns = (onSelect: (identity: IdentityItem) => void): ColumnDef<IdentityItem, unknown>[] => [
   {
     accessorKey: "id",
     header: "ID",

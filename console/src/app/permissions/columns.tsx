@@ -17,7 +17,7 @@ export interface ZanzibarTupleItem {
 
 export const getColumns = (
   onDelete: (tuple: ZanzibarTupleItem) => void,
-): ColumnDef<ZanzibarTupleItem>[] => [
+): ColumnDef<ZanzibarTupleItem, unknown>[] => [
   {
     accessorKey: "namespace",
     header: "Namespace",

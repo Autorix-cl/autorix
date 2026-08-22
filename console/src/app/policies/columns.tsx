@@ -10,9 +10,9 @@ import { useApiMutation } from "@/lib/query/use-api-mutation";
 import { deletePolicyResponseSchema } from "@/lib/api/schemas/themis";
 import { fetchAndParse } from "@/lib/api/schema";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 
-export function getColumns(tenantId: string): ColumnDef<Policy>[] {
+
+export function getColumns(tenantId: string): ColumnDef<Policy, unknown>[] {
   return [
     {
       accessorKey: "Name",
