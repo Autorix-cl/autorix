@@ -18,14 +18,16 @@ export async function updateSchema(schema: string): Promise<string> {
   return data.schema;
 }
 
-export async function fetchTuples(): Promise<unknown[]> {
+export async function fetchTuples(): /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+Promise<any[]> {
   const res = await fetch("/api/nexus/tuples");
   if (!res.ok) throw new Error("Failed to fetch tuples");
   const data = await res.json();
   return data.tuples;
 }
 
-export async function addTuple(tuple: TupleData): Promise<unknown> {
+export async function addTuple(tuple: TupleData): /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+Promise<any> {
   const res = await fetch("/api/nexus/tuples", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -35,7 +37,8 @@ export async function addTuple(tuple: TupleData): Promise<unknown> {
   return res.json();
 }
 
-export async function deleteTuples(ids: string[]): Promise<unknown> {
+export async function deleteTuples(ids: string[]): /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+Promise<any> {
   const res = await fetch(`/api/nexus/tuples?ids=${ids.join(",")}`, {
     method: "DELETE",
   });
@@ -43,7 +46,8 @@ export async function deleteTuples(ids: string[]): Promise<unknown> {
   return res.json();
 }
 
-export async function checkAccess(query: { subject: string, relation: string, object: string }): Promise<unknown> {
+export async function checkAccess(query: { subject: string, relation: string, object: string }): /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+Promise<any> {
   const res = await fetch("/api/nexus/check", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

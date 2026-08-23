@@ -69,7 +69,7 @@ export function SchemaEditor({ schema, onSave }: SchemaEditorProps) {
         <CodeEditor
           value={currentSchema}
           onChange={setCurrentSchema}
-          language="java"
+          language="json"
           readOnly={!isEditing}
           height="100%"
         />
