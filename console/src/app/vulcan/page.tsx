@@ -2,6 +2,7 @@
 
 import { KeysTable } from "./keys-table";
 import { KeyBuilderSheet } from "./key-builder-sheet";
+import { AttenuationStudio } from "./attenuation-studio";
 import { Shield } from "lucide-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
@@ -30,6 +31,8 @@ export default function VulcanPage() {
         <div className="space-y-4">
           <KeysTable />
         </div>
+
+        <AttenuationStudio />
       </div>
     </QueryClientProvider>
   );
