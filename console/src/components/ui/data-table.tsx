@@ -2,14 +2,17 @@
 
 import * as React from "react";
 import {
-  flexRender,
-  RowData,
-} from "@tanstack/react-table";
-import {
-  useReactTable,
-  getCoreRowModel,
-  getPaginationRowModel,
   ColumnDef,
+  ColumnFiltersState,
+  SortingState,
+  VisibilityState,
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+  Table as TanStackTable,
 } from "@tanstack/react-table";
 
 import {
@@ -21,9 +24,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
 
-interface DataTableProps<TData extends RowData, TValue> {
+interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   manualPagination?: boolean;
@@ -33,9 +37,11 @@ interface DataTableProps<TData extends RowData, TValue> {
   canNextPage?: boolean;
   canPreviousPage?: boolean;
   isLoading?: boolean;
+  searchKey?: string;
+  renderToolbar?: (table: TanStackTable<TData>) => React.ReactNode;
 }
 
-export function DataTable<TData extends RowData, TValue>({
+export function DataTable<TData, TValue>({
   columns,
   data,
   manualPagination,
@@ -45,18 +51,50 @@ export function DataTable<TData extends RowData, TValue>({
   canNextPage,
   canPreviousPage,
   isLoading,
+  searchKey,
+  renderToolbar,
 }: DataTableProps<TData, TValue>) {
+  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
+  const [rowSelection, setRowSelection] = React.useState({});
+
   const table = useReactTable({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    onColumnVisibilityChange: setColumnVisibility,
+    onRowSelectionChange: setRowSelection,
     manualPagination,
     pageCount,
+    state: {
+      sorting,
+      columnFilters,
+      columnVisibility,
+      rowSelection,
+    },
   });
 
   return (
     <div>
+      {searchKey && (
+        <div className="flex items-center py-4">
+          <Input
+            placeholder="Search..."
+            value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
+            onChange={(event) =>
+              table.getColumn(searchKey)?.setFilterValue(event.target.value)
+            }
+            className="max-w-sm"
+          />
+        </div>
+      )}
+      {renderToolbar && renderToolbar(table)}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -118,29 +156,39 @@ export function DataTable<TData extends RowData, TValue>({
           </TableBody>
         </Table>
       </div>
-      <div className="flex items-center justify-end space-x-2 py-4">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            if (onPreviousPage) onPreviousPage();
-            else table.previousPage();
-          }}
-          disabled={manualPagination ? !canPreviousPage : !table.getCanPreviousPage()}
-        >
-          Previous
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            if (onNextPage) onNextPage();
-            else table.nextPage();
-          }}
-          disabled={manualPagination ? !canNextPage : !table.getCanNextPage()}
-        >
-          Next
-        </Button>
+      <div className="flex items-center justify-between space-x-2 py-4">
+        <div className="flex-1 text-sm text-muted-foreground">
+          {table.getFilteredSelectedRowModel().rows.length > 0 && (
+            <span>
+              {table.getFilteredSelectedRowModel().rows.length} of{" "}
+              {table.getFilteredRowModel().rows.length} row(s) selected.
+            </span>
+          )}
+        </div>
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (onPreviousPage) onPreviousPage();
+              else table.previousPage();
+            }}
+            disabled={manualPagination ? !canPreviousPage : !table.getCanPreviousPage()}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (onNextPage) onNextPage();
+              else table.nextPage();
+            }}
+            disabled={manualPagination ? !canNextPage : !table.getCanNextPage()}
+          >
+            Next
+          </Button>
+        </div>
       </div>
     </div>
   );

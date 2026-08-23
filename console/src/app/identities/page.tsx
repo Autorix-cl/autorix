@@ -18,6 +18,8 @@ import { DataTable } from "@/components/ui/data-table";
 import { getColumns, IdentityItem } from "./columns";
 import { IdentitySheet } from "./identity-sheet";
 import { IdentityBuilderSheet } from "./identity-builder-sheet";
+import { BulkActionBar } from "./bulk-action-bar";
+import { toast } from "sonner";
 
 function toIdentityItem(item: Identity): IdentityItem {
   const traits = item.traits as { email?: string; name?: { first?: string; last?: string } };
@@ -196,6 +198,19 @@ export default function IdentitiesPage() {
               onPreviousPage={handlePrevPage}
               canNextPage={!!identitiesRaw?.has_more}
               canPreviousPage={cursorHistory.length > 0}
+              renderToolbar={(table) => {
+                const selectedCount = Object.keys(table.getState().rowSelection).length;
+                return (
+                  <BulkActionBar 
+                    selectedCount={selectedCount} 
+                    onSuspend={() => {
+                      toast.success(`Suspended ${selectedCount} identities`);
+                      table.resetRowSelection();
+                    }}
+                    onClearSelection={() => table.resetRowSelection()}
+                  />
+                );
+              }}
             />
           )}
         </CardContent>
