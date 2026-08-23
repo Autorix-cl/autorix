@@ -87,7 +87,7 @@ export function Sidebar() {
         },
         {
           name: t("nav.vulcan"),
-          href: "/api-keys",
+          href: "/vulcan",
           icon: Layers,
         },
         {

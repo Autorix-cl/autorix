@@ -53,7 +53,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     { label: "Permissions (Nexus)", href: "/permissions", icon: Network, category: "Navigation" },
     { label: "OAuth2 & OIDC (Janus)", href: "/oauth2", icon: KeyRound, category: "Navigation" },
     { label: "Proxy Rules (Aegis)", href: "/proxy-rules", icon: Shield, category: "Navigation" },
-    { label: "API Keys (Vulcan)", href: "/api-keys", icon: Layers, category: "Navigation" },
+    { label: "API Keys (Vulcan)", href: "/vulcan", icon: Layers, category: "Navigation" },
     { label: "Enterprise SSO & SCIM (Hermes)", href: "/enterprise", icon: Building2, category: "Navigation" },
     { label: "Policies (Themis)", href: "/policies", icon: Scale, category: "Navigation" },
     { label: "Operators & RBAC", href: "/operators", icon: Users, category: "Control Plane" },

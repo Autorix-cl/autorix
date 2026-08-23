@@ -64,7 +64,7 @@ export async function GET(request: Request) {
             title: item.name || item.id,
             subtitle: "API Key",
             arn: `arn:autorix:vulcan:prod:default:key/${item.id}`,
-            href: `/api-keys?id=${item.id}`,
+            href: `/vulcan?id=${item.id}`,
           });
         }
       }

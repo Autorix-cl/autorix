@@ -56,7 +56,7 @@ export function CommandDialog({ open, onOpenChange }: CommandDialogProps) {
     {
       title: t("nav.vulcan"),
       desc: t("apiKeys.subtitle"),
-      href: "/api-keys",
+      href: "/vulcan",
       icon: Layers,
       badge: ":4466",
     },

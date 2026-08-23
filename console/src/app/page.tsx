@@ -131,7 +131,7 @@ export default function DashboardPage() {
     {
       key: "vulcan",
       config: SERVICES_CONFIG.vulcan,
-      href: "/api-keys",
+      href: "/vulcan",
       icon: Layers,
       iconColor: "text-cyan-400",
       badgeVariant: "cyan" as const,
@@ -357,7 +357,7 @@ export default function DashboardPage() {
               </Button>
             </Link>
 
-            <Link href="/api-keys" className="block">
+            <Link href="/vulcan" className="block">
               <Button variant="outline" className="w-full justify-between h-9 text-xs">
                 <div className="flex items-center gap-2">
                   <Key className="h-3.5 w-3.5 text-cyan-400" />
