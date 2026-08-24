@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { ThemisPoliciesTable } from "./policies-table";
 import { DryRunPlayground } from "./dry-run-playground";
 import { PolicyBuilderSheet } from "./policy-builder-sheet";

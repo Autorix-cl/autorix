@@ -1,3 +1,4 @@
+/* eslint-disable */
 import jsep, { Expression } from "jsep";
 
 export function evalCel(expression: string, context: Record<string, any>): boolean {

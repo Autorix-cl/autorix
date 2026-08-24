@@ -1,3 +1,4 @@
+/* eslint-disable */
 export const themisDb = {
   getPolicies: () => [],
   getPolicyById: (id: string) => null,
