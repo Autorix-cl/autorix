@@ -103,7 +103,7 @@ export function PolicyBuilderSheet() {
               <CodeEditor 
                 value={expression}
                 onChange={setExpression}
-                language="javascript" // close enough syntax to CEL for basic highlighting
+                language="cel" // close enough syntax to CEL for basic highlighting
               />
             </div>
             <p className="text-xs text-muted-foreground">

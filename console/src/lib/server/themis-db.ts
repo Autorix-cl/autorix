@@ -1,6 +1,6 @@
 /* eslint-disable */
 export const themisDb = {
-  getPolicies: () => [],
+  getPolicies: (): any[] => [],
   getPolicyById: (id: string) => null,
   addPolicy: (p: any) => {},
   togglePolicy: (id: string) => false,

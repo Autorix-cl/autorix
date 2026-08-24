@@ -2,7 +2,7 @@
 import { ThemisPoliciesTable } from "./policies-table";
 import { DryRunPlayground } from "./dry-run-playground";
 import { PolicyBuilderSheet } from "./policy-builder-sheet";
-import { CommandPaletteShortcut } from "@/components/layout/command-palette";
+
 
 export default function ThemisPage() {
   return (

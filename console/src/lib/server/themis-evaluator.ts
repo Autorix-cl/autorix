@@ -70,7 +70,7 @@ function evaluateNode(node: Expression, context: Record<string, any>): any {
     }
       
     case "LogicalExpression": {
-      const logNode = node as jsep.LogicalExpression;
+      const logNode = node as any;
       const left = evaluateNode(logNode.left, context);
       
       // Short-circuit evaluation

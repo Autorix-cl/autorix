@@ -75,7 +75,7 @@ describe("Themis Policies API", () => {
     await POST(new Request("http://localhost", { method: "POST", body: JSON.stringify({ name: "P1", expression: "true", priority: 10 }) }));
     
     const req = new Request("http://localhost/api/themis/policies", { method: "GET" });
-    const res = await GET(req);
+    const res = await GET();
     
     expect(res.status).toBe(200);
     const policies = await res.json();
