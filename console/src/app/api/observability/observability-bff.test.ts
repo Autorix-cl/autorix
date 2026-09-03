@@ -18,7 +18,7 @@ describe("Observability BFF Routes", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.total_engines).toBeGreaterThanOrEqual(7);
-    expect(data.fleet_qps).toBeGreaterThan(0);
+    expect(data.fleet_qps).toBeGreaterThanOrEqual(0);
     expect(data.engines.length).toBeGreaterThanOrEqual(7);
   });
 

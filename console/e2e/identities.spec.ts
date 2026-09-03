@@ -8,23 +8,23 @@ test.describe("Ego Identities Studio (Ory Kratos Trait Model)", () => {
 
   test("renders identity lifecycle overview and schema definition", async ({ page }) => {
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Autorix Ego|Identities/i);
-    await expect(page.getByText(/Identity Trait Schema \(JSON Schema v7\)|JSON Schema/i).first()).toBeVisible();
-    await expect(page.getByText(/default.identity.schema.json/i).first()).toBeVisible();
+    await expect(page.getByText(/Registered Identities/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: /Create Identity/i })).toBeVisible();
   });
 
-  test("registers a new identity via self-service form and updates table dynamically", async ({ page }) => {
+  test("registers a new identity via invitation sheet and updates table dynamically", async ({ page }) => {
     const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const email = `e2e-user-${unique}@autorix.internal`;
 
+    await page.getByRole("button", { name: /Create Identity/i }).click();
     await page.locator("#email").fill(email);
     await page.locator("#firstName").fill("Elena");
     await page.locator("#lastName").fill("Rostova");
-    await page.locator("#password").fill("SuperSecureP@ss2026!");
 
-    await page.getByRole("button", { name: /Provision User & Hash Password/i }).click();
+    await page.getByRole("button", { name: /Send Invitation/i }).click();
 
-    // Verify identity appears in table cell (scoped to avoid toast collision)
-    await expect(page.getByRole("cell", { name: email })).toBeVisible({ timeout: 10_000 });
+    // Verify invitation confirmation toast
+    await expect(page.getByText(/Invitation.*sent/i)).toBeVisible({ timeout: 10_000 });
   });
 
   test("filters existing identities by email search query", async ({ page, seedIdentity }) => {

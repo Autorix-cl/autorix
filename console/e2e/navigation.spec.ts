@@ -6,11 +6,13 @@ import { test, expect } from "./fixtures";
  */
 const NAV_ITEMS = [
   { href: "/", heading: /telemetry|overview/i },
+  { href: "/observability", heading: /observability|telemetry/i },
+  { href: "/explorer", heading: /cross-engine|explorer/i },
   { href: "/identities", heading: /identity|credentials/i },
   { href: "/permissions", heading: /zanzibar|rebac/i },
   { href: "/oauth2", heading: /oauth2|jwks/i },
   { href: "/proxy-rules", heading: /zero trust|proxy/i },
-  { href: "/api-keys", heading: /api key|macaroon/i },
+  { href: "/vulcan", heading: /api key|macaroon|vulcan/i },
   { href: "/enterprise", heading: /saml|scim|enterprise/i },
   { href: "/policies", heading: /policy|cel/i },
 ];
@@ -29,7 +31,7 @@ test.describe("navigation", () => {
   test("sidebar links navigate without a full page reload", async ({ page }) => {
     await page.goto("/");
     await page
-      .getByRole("link", { name: /identities/i })
+      .getByRole("link", { name: /ego|identities/i })
       .first()
       .click();
     await expect(page).toHaveURL(/\/identities$/);

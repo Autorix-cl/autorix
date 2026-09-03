@@ -28,6 +28,7 @@ import type {
   ChangeTimelineEvent,
   DiagnosticBundle,
 } from "@/lib/api/schemas/diagnostics";
+import { fetchJSON } from "@/lib/api/client";
 
 export function DiagnosticsManager() {
   const [subTab, setSubTab] = React.useState<"probe" | "drift" | "migrations" | "timeline">("probe");
@@ -47,14 +48,13 @@ export function DiagnosticsManager() {
   const runProbe = React.useCallback(async () => {
     setIsProbing(true);
     try {
-      const res = await fetch("/api/diagnostics/probe", {
+      const res = await fetchJSON<ConnectivityProbeResult>("/api/diagnostics/probe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ source_engine: sourceEngine, target_engine: targetEngine }),
       });
-      if (!res.ok) throw new Error("Probe failed");
-      const data = await res.json();
-      setProbeResult(data);
+      if (!res.ok) throw new Error(res.error.message);
+      setProbeResult(res.data);
     } catch {
       toast.error("Connectivity probe failed");
     } finally {
@@ -65,13 +65,13 @@ export function DiagnosticsManager() {
   const fetchDiagnosticsData = React.useCallback(async () => {
     try {
       const [driftRes, migRes, timeRes] = await Promise.all([
-        fetch("/api/diagnostics/drift"),
-        fetch("/api/diagnostics/migrations"),
-        fetch("/api/diagnostics/timeline"),
+        fetchJSON<ConfigDriftFinding[]>("/api/diagnostics/drift"),
+        fetchJSON<MigrationStatus[]>("/api/diagnostics/migrations"),
+        fetchJSON<ChangeTimelineEvent[]>("/api/diagnostics/timeline"),
       ]);
-      if (driftRes.ok) setDriftFindings(await driftRes.json());
-      if (migRes.ok) setMigrations(await migRes.json());
-      if (timeRes.ok) setTimeline(await timeRes.json());
+      if (driftRes.ok) setDriftFindings(driftRes.data);
+      if (migRes.ok) setMigrations(migRes.data);
+      if (timeRes.ok) setTimeline(timeRes.data);
     } catch {
       // Ignored non-critical errors
     }
@@ -84,10 +84,9 @@ export function DiagnosticsManager() {
   const handleExportBundle = async () => {
     setIsExporting(true);
     try {
-      const res = await fetch("/api/diagnostics/bundle", { method: "POST" });
-      if (!res.ok) throw new Error("Export failed");
-      const bundle: DiagnosticBundle = await res.json();
-      toast.success(`Diagnostic bundle ${bundle.bundle_id} generated successfully!`);
+      const res = await fetchJSON<DiagnosticBundle>("/api/diagnostics/bundle", { method: "POST" });
+      if (!res.ok) throw new Error(res.error.message);
+      toast.success(`Diagnostic bundle ${res.data.bundle_id} generated successfully!`);
     } catch {
       toast.error("Failed to generate diagnostic bundle");
     } finally {

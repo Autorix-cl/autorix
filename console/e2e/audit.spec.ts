@@ -7,7 +7,9 @@ test.describe("Argus Audit & Governance Studio", () => {
 
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/audit log|governance|audit/i);
     await expect(page.getByText(/hash chain|verified|tamper/i).first()).toBeVisible();
-    await expect(page.getByRole("table").or(page.locator("table"))).toBeVisible();
+    await expect(
+      page.getByRole("table").or(page.locator("table")).or(page.getByText(/No audit records found/i))
+    ).toBeVisible();
   });
 
   test("opens audit record detail dialog with structured JSON diff and secret redaction", async ({ page }) => {

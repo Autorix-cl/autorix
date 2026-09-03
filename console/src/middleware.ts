@@ -73,7 +73,14 @@ export async function middleware(request: NextRequest) {
   if (isMutatingApi) {
     const csrfCookie = request.cookies.get(CSRF_COOKIE_NAME)?.value;
     const csrfHeader = request.headers.get("X-CSRF-Token");
-    if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
+    const secFetchSite = request.headers.get("sec-fetch-site");
+    const origin = request.headers.get("origin");
+    const host = request.headers.get("host");
+
+    const isSameOrigin = secFetchSite === "same-origin" || Boolean(origin && host && (origin.includes(host) || host.includes(origin)));
+    const hasValidToken = Boolean(csrfCookie && csrfHeader && csrfCookie === csrfHeader);
+
+    if (!isSameOrigin && !hasValidToken) {
       return NextResponse.json(
         { error: "forbidden: csrf verification failed" },
         { status: 403 }

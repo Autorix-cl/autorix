@@ -33,8 +33,10 @@ const ENGINE_ICONS: Record<string, React.ElementType> = {
   upstream: Server,
 };
 
+import { fetchJSON } from "@/lib/api/client";
+
 export function RequestSimulator() {
-  const [method, setMethod] = React.useState("GET");
+  const [method, setMethod] = React.useState("POST");
   const [path, setPath] = React.useState("/api/v1/projects/proj_alpha/deployments");
   const [authHeader, setAuthHeader] = React.useState("Bearer av_live_890abcd");
   const [subject, setSubject] = React.useState("user:usr_operator");
@@ -45,7 +47,7 @@ export function RequestSimulator() {
     e?.preventDefault();
     setIsLoading(true);
     try {
-      const res = await fetch("/api/explorer/simulate", {
+      const res = await fetchJSON<RequestSimulationTrace>("/api/explorer/simulate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -55,9 +57,8 @@ export function RequestSimulator() {
           subject,
         }),
       });
-      if (!res.ok) throw new Error("Simulation failed");
-      const data = await res.json();
-      setTrace(data);
+      if (!res.ok) throw new Error(res.error.message);
+      setTrace(res.data);
     } catch {
       toast.error("Failed to run request simulation");
     } finally {

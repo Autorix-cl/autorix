@@ -1,6 +1,7 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { proxyRequest } from "@/lib/api/proxy";
-import { paginatedPolicyListSchema, policySchema } from "@/lib/api/schemas/themis";
+import { goPolicySchema } from "@/lib/api/schemas/themis";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -13,7 +14,29 @@ export async function GET(req: NextRequest) {
   if (cursor) query.set("cursor", cursor);
   if (limit) query.set("limit", limit);
 
-  return proxyRequest("themis", `/policies?${query.toString()}`, paginatedPolicyListSchema);
+  const res = await proxyRequest("themis", `/policies?${query.toString()}`, z.any());
+  if (!res.ok) return res;
+
+  const json = await res.json();
+  const rawList = Array.isArray(json) ? json : json.data || [];
+  const data = rawList.map((p: Record<string, unknown>) => ({
+    ID: (p.id ?? p.ID) as string,
+    TenantID: ((p.tenant_id ?? p.TenantID) as string) ?? "default",
+    Name: (p.name ?? p.Name) as string,
+    Description: ((p.description ?? p.Description) as string) ?? "",
+    Expression: (p.expression ?? p.Expression) as string,
+    Priority: (p.priority ?? p.Priority ?? 1) as number,
+    Enabled: (p.enabled ?? p.Enabled ?? true) as boolean,
+    Labels: (p.labels ?? p.Labels ?? {}) as Record<string, string>,
+    CreatedAt: ((p.created_at ?? p.CreatedAt) as string) ?? "",
+    UpdatedAt: ((p.updated_at ?? p.UpdatedAt) as string) ?? "",
+  }));
+
+  return NextResponse.json({
+    data,
+    has_more: json.has_more ?? false,
+    cursor: json.cursor,
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -28,9 +51,25 @@ export async function POST(req: NextRequest) {
     labels: body.labels || {},
   };
 
-  return proxyRequest("themis", "/policies", policySchema, {
+  const res = await proxyRequest("themis", "/policies", goPolicySchema, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) return res;
+
+  const p = await res.json();
+  return NextResponse.json({
+    ID: p.id ?? p.ID,
+    TenantID: p.tenant_id ?? p.TenantID ?? "default",
+    Name: p.name ?? p.Name,
+    Description: p.description ?? p.Description ?? "",
+    Expression: p.expression ?? p.Expression,
+    Priority: p.priority ?? p.Priority ?? 1,
+    Enabled: p.enabled ?? p.Enabled ?? true,
+    Labels: p.labels ?? p.Labels ?? {},
+    CreatedAt: p.created_at ?? p.CreatedAt ?? "",
+    UpdatedAt: p.updated_at ?? p.UpdatedAt ?? "",
   });
 }

@@ -19,10 +19,10 @@ export default function VulcanPage() {
       <div className="flex-1 space-y-6 p-8">
         <div className="flex items-center justify-between space-y-2">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
               <Shield className="h-6 w-6 text-primary" />
               Vulcan (API Keys & Macaroons)
-            </h2>
+            </h1>
             <p className="text-muted-foreground text-sm">
               Machine-to-machine credentials, decentralized capability tokens, and cryptographic attenuation.
             </p>

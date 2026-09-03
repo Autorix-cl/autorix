@@ -35,7 +35,20 @@ async function globalSetup(config: FullConfig) {
       }
     }
 
-    // Authenticate operator
+    // Authenticate operator via API
+    const loginRes = await context.request.post("/api/auth/login", {
+      data: { email, password },
+    });
+
+    if (loginRes.ok()) {
+      await context.addCookies([
+        { name: "autorix_active_env", value: "prod", domain: "localhost", path: "/" },
+      ]);
+      await context.storageState({ path: authFile });
+      return;
+    }
+
+    // Fallback: Authenticate operator via UI
     await page.goto("/login");
     await page.waitForLoadState("networkidle");
 
@@ -45,7 +58,6 @@ async function globalSetup(config: FullConfig) {
         { name: "autorix_active_env", value: "prod", domain: "localhost", path: "/" },
       ]);
       await context.storageState({ path: authFile });
-      await browser.close();
       return;
     }
 

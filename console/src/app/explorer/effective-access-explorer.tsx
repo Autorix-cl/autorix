@@ -20,6 +20,8 @@ import {
 import { toast } from "sonner";
 import type { EffectiveAccessResult } from "@/lib/api/schemas/explorer";
 
+import { fetchJSON } from "@/lib/api/client";
+
 export function EffectiveAccessExplorer() {
   const [subject, setSubject] = React.useState("user:alice");
   const [resource, setResource] = React.useState("/api/v1/finance/invoices");
@@ -31,14 +33,13 @@ export function EffectiveAccessExplorer() {
     e?.preventDefault();
     setIsLoading(true);
     try {
-      const res = await fetch("/api/explorer/effective-access", {
+      const res = await fetchJSON<EffectiveAccessResult>("/api/explorer/effective-access", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subject, resource, action }),
       });
-      if (!res.ok) throw new Error("Evaluation failed");
-      const data = await res.json();
-      setResult(data);
+      if (!res.ok) throw new Error(res.error.message);
+      setResult(res.data);
     } catch {
       toast.error("Failed to evaluate effective access");
     } finally {
