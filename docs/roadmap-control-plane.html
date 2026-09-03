@@ -1488,7 +1488,7 @@
 
   <div class="spec">
     <div class="spec-head">
-      <p class="spec-id">P6-S7</p><span class="spec-status partial">PARTIAL · 0/6</span>
+      <p class="spec-id">P6-S7</p><span class="spec-status done">DONE · 6/6</span>
       <h3>Hermes — SAML and SCIM</h3>
     </div>
     <div class="spec-body">
@@ -1501,12 +1501,12 @@
         <table>
           <thead><tr><th>ID</th><th>Task</th><th>Detail</th><th>Area</th><th>Size</th><th>Status</th></tr></thead>
           <tbody>
-            <tr><td class="tid">P6-S7-T1</td><td class="ttl">Provider lifecycle API</td><td class="det">Add detail, update and delete for SAML providers, plus enable and disable. Only create and list exist today.</td><td><span class="tag">go-engine</span></td><td class="sz">M</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S7-T2</td><td class="ttl">Certificate management</td><td class="det">Parse and store IdP certificates with expiry tracking, support rollover with multiple valid certificates, and expose expiry for alerting — expired SAML certificates are a classic silent outage.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S7-T3</td><td class="ttl">Attribute mapping</td><td class="det">Configurable mapping from SAML assertion attributes to Ego identity traits, with a transformation step and validation against the active trait schema.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S7-T4</td><td class="ttl">SCIM groups and sync state</td><td class="det">Add the Groups resource alongside Users, and persist sync run history with per-record outcomes so failures are reconcilable rather than merely logged.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat partial">PARTIAL</td></tr>
-            <tr><td class="tid">P6-S7-T5</td><td class="ttl">Connection wizard</td><td class="det">Guided setup with metadata upload or URL import, attribute mapping, and a test-connection step that validates the assertion round trip before the connection goes live.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat partial">PARTIAL</td></tr>
-            <tr><td class="tid">P6-S7-T6</td><td class="ttl">Sync monitoring</td><td class="det">Show run history, per-record errors, drift between IdP and Ego, and a retry action for failed records.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
+            <tr><td class="tid">P6-S7-T1</td><td class="ttl">Provider lifecycle API</td><td class="det">Add detail, update and delete for SAML providers, plus enable and disable. Only create and list exist today.</td><td><span class="tag">go-engine</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S7-T2</td><td class="ttl">Certificate management</td><td class="det">Parse and store IdP certificates with expiry tracking, support rollover with multiple valid certificates, and expose expiry for alerting — expired SAML certificates are a classic silent outage.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S7-T3</td><td class="ttl">Attribute mapping</td><td class="det">Configurable mapping from SAML assertion attributes to Ego identity traits, with a transformation step and validation against the active trait schema.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S7-T4</td><td class="ttl">SCIM groups and sync state</td><td class="det">Add the Groups resource alongside Users, and persist sync run history with per-record outcomes so failures are reconcilable rather than merely logged.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S7-T5</td><td class="ttl">Connection wizard</td><td class="det">Guided setup with metadata upload or URL import, attribute mapping, and a test-connection step that validates the assertion round trip before the connection goes live.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S7-T6</td><td class="ttl">Sync monitoring</td><td class="det">Show run history, per-record errors, drift between IdP and Ego, and a retry action for failed records.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
           </tbody>
         </table>
       </div>

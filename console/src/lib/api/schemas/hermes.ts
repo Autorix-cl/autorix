@@ -7,6 +7,20 @@
 import { z } from "zod";
 import { pagedListSchema } from "../schema";
 
+// core.CertificateInfo
+export const certificateInfoSchema = z.object({
+  subject: z.string(),
+  issuer: z.string(),
+  serial_number: z.string(),
+  not_before: z.string(),
+  not_after: z.string(),
+  expired: z.boolean(),
+  expiring_soon: z.boolean(),
+  days_until_expiry: z.number(),
+  warning: z.string().optional(),
+});
+export type CertificateInfo = z.infer<typeof certificateInfoSchema>;
+
 // core.SAMLProvider
 export const samlProviderSchema = z.object({
   id: z.string(),
@@ -14,9 +28,12 @@ export const samlProviderSchema = z.object({
   idp_entity_id: z.string(),
   idp_sso_url: z.string(),
   idp_certificate_pem: z.string(),
+  idp_cert_expires_at: z.string().optional(),
   sp_entity_id: z.string(),
   attribute_mapping: z.record(z.string(), z.string()),
   enabled: z.boolean(),
+  certificates: z.array(certificateInfoSchema).optional(),
+  warnings: z.array(z.string()).optional(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -62,3 +79,48 @@ export const scimListResponseSchema = z.object({
   itemsPerPage: z.number(),
   Resources: z.array(scimUserSchema),
 });
+
+// core.SCIMMember
+export const scimMemberSchema = z.object({
+  value: z.string(),
+  display: z.string().optional(),
+});
+export type SCIMMember = z.infer<typeof scimMemberSchema>;
+
+// core.SCIMGroup
+export const scimGroupSchema = z.object({
+  schemas: z.array(z.string()),
+  id: z.string(),
+  displayName: z.string(),
+  members: z.array(scimMemberSchema).default([]),
+  meta: scimMetaSchema,
+});
+export type SCIMGroup = z.infer<typeof scimGroupSchema>;
+
+// GET /scim/v2/Groups
+export const scimGroupListResponseSchema = z.object({
+  schemas: z.array(z.string()),
+  totalResults: z.number(),
+  startIndex: z.number(),
+  itemsPerPage: z.number(),
+  Resources: z.array(scimGroupSchema),
+});
+
+// core.SCIMSyncHistory
+export const scimSyncHistorySchema = z.object({
+  id: z.string(),
+  provider_id: z.string().optional(),
+  resource_type: z.string(),
+  status: z.string(),
+  total_records: z.number(),
+  created_count: z.number(),
+  updated_count: z.number(),
+  deleted_count: z.number(),
+  error_count: z.number(),
+  errors: z.array(z.string()).default([]),
+  started_at: z.string(),
+  completed_at: z.string().optional(),
+});
+export const scimSyncHistoryListSchema = z.array(scimSyncHistorySchema);
+export type SCIMSyncHistory = z.infer<typeof scimSyncHistorySchema>;
+
