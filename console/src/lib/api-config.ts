@@ -13,6 +13,7 @@ export const BACKEND_URLS = {
   nexus: process.env.NEXUS_INTERNAL_URL || "http://nexus:8080",
   themis: process.env.THEMIS_INTERNAL_URL || "http://themis:4488",
   argus: process.env.ARGUS_INTERNAL_URL || "http://argus:4400",
+  prometheus: process.env.PROMETHEUS_INTERNAL_URL || "http://prometheus:9090",
 };
 
 export function getServiceUrl(service: keyof typeof BACKEND_URLS): string {
@@ -30,6 +31,7 @@ export function getServiceUrl(service: keyof typeof BACKEND_URLS): string {
     nexus: 8080,
     themis: 4488,
     argus: 4400,
+    prometheus: 9090,
   };
   return `http://localhost:${publicPorts[service] || 3000}`;
 }

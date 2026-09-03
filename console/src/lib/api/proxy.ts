@@ -9,6 +9,7 @@ import type { z } from "zod";
 import { getServiceUrl, BACKEND_URLS } from "../api-config";
 import { getCurrentOperator } from "../auth/session";
 import { hasPermission } from "../auth/types";
+import { telemetryStore } from "../server/telemetry-store";
 
 type Service = keyof typeof BACKEND_URLS;
 
@@ -69,6 +70,7 @@ export async function proxyRequest<T>(
 
   const url = `${getServiceUrl(service)}${path}`;
 
+  const startTime = performance.now();
   let res: Response;
   try {
     const init = options ? { ...options } : undefined;
@@ -86,12 +88,24 @@ export async function proxyRequest<T>(
       headers: requestHeaders,
     });
   } catch (err) {
+    const durationMs = performance.now() - startTime;
+    telemetryStore.recordRequest({
+      service,
+      path,
+      method: options?.method || "GET",
+      status: 502,
+      durationMs,
+      requestId,
+      correlationId: requestId,
+      error: err instanceof Error ? err.message : "Service unreachable",
+    });
     return NextResponse.json(
       { error: err instanceof Error ? `${service} is unreachable: ${err.message}` : `${service} is unreachable` },
       { status: 502, headers },
     );
   }
 
+  const durationMs = performance.now() - startTime;
   const rawText = await res.text();
   let body: unknown = null;
   if (rawText) {
@@ -101,6 +115,17 @@ export async function proxyRequest<T>(
       // Non-JSON upstream body; message extraction below falls back to raw text.
     }
   }
+
+  telemetryStore.recordRequest({
+    service,
+    path,
+    method: options?.method || "GET",
+    status: res.status,
+    durationMs,
+    requestId,
+    correlationId: requestId,
+    error: !res.ok ? extractMessage(body, rawText, res.status) : undefined,
+  });
 
   if (!res.ok) {
     return NextResponse.json({ error: extractMessage(body, rawText, res.status) }, { status: res.status, headers });
