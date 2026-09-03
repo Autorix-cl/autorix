@@ -72,6 +72,7 @@ func (s stubRepository) ListTuples(ctx context.Context, namespace string, limit 
 	return out, hasMore, nil
 }
 func (stubRepository) WriteTuples(ctx context.Context, tuples []core.Tuple) error  { return nil }
+func (stubRepository) WriteTuplesWithToken(ctx context.Context, tuples []core.Tuple) (string, error) { return "zk_v1_test_token", nil }
 func (stubRepository) DeleteTuples(ctx context.Context, tuples []core.Tuple) error { return nil }
 func (stubRepository) WriteCaveat(ctx context.Context, caveat core.CaveatDefinition) error { return nil }
 func (stubRepository) GetCaveat(ctx context.Context, name string) (*core.CaveatDefinition, error) { return nil, nil }
@@ -513,4 +514,48 @@ func TestMetricsEndpoint(t *testing.T) {
 		t.Fatalf("GET /metrics: expected 200, got %d", rec.Code)
 	}
 }
+
+func TestZookie_WriteAndCheckHeaders(t *testing.T) {
+	srv := newTestServer(health.NewChecker())
+	router := srv.Routes()
+
+	// 1. POST /tuples returns X-Autorix-Snap-Token header
+	writeBody := `{"tuples":[{"namespace":"doc","object":"d1","relation":"viewer","subject_namespace":"user","subject_id":"bob"}]}`
+	writeReq := httptest.NewRequest(http.MethodPost, "/tuples", strings.NewReader(writeBody))
+	writeRec := httptest.NewRecorder()
+	router.ServeHTTP(writeRec, writeReq)
+	if writeRec.Code != http.StatusCreated {
+		t.Fatalf("POST /tuples: expected 201, got %d", writeRec.Code)
+	}
+	snapToken := writeRec.Header().Get("X-Autorix-Snap-Token")
+	if snapToken == "" {
+		t.Fatalf("expected non-empty X-Autorix-Snap-Token header from POST /tuples")
+	}
+
+	// 2. POST /check with snap_token returns evaluated token in body and headers
+	checkBody := `{"namespace":"doc","object":"d1","relation":"viewer","subject_namespace":"user","subject_id":"bob","snap_token":"` + snapToken + `"}`
+	checkReq := httptest.NewRequest(http.MethodPost, "/check", strings.NewReader(checkBody))
+	checkRec := httptest.NewRecorder()
+	router.ServeHTTP(checkRec, checkReq)
+	if checkRec.Code != http.StatusOK {
+		t.Fatalf("POST /check: expected 200, got %d", checkRec.Code)
+	}
+
+	checkSnap := checkRec.Header().Get("X-Autorix-Snap-Token")
+	if checkSnap == "" {
+		t.Fatalf("expected non-empty X-Autorix-Snap-Token header from POST /check")
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(checkRec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode check response: %v", err)
+	}
+	if resp["snap_token"] == nil || resp["snap_token"] == "" {
+		t.Fatalf("expected snap_token in json body: %+v", resp)
+	}
+	if resp["zookie"] == nil || resp["zookie"] == "" {
+		t.Fatalf("expected zookie in json body: %+v", resp)
+	}
+}
+
 

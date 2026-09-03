@@ -6,6 +6,8 @@ import (
 
 	"github.com/autorix/nexus/internal/core"
 	"github.com/autorix/platform/cache"
+	"github.com/autorix/platform/zookie"
+	"time"
 )
 
 // mockRepository implements graph.Repository in-memory for testing
@@ -498,6 +500,62 @@ func TestResolver_CacheHit(t *testing.T) {
 	}
 	if res2.Reason != "cached authorization decision" {
 		t.Fatalf("expected cached authorization decision reason, got %q", res2.Reason)
+	}
+}
+
+func TestResolver_ZookieCausalConsistency(t *testing.T) {
+	tuples := []core.Tuple{
+		{Namespace: "doc", Object: "42", Relation: "editor", SubjectNamespace: "user", SubjectObject: "alice"},
+	}
+
+	repo := &countingMockRepo{tuples: tuples}
+	eval := &mockCaveatEvaluator{allowed: true}
+	c := cache.NewMemoryCache()
+	defer c.Close()
+
+	resolver := NewResolver(repo, eval, WithCache(c))
+	ctx := context.Background()
+
+	req := core.CheckRequest{
+		Namespace: "doc", Object: "42", Relation: "editor",
+		Subject: core.Tuple{Namespace: "user", Object: "alice"},
+	}
+
+	// 1st Check: populates cache with snapshot T0
+	res1, err := resolver.Check(ctx, req)
+	if err != nil || !res1.Allowed {
+		t.Fatalf("1st check failed: %v", err)
+	}
+	if repo.queries != 1 {
+		t.Fatalf("expected 1 repo query on miss, got %d", repo.queries)
+	}
+	if res1.SnapToken == "" {
+		t.Fatalf("expected evaluated SnapToken in res1")
+	}
+
+	// 2nd Check with same or empty Zookie: hits cache
+	reqWithOldZk := req
+	reqWithOldZk.SnapToken = res1.SnapToken
+	res2, err := resolver.Check(ctx, reqWithOldZk)
+	if err != nil || !res2.Allowed {
+		t.Fatalf("2nd check failed: %v", err)
+	}
+	if repo.queries != 1 {
+		t.Fatalf("expected cached hit to not increment queries, got %d", repo.queries)
+	}
+
+	// 3rd Check with a NEWER Zookie (e.g. from a subsequent write):
+	// Must recognize that cache snapshot is older than requested Zookie, bypassing cache!
+	newerToken := zookie.New(time.Now().UTC().Add(500 * time.Millisecond))
+	reqWithNewZk := req
+	reqWithNewZk.SnapToken = newerToken.String()
+
+	res3, err := resolver.Check(ctx, reqWithNewZk)
+	if err != nil || !res3.Allowed {
+		t.Fatalf("3rd check failed: %v", err)
+	}
+	if repo.queries != 2 {
+		t.Fatalf("expected causal consistency to bypass stale cache and hit repo (queries=2), got %d", repo.queries)
 	}
 }
 

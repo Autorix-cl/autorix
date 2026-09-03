@@ -3,11 +3,14 @@ package graph
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/autorix/nexus/internal/core"
 	"github.com/autorix/platform/cache"
+	"github.com/autorix/platform/zookie"
 )
 
 // Repository is the interface required by the graph engine to fetch and query tuples
@@ -62,6 +65,14 @@ func NewResolver(repo Repository, ce core.CaveatEvaluator, opts ...Option) *Reso
 func (r *Resolver) Check(ctx context.Context, req core.CheckRequest) (core.CheckResult, error) {
 	start := time.Now()
 
+	// Parse requested consistency snapshot token (Zookie) if provided
+	var requestedZk *zookie.Token
+	if req.SnapToken != "" {
+		if parsed, err := zookie.Parse(req.SnapToken); err == nil {
+			requestedZk = &parsed
+		}
+	}
+
 	// 1. Fast path: In-memory/Redis distributed cache lookup (for requests without dynamic caveats)
 	cacheKey := fmt.Sprintf("chk:%s:%s#%s@%s:%s#%s",
 		req.Namespace, req.Object, req.Relation,
@@ -69,16 +80,32 @@ func (r *Resolver) Check(ctx context.Context, req core.CheckRequest) (core.Check
 
 	if r.cache != nil && len(req.RequestContext) == 0 {
 		if val, err := r.cache.Get(ctx, cacheKey); err == nil {
-			allowed := string(val) == "1"
-			decision := "deny"
-			if allowed {
-				decision = "allow"
+			strVal := string(val)
+			parts := strings.Split(strVal, ":")
+			allowed := parts[0] == "1"
+			cachedNano := int64(0)
+			if len(parts) > 1 {
+				cachedNano, _ = strconv.ParseInt(parts[1], 10, 64)
 			}
-			nexusCheckTotal.WithLabelValues(decision).Inc()
-			return core.CheckResult{
-				Allowed: allowed,
-				Reason:  "cached authorization decision",
-			}, nil
+
+			// Verify causal consistency against requested Zookie
+			isFresh := true
+			if requestedZk != nil && cachedNano > 0 {
+				isFresh = requestedZk.IsAtLeastFresh(time.Unix(0, cachedNano))
+			}
+
+			if isFresh {
+				decision := "deny"
+				if allowed {
+					decision = "allow"
+				}
+				nexusCheckTotal.WithLabelValues(decision).Inc()
+				return core.CheckResult{
+					Allowed:   allowed,
+					Reason:    "cached authorization decision",
+					SnapToken: zookie.New(time.Unix(0, cachedNano)).String(),
+				}, nil
+			}
 		}
 	}
 
@@ -93,12 +120,16 @@ func (r *Resolver) Check(ctx context.Context, req core.CheckRequest) (core.Check
 	}
 	nexusCheckTotal.WithLabelValues(decision).Inc()
 
-	// 2. Cache successful evaluation
+	evalToken := zookie.Now()
+	res.SnapToken = evalToken.String()
+
+	// 2. Cache successful evaluation with nanosecond commit timestamp for Zookie tracking
 	if r.cache != nil && len(req.RequestContext) == 0 && err == nil {
-		val := []byte("0")
+		decisionCode := "0"
 		if res.Allowed {
-			val = []byte("1")
+			decisionCode = "1"
 		}
+		val := []byte(fmt.Sprintf("%s:%d", decisionCode, evalToken.Timestamp.UnixNano()))
 		_ = r.cache.Set(ctx, cacheKey, val, 30*time.Second)
 	}
 

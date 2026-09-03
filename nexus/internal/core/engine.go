@@ -85,13 +85,17 @@ type CheckRequest struct {
 
 	// Explain requests a detailed decision tree trace
 	Explain bool
+
+	// SnapToken is the consistency token (Zookie) representing snapshot freshness
+	SnapToken string
 }
 
 // CheckResult contains whether access is allowed, a human-readable reason, and optional decision trace
 type CheckResult struct {
-	Allowed bool
-	Reason  string
-	Trace   *DecisionNode
+	Allowed   bool
+	Reason    string
+	Trace     *DecisionNode
+	SnapToken string // Evaluated snapshot token (Zookie)
 }
 
 // ExpandRequest asks for the full subtree of permissions for an object#relation

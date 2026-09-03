@@ -12,6 +12,7 @@ import (
 	"github.com/autorix/platform/health"
 	"github.com/autorix/platform/metrics"
 	"github.com/autorix/platform/paging"
+	"github.com/autorix/platform/zookie"
 )
 
 var (
@@ -23,6 +24,7 @@ var (
 type Repository interface {
 	ListTuples(ctx context.Context, namespace string, limit int, cursor string) ([]core.Tuple, bool, error)
 	WriteTuples(ctx context.Context, tuples []core.Tuple) error
+	WriteTuplesWithToken(ctx context.Context, tuples []core.Tuple) (string, error)
 	DeleteTuples(ctx context.Context, tuples []core.Tuple) error
 
 	WriteCaveat(ctx context.Context, caveat core.CaveatDefinition) error
@@ -108,6 +110,8 @@ func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 		SubjectRelation  string                 `json:"subject_relation"`
 		RequestContext   map[string]interface{} `json:"request_context"`
 		Explain          bool                   `json:"explain"`
+		SnapToken        string                 `json:"snap_token"`
+		Zookie           string                 `json:"zookie"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -124,6 +128,20 @@ func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 		req.SubjectNamespace = "user"
 	}
 
+	snapToken := req.SnapToken
+	if snapToken == "" {
+		snapToken = req.Zookie
+	}
+	if snapToken == "" {
+		snapToken = r.Header.Get("X-Autorix-Snap-Token")
+	}
+	if snapToken == "" {
+		snapToken = r.Header.Get("X-Autorix-Zookie")
+	}
+	if snapToken == "" {
+		snapToken = r.URL.Query().Get("snap_token")
+	}
+
 	domainReq := core.CheckRequest{
 		Namespace: req.Namespace,
 		Object:    req.Object,
@@ -135,6 +153,7 @@ func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 		},
 		RequestContext: req.RequestContext,
 		Explain:        req.Explain,
+		SnapToken:      snapToken,
 	}
 
 	res, err := s.engine.Check(r.Context(), domainReq)
@@ -143,13 +162,23 @@ func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	evaluatedToken := res.SnapToken
+	if evaluatedToken == "" {
+		evaluatedToken = zookie.Now().String()
+	}
+
 	respMap := map[string]interface{}{
-		"allowed": res.Allowed,
-		"reason":  res.Reason,
+		"allowed":    res.Allowed,
+		"reason":     res.Reason,
+		"snap_token": evaluatedToken,
+		"zookie":     evaluatedToken,
 	}
 	if req.Explain && res.Trace != nil {
 		respMap["trace"] = res.Trace
 	}
+
+	w.Header().Set("X-Autorix-Snap-Token", evaluatedToken)
+	w.Header().Set("X-Autorix-Zookie", evaluatedToken)
 
 	writeJSON(w, http.StatusOK, respMap)
 }
@@ -196,11 +225,14 @@ func (s *Server) handleWriteTuples(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.repo.WriteTuples(r.Context(), tuples); err != nil {
+	snapToken, err := s.repo.WriteTuplesWithToken(r.Context(), tuples)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+	w.Header().Set("X-Autorix-Snap-Token", snapToken)
+	w.Header().Set("X-Autorix-Zookie", snapToken)
 	writeJSON(w, http.StatusCreated, toAPITuples(tuples))
 }
 

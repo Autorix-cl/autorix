@@ -10,6 +10,7 @@ import (
 
 	"github.com/autorix/nexus/internal/core"
 	"github.com/autorix/platform/paging"
+	"github.com/autorix/platform/zookie"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -28,11 +29,17 @@ func (r *Repository) Pool() *pgxpool.Pool {
 	return r.pool
 }
 
-// WriteTuples inserts a batch of relation tuples transactionally
+// WriteTuples inserts a batch of relation tuples transactionally.
 func (r *Repository) WriteTuples(ctx context.Context, tuples []core.Tuple) error {
+	_, err := r.WriteTuplesWithToken(ctx, tuples)
+	return err
+}
+
+// WriteTuplesWithToken inserts a batch of relation tuples transactionally and returns a consistency Zookie token.
+func (r *Repository) WriteTuplesWithToken(ctx context.Context, tuples []core.Tuple) (string, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to begin tx: %w", err)
+		return "", fmt.Errorf("failed to begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // no-op once Commit has succeeded
 
@@ -42,7 +49,7 @@ func (r *Repository) WriteTuples(ctx context.Context, tuples []core.Tuple) error
 			var marshalErr error
 			caveatCtx, marshalErr = json.Marshal(t.CaveatContext)
 			if marshalErr != nil {
-				return fmt.Errorf("failed to marshal caveat context: %w", marshalErr)
+				return "", fmt.Errorf("failed to marshal caveat context: %w", marshalErr)
 			}
 		}
 
@@ -63,11 +70,15 @@ func (r *Repository) WriteTuples(ctx context.Context, tuples []core.Tuple) error
 			caveatName, caveatCtx)
 
 		if err != nil {
-			return fmt.Errorf("failed to insert tuple: %w", err)
+			return "", fmt.Errorf("failed to insert tuple: %w", err)
 		}
 	}
 
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+
+	return zookie.Now().String(), nil
 }
 
 // ReadTuples fetches tuples based on filters (namespace, object, relation)
