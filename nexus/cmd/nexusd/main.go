@@ -14,6 +14,7 @@ import (
 	grpcTransport "github.com/autorix/nexus/internal/transport/grpc"
 	httpTransport "github.com/autorix/nexus/internal/transport/http"
 
+	"github.com/autorix/platform/cache"
 	"github.com/autorix/platform/config"
 	"github.com/autorix/platform/grpchealth"
 	"github.com/autorix/platform/health"
@@ -32,6 +33,7 @@ import (
 // Every field keeps the exact default it had before this refactor.
 type cfg struct {
 	DatabaseURL     string        `env:"DATABASE_URL" envDefault:"postgres://postgres:postgres@localhost:5432/autorix?sslmode=disable"`
+	RedisURL        string        `env:"REDIS_URL" envDefault:""`
 	HTTPPort        string        `env:"HTTP_PORT" envDefault:"8080"`
 	Port            string        `env:"PORT" envDefault:"50051"`
 	LogLevel        string        `env:"LOG_LEVEL" envDefault:"info"`
@@ -89,7 +91,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	resolver := graph.NewResolver(repo, celEvaluator, graph.WithNamespaceGetter(repo))
+	appCache := cache.New(ctx, c.RedisURL)
+	defer appCache.Close()
+
+	resolver := graph.NewResolver(repo, celEvaluator, graph.WithNamespaceGetter(repo), graph.WithCache(appCache))
 
 	// 3b. Uniform health/readiness/identity contract (ADR 0001). Readiness
 	// checks Postgres reachability, bounded independently of the caller's

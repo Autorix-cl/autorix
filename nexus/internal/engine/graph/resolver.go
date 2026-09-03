@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/autorix/nexus/internal/core"
+	"github.com/autorix/platform/cache"
 )
 
 // Repository is the interface required by the graph engine to fetch and query tuples
@@ -30,11 +31,19 @@ func WithNamespaceGetter(ng NamespaceGetter) Option {
 	}
 }
 
+// WithCache sets the distributed/local cache for authorization decisions
+func WithCache(c cache.Cache) Option {
+	return func(r *Resolver) {
+		r.cache = c
+	}
+}
+
 // Resolver implements core.GraphEngine using concurrent graph traversal
 type Resolver struct {
 	repo            Repository
 	caveatEvaluator core.CaveatEvaluator
 	namespaceGetter NamespaceGetter
+	cache           cache.Cache
 }
 
 // NewResolver initializes a Resolver with options
@@ -52,6 +61,27 @@ func NewResolver(repo Repository, ce core.CaveatEvaluator, opts ...Option) *Reso
 // Check evaluates whether a subject has a relation to an object
 func (r *Resolver) Check(ctx context.Context, req core.CheckRequest) (core.CheckResult, error) {
 	start := time.Now()
+
+	// 1. Fast path: In-memory/Redis distributed cache lookup (for requests without dynamic caveats)
+	cacheKey := fmt.Sprintf("chk:%s:%s#%s@%s:%s#%s",
+		req.Namespace, req.Object, req.Relation,
+		req.Subject.Namespace, req.Subject.Object, req.Subject.Relation)
+
+	if r.cache != nil && len(req.RequestContext) == 0 {
+		if val, err := r.cache.Get(ctx, cacheKey); err == nil {
+			allowed := string(val) == "1"
+			decision := "deny"
+			if allowed {
+				decision = "allow"
+			}
+			nexusCheckTotal.WithLabelValues(decision).Inc()
+			return core.CheckResult{
+				Allowed: allowed,
+				Reason:  "cached authorization decision",
+			}, nil
+		}
+	}
+
 	visited := make(map[string]bool)
 	res, err := r.checkInternal(ctx, req, visited)
 	duration := time.Since(start).Seconds()
@@ -62,6 +92,15 @@ func (r *Resolver) Check(ctx context.Context, req core.CheckRequest) (core.Check
 		decision = "allow"
 	}
 	nexusCheckTotal.WithLabelValues(decision).Inc()
+
+	// 2. Cache successful evaluation
+	if r.cache != nil && len(req.RequestContext) == 0 && err == nil {
+		val := []byte("0")
+		if res.Allowed {
+			val = []byte("1")
+		}
+		_ = r.cache.Set(ctx, cacheKey, val, 30*time.Second)
+	}
 
 	return res, err
 }

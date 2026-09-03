@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/autorix/nexus/internal/core"
+	"github.com/autorix/platform/cache"
 )
 
 // mockRepository implements graph.Repository in-memory for testing
@@ -458,4 +459,59 @@ func TestResolver_CycleDetection(t *testing.T) {
 	if res.Allowed {
 		t.Fatalf("expected outsider not allowed on cyclic group")
 	}
+}
+
+func TestResolver_CacheHit(t *testing.T) {
+	tuples := []core.Tuple{
+		{Namespace: "doc", Object: "1", Relation: "viewer", SubjectNamespace: "user", SubjectObject: "bob"},
+	}
+
+	repo := &countingMockRepo{tuples: tuples}
+	eval := &mockCaveatEvaluator{allowed: true}
+	c := cache.NewMemoryCache()
+	defer c.Close()
+
+	resolver := NewResolver(repo, eval, WithCache(c))
+
+	ctx := context.Background()
+	req := core.CheckRequest{
+		Namespace: "doc", Object: "1", Relation: "viewer",
+		Subject: core.Tuple{Namespace: "user", Object: "bob"},
+	}
+
+	// 1st Check: cache miss, hits repo
+	res1, err := resolver.Check(ctx, req)
+	if err != nil || !res1.Allowed {
+		t.Fatalf("1st check failed: %v, allowed: %v", err, res1.Allowed)
+	}
+	if repo.queries != 1 {
+		t.Fatalf("expected 1 repo query on miss, got %d", repo.queries)
+	}
+
+	// 2nd Check: cache hit, bypasses repo
+	res2, err := resolver.Check(ctx, req)
+	if err != nil || !res2.Allowed {
+		t.Fatalf("2nd check failed: %v, allowed: %v", err, res2.Allowed)
+	}
+	if repo.queries != 1 {
+		t.Fatalf("expected repo queries to remain 1 on cache hit, got %d", repo.queries)
+	}
+	if res2.Reason != "cached authorization decision" {
+		t.Fatalf("expected cached authorization decision reason, got %q", res2.Reason)
+	}
+}
+
+type countingMockRepo struct {
+	tuples  []core.Tuple
+	queries int
+}
+
+func (m *countingMockRepo) ReadTuples(ctx context.Context, filter core.Tuple) ([]core.Tuple, error) {
+	m.queries++
+	return m.tuples, nil
+}
+
+func (m *countingMockRepo) QueryTuples(ctx context.Context, filter core.Tuple) ([]core.Tuple, error) {
+	m.queries++
+	return m.tuples, nil
 }

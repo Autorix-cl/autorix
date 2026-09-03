@@ -17,10 +17,16 @@ import (
 // ConnectOptions configures pool limits and boot-time retry behavior.
 // A zero value uses sane defaults for all four fields.
 type ConnectOptions struct {
-	// MaxConns caps the pool size. Defaults to 10.
+	// MaxConns caps the pool size. Defaults to 25.
 	MaxConns int32
-	// MinConns is the pool's minimum idle size. Defaults to 0.
+	// MinConns is the pool's minimum idle size. Defaults to 2.
 	MinConns int32
+	// MaxConnLifetime is the maximum duration a pooled connection can live. Defaults to 1h.
+	MaxConnLifetime time.Duration
+	// MaxConnIdleTime is the duration before an idle connection is closed. Defaults to 10m.
+	MaxConnIdleTime time.Duration
+	// HealthCheckPeriod is the interval between background connection health checks. Defaults to 30s.
+	HealthCheckPeriod time.Duration
 	// MaxRetries bounds how many times Connect pings before giving up.
 	// Defaults to 5.
 	MaxRetries int
@@ -30,7 +36,19 @@ type ConnectOptions struct {
 
 func (o ConnectOptions) withDefaults() ConnectOptions {
 	if o.MaxConns <= 0 {
-		o.MaxConns = 10
+		o.MaxConns = 25
+	}
+	if o.MinConns <= 0 {
+		o.MinConns = 2
+	}
+	if o.MaxConnLifetime <= 0 {
+		o.MaxConnLifetime = 1 * time.Hour
+	}
+	if o.MaxConnIdleTime <= 0 {
+		o.MaxConnIdleTime = 10 * time.Minute
+	}
+	if o.HealthCheckPeriod <= 0 {
+		o.HealthCheckPeriod = 30 * time.Second
 	}
 	if o.MaxRetries <= 0 {
 		o.MaxRetries = 5
@@ -52,6 +70,9 @@ func BuildPoolConfig(dsn string, opts ConnectOptions) (*pgxpool.Config, error) {
 	opts = opts.withDefaults()
 	cfg.MaxConns = opts.MaxConns
 	cfg.MinConns = opts.MinConns
+	cfg.MaxConnLifetime = opts.MaxConnLifetime
+	cfg.MaxConnIdleTime = opts.MaxConnIdleTime
+	cfg.HealthCheckPeriod = opts.HealthCheckPeriod
 	return cfg, nil
 }
 

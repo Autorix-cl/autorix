@@ -61,6 +61,7 @@ services:
       PORT: "50051"
       HTTP_PORT: "8080"
       DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_nexus?sslmode=disable"
+      REDIS_URL: "redis://redis:6379"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health/ready"]
       interval: 10s
@@ -69,6 +70,8 @@ services:
       start_period: 10s
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       argus:
         condition: service_healthy
@@ -135,6 +138,7 @@ services:
     environment:
       PORT: "4466"
       DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_vulcan?sslmode=disable"
+      REDIS_URL: "redis://redis:6379"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4466/health/ready"]
       interval: 10s
@@ -143,6 +147,8 @@ services:
       start_period: 10s
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       argus:
         condition: service_healthy
@@ -313,5 +319,21 @@ services:
       retries: 3
       start_period: 5s
 
+  redis:
+    image: redis:7-alpine
+    container_name: autorix-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis_data:/data
+
 volumes:
   postgres_data:
+  redis_data:

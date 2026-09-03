@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/autorix/platform/cache"
 	"github.com/autorix/platform/health"
 	"github.com/autorix/platform/metrics"
 	"github.com/autorix/platform/paging"
@@ -41,6 +42,7 @@ type Server struct {
 	repo          *postgres.Repository
 	location      string
 	healthHandler *health.Handler
+	cache         cache.Cache
 }
 
 func NewServer(repo *postgres.Repository, location string, healthHandler *health.Handler) *Server {
@@ -49,6 +51,10 @@ func NewServer(repo *postgres.Repository, location string, healthHandler *health
 		location:      location,
 		healthHandler: healthHandler,
 	}
+}
+
+func (s *Server) SetCache(c cache.Cache) {
+	s.cache = c
 }
 
 func (s *Server) Routes() http.Handler {
@@ -185,16 +191,36 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Fetch Root Signature Key from DB
-	apiKey, err := s.repo.GetKeyByID(r.Context(), keyUUID)
-	if err != nil {
-		vulcanKeysVerifiedTotal.WithLabelValues("invalid").Inc()
-		if errors.Is(err, postgres.ErrNotFound) {
-			writeError(w, http.StatusUnauthorized, "API key not found")
+	// 1. Fetch Root Signature Key from Cache or DB
+	var apiKey *core.APIKey
+	cacheKey := "vulcan:key:" + keyUUID.String()
+
+	if s.cache != nil {
+		if cachedBytes, err := s.cache.Get(r.Context(), cacheKey); err == nil {
+			var cachedKey core.APIKey
+			if json.Unmarshal(cachedBytes, &cachedKey) == nil {
+				apiKey = &cachedKey
+			}
+		}
+	}
+
+	if apiKey == nil {
+		var err error
+		apiKey, err = s.repo.GetKeyByID(r.Context(), keyUUID)
+		if err != nil {
+			vulcanKeysVerifiedTotal.WithLabelValues("invalid").Inc()
+			if errors.Is(err, postgres.ErrNotFound) {
+				writeError(w, http.StatusUnauthorized, "API key not found")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "Database error")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "Database error")
-		return
+		if s.cache != nil && apiKey.State == "active" {
+			if data, err := json.Marshal(apiKey); err == nil {
+				_ = s.cache.Set(r.Context(), cacheKey, data, 2*time.Minute)
+			}
+		}
 	}
 
 	if apiKey.State == "expired" || (apiKey.ExpiresAt != nil && time.Now().After(*apiKey.ExpiresAt)) {
@@ -268,6 +294,10 @@ func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.cache != nil {
+		_ = s.cache.Delete(r.Context(), "vulcan:key:"+keyUUID.String())
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
 }
 
@@ -316,6 +346,10 @@ func (s *Server) handleAdminUpdateKey(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	if s.cache != nil {
+		_ = s.cache.Delete(r.Context(), "vulcan:key:"+keyUUID.String())
 	}
 
 	writeJSON(w, http.StatusOK, apiKey)
@@ -374,6 +408,10 @@ func (s *Server) handleAdminRotateKey(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	if s.cache != nil {
+		_ = s.cache.Delete(r.Context(), "vulcan:key:"+keyUUID.String())
 	}
 
 	newMacaroon := macaroon.New(s.location, keyUUID.String(), gen.RootKey)

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/autorix/platform/cache"
 	"github.com/autorix/platform/health"
 	"github.com/autorix/platform/pgtest"
 	"github.com/autorix/vulcan/internal/core"
@@ -302,4 +303,73 @@ func TestHTTP_Metrics(t *testing.T) {
 		t.Errorf("expected body to contain autorix_vulcan_keys_verified_total, got: %s", body)
 	}
 }
+
+func TestVerify_WithCache(t *testing.T) {
+	pool := pgtest.StartPostgres(t, "../../../migrations")
+	repo := postgres.NewRepository(pool)
+	server := NewServer(repo, "https://api.autorix.io", newTestHealthHandler(false))
+
+	c := cache.NewMemoryCache()
+	defer c.Close()
+	server.SetCache(c)
+
+	router := server.Routes()
+	ctx := context.Background()
+
+	// 1. Create a live key
+	createPayload := `{"name":"test-cached-key","owner_id":"usr_test_123","prefix":"av_live","scopes":["read"]}`
+	createRec := httptest.NewRecorder()
+	createReq := httptest.NewRequest("POST", "/keys", strings.NewReader(createPayload))
+	router.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create failed: %d %s", createRec.Code, createRec.Body.String())
+	}
+
+	var createResp core.CreateKeyResponse
+	_ = json.Unmarshal(createRec.Body.Bytes(), &createResp)
+	keyID := createResp.APIKey.ID.String()
+
+	cacheKey := "vulcan:key:" + keyID
+
+	// 2. Before verify, cache is empty
+	_, err := c.Get(ctx, cacheKey)
+	if err != cache.ErrNotFound {
+		t.Fatalf("expected ErrNotFound in cache before first verify, got %v", err)
+	}
+
+	// 3. Verify macaroon -> populates cache
+	verifyBody, _ := json.Marshal(map[string]interface{}{
+		"macaroon": createResp.Macaroon,
+	})
+	verifyRec := httptest.NewRecorder()
+	verifyReq := httptest.NewRequest("POST", "/keys/verify", bytes.NewReader(verifyBody))
+	router.ServeHTTP(verifyRec, verifyReq)
+	if verifyRec.Code != http.StatusOK {
+		t.Fatalf("verify failed: %d %s", verifyRec.Code, verifyRec.Body.String())
+	}
+
+	// 4. Cache should now contain the key
+	cachedData, err := c.Get(ctx, cacheKey)
+	if err != nil {
+		t.Fatalf("expected key to be in cache after verify: %v", err)
+	}
+	if len(cachedData) == 0 {
+		t.Fatalf("expected cached data to be non-empty")
+	}
+
+	// 5. Revoke key -> must evict from cache
+	revokeRec := httptest.NewRecorder()
+	revokeReq := httptest.NewRequest("DELETE", "/keys/"+keyID, nil)
+	router.ServeHTTP(revokeRec, revokeReq)
+	if revokeRec.Code != http.StatusOK {
+		t.Fatalf("revoke failed: %d %s", revokeRec.Code, revokeRec.Body.String())
+	}
+
+	// 6. Cache should be evicted immediately
+	_, err = c.Get(ctx, cacheKey)
+	if err != cache.ErrNotFound {
+		t.Fatalf("expected key to be evicted from cache after revoke, got %v", err)
+	}
+}
+
 

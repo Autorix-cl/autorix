@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/autorix/platform/cache"
 	"github.com/autorix/platform/config"
 	"github.com/autorix/platform/health"
 	"github.com/autorix/platform/httpx"
@@ -24,6 +25,7 @@ import (
 type appConfig struct {
 	Port            string        `env:"PORT" envDefault:"4466"`
 	DatabaseURL     string        `env:"DATABASE_URL" envDefault:"postgres://autorix:autorix_password@localhost:5432/autorix_vulcan?sslmode=disable"`
+	RedisURL        string        `env:"REDIS_URL" envDefault:""`
 	LogLevel        string        `env:"LOG_LEVEL" envDefault:"info"`
 	InstanceID      string        `env:"AUTORIX_INSTANCE_ID"`
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"10s"`
@@ -85,6 +87,9 @@ func main() {
 	})
 
 	server := transport.NewServer(repo, cfg.LocationURL, healthHandler)
+	appCache := cache.New(ctx, cfg.RedisURL)
+	defer appCache.Close()
+	server.SetCache(appCache)
 
 	handler := httpx.Chain(server.Routes(),
 		httpx.RequestID,
