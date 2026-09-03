@@ -16,6 +16,7 @@ import (
 	platformpg "github.com/autorix/platform/postgres"
 	"github.com/autorix/platform/registry"
 	"github.com/autorix/platform/run"
+	autortls "github.com/autorix/platform/tls"
 	"github.com/autorix/platform/version"
 	"github.com/autorix/vulcan/internal/storage/postgres"
 	transport "github.com/autorix/vulcan/internal/transport/http"
@@ -112,6 +113,11 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	if _, err := autortls.ConfigureHTTPServer(httpServer, logger, "vulcan"); err != nil {
+		logger.Error("failed to configure mTLS for vulcan", "error", err)
+		os.Exit(1)
+	}
+
 	logger.Info("Autorix Vulcan listening", "port", cfg.Port, "protocol", "REST")
 
 	// Optional control-plane registration (Argus). No-op unless
@@ -127,7 +133,7 @@ func main() {
 		{
 			Name: "vulcan-http",
 			Serve: func() error {
-				if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				if err := autortls.ServeHTTP(httpServer); err != nil && !errors.Is(err, http.ErrServerClosed) {
 					return err
 				}
 				return run.ErrServerClosed

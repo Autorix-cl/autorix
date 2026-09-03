@@ -24,6 +24,7 @@ import (
 	platformpg "github.com/autorix/platform/postgres"
 	"github.com/autorix/platform/registry"
 	"github.com/autorix/platform/run"
+	autortls "github.com/autorix/platform/tls"
 	"github.com/autorix/platform/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -159,6 +160,11 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	if _, err := autortls.ConfigureHTTPServer(httpServer, logger, "nexus"); err != nil {
+		logger.Error("failed to configure mTLS for nexus", "error", err)
+		os.Exit(1)
+	}
+
 	lis, err := net.Listen("tcp", ":"+c.Port)
 	if err != nil {
 		logger.Error("failed to listen", "port", c.Port, "error", err)
@@ -189,7 +195,7 @@ func main() {
 			Name: "nexus-http",
 			Serve: func() error {
 				logger.Info("nexus listening", "port", c.HTTPPort, "transport", "REST admin API")
-				if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				if err := autortls.ServeHTTP(httpServer); err != nil && err != http.ErrServerClosed {
 					return err
 				}
 				return run.ErrServerClosed

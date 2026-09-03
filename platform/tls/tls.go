@@ -3,7 +3,10 @@ package autortls
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"os"
 )
 
@@ -103,6 +106,39 @@ func VerifyPeerCertificateSubject(peerCommonName, expectedIdentity string) error
 	}
 	if peerCommonName != expectedIdentity {
 		return fmt.Errorf("peer certificate subject %q does not match expected identity %q", peerCommonName, expectedIdentity)
+	}
+	return nil
+}
+
+// ConfigureHTTPServer attaches server TLS configuration if environment variables are set.
+func ConfigureHTTPServer(server *http.Server, logger *slog.Logger, serviceName string) (bool, error) {
+	cfg, ok := ServerConfigFromEnv()
+	if !ok {
+		return false, nil
+	}
+
+	tlsConfig, err := NewServerTLSConfig(cfg)
+	if err != nil {
+		return false, fmt.Errorf("configure mTLS for %s: %w", serviceName, err)
+	}
+
+	server.TLSConfig = tlsConfig
+	if logger != nil {
+		logger.Info("mTLS security mesh active", "service", serviceName, "require_client_cert", cfg.RequireMTLS)
+	}
+	return true, nil
+}
+
+// ServeHTTP serves HTTPS if server.TLSConfig != nil, or HTTP otherwise.
+func ServeHTTP(server *http.Server) error {
+	if server.TLSConfig != nil {
+		if err := server.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	}
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
 	}
 	return nil
 }

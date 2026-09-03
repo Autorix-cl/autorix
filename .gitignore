@@ -96,3 +96,10 @@ docs/.vitepress/cache/
 
 # Codebase Memory MCP cache
 .codebase-memory/
+
+# Cryptographic Certificates and Keys
+certs/*.crt
+certs/*.key
+*.key
+*.pem
+
