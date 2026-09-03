@@ -2,6 +2,11 @@ import { NextRequest } from "next/server";
 import { proxyRequest } from "@/lib/api/proxy";
 import { deleteRuleResponseSchema, ruleSchema } from "@/lib/api/schemas/aegis";
 
+export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
+  return proxyRequest("aegis", `/rules/${id}`, ruleSchema);
+}
+
 export async function PUT(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const body = await req.json();
@@ -18,3 +23,4 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
 
   return proxyRequest("aegis", `/rules/${id}`, deleteRuleResponseSchema, { method: "DELETE" });
 }
+

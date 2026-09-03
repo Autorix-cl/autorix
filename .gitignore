@@ -81,8 +81,10 @@ console/e2e/.auth/
 
 # Coverage
 console/coverage/
+console/.data/
 coverage.out
 coverage.txt
+
 # Local AI runtime state
 .atl/
 
