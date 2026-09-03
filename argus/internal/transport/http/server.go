@@ -69,6 +69,8 @@ func (s *Server) Routes() http.Handler {
 		mux.HandleFunc("GET /admin/enrollment-audit", s.handleListEnrollmentAudit)
 		mux.HandleFunc("GET /v1/topology", s.handleGetTopology)
 		mux.HandleFunc("GET /admin/topology", s.handleGetTopology)
+		mux.HandleFunc("GET /v1/metrics/summary", s.handleGetMetricsSummary)
+		mux.HandleFunc("GET /admin/metrics/summary", s.handleGetMetricsSummary)
 		mux.HandleFunc("GET /v1/stream", s.handleStream)
 
 		// Console Identity & Auth (P3-S1, P3-S2)
@@ -565,6 +567,18 @@ func (s *Server) handleGetTopology(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, graph)
 }
+
+func (s *Server) handleGetMetricsSummary(w http.ResponseWriter, r *http.Request) {
+	instances, _, _, err := s.repo.ListInstances(r.Context(), core.InstanceFilter{Limit: 1000})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "listing instances for metrics summary")
+		return
+	}
+	summary := core.AggregateFleetMetrics(instances)
+	writeJSON(w, http.StatusOK, summary)
+}
+
+
 
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)

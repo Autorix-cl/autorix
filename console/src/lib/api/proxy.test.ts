@@ -19,8 +19,10 @@ describe("proxyRequest", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("x-request-id")).toBeTruthy();
+    expect(res.headers.get("x-correlation-id")).toBeTruthy();
     await expect(res.json()).resolves.toEqual({ id: "w1", count: 3 });
   });
+
 
   it("propagates the upstream status and error message on a 4xx/5xx instead of swallowing it into 200", async () => {
     vi.stubGlobal(

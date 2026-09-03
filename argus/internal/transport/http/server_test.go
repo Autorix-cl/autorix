@@ -349,3 +349,39 @@ func TestHTTP_Auth_BootstrapAndLoginFlow(t *testing.T) {
 	}
 }
 
+func TestHTTP_GetMetricsSummary(t *testing.T) {
+	server, repo := newTestServerWithRepo(t)
+	ctx := context.Background()
+
+	env, err := repo.CreateEnvironment(ctx, "Metrics Env", "metrics-env", "", false)
+	if err != nil {
+		t.Fatalf("CreateEnvironment: %v", err)
+	}
+
+	req := core.RegistrationRequest{EngineType: "nexus", InstanceID: uuid.NewString(), EnvironmentID: env.ID}
+	if _, err := repo.UpsertInstance(ctx, req, "admin", false); err != nil {
+		t.Fatalf("UpsertInstance: %v", err)
+	}
+
+	httpReq := httptest.NewRequest(http.MethodGet, "/v1/metrics/summary", nil)
+	rec := httptest.NewRecorder()
+	server.Routes().ServeHTTP(rec, httpReq)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var summary core.FleetMetricsSummary
+	if err := json.NewDecoder(rec.Body).Decode(&summary); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+
+	if summary.TotalEngines < 7 {
+		t.Errorf("expected at least 7 engines in summary, got %d", summary.TotalEngines)
+	}
+	if summary.TotalInstances < 1 {
+		t.Errorf("expected at least 1 instance, got %d", summary.TotalInstances)
+	}
+}
+
+

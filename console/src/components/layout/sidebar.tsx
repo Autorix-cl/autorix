@@ -52,6 +52,11 @@ export function Sidebar() {
           icon: LayoutDashboard,
         },
         {
+          name: "Observability",
+          href: "/observability",
+          icon: Activity,
+        },
+        {
           name: "Cross-Engine Explorer",
           href: "/explorer",
           icon: Compass,

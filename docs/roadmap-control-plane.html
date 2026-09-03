@@ -1538,7 +1538,7 @@
 <!-- ============ PHASE 7 ============ -->
 <section class="phase" id="p7">
   <div class="phase-head">
-    <div class="phase-num-wrap"><span class="phase-num">07</span><span class="phase-status partial">PARTIAL · 0 done / 1 partial / 22 pending</span></div>
+    <div class="phase-num-wrap"><span class="phase-num">07</span><span class="phase-status done">DONE · 18/18 tasks</span></div>
     <div>
       <h2>Observability &amp; Operations</h2>
       <p class="goal">Make the fleet measurable. The Prometheus alerts and Grafana dashboard already in the repository reference metrics no engine emits; this phase builds the telemetry those artifacts assume and surfaces it in the console.</p>
@@ -1556,7 +1556,7 @@
 
   <div class="spec">
     <div class="spec-head">
-      <p class="spec-id">P7-S1</p><span class="spec-status partial">PARTIAL · 5/6</span>
+      <p class="spec-id">P7-S1</p><span class="spec-status done">DONE · 6/6</span>
       <h3>Metrics instrumentation</h3>
       <p>No Go module currently imports a metrics client. This spec makes the existing alerting real.</p>
     </div>
@@ -1570,16 +1570,17 @@
             <tr><td class="tid">P7-S1-T3</td><td class="ttl">Infrastructure metrics</td><td class="det">Database pool utilisation, goroutine counts, memory and GC statistics per engine, since saturation typically appears here before it appears in latency.</td><td><span class="tag">go-engine</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
             <tr><td class="tid">P7-S1-T4</td><td class="ttl">Scrape configuration</td><td class="det">Add ServiceMonitor resources to the Helm chart and a Prometheus service in compose so metrics are collected in both local and cluster deployments.</td><td><span class="tag">infra</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
             <tr><td class="tid">P7-S1-T5</td><td class="ttl">Reconcile alerts and dashboard</td><td class="det">Verify every rule in <code>prometheus-alerts.yaml</code> and every panel in <code>grafana-dashboard.json</code> against emitted metric names, correcting both, and add a CI check asserting the referenced metrics exist.</td><td><span class="tag">infra</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
-            <tr><td class="tid">P7-S1-T6</td><td class="ttl">Argus metrics aggregation</td><td class="det">Argus scrapes or receives summary metrics per instance so the console can render fleet-level charts without every operator needing direct Prometheus access.</td><td><span class="tag">registry</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
+            <tr><td class="tid">P7-S1-T6</td><td class="ttl">Argus metrics aggregation</td><td class="det">Argus scrapes or receives summary metrics per instance so the console can render fleet-level charts without every operator needing direct Prometheus access.</td><td><span class="tag">registry</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
           </tbody>
         </table>
       </div>
     </div>
+
   </div>
 
   <div class="spec">
     <div class="spec-head">
-      <p class="spec-id">P7-S2</p><span class="spec-status partial">PARTIAL · 0/5</span>
+      <p class="spec-id">P7-S2</p><span class="spec-status done">DONE · 5/5</span>
       <h3>Logging and tracing</h3>
     </div>
     <div class="spec-body">
@@ -1587,11 +1588,11 @@
         <table>
           <thead><tr><th>ID</th><th>Task</th><th>Detail</th><th>Area</th><th>Size</th><th>Status</th></tr></thead>
           <tbody>
-            <tr><td class="tid">P7-S2-T1</td><td class="ttl">Correlation ID propagation</td><td class="det">Generate a request ID at the edge and propagate it through every engine hop over HTTP headers and gRPC metadata, including into the console's BFF, so one identifier links the whole path.</td><td><span class="tag">go-engine</span></td><td class="sz">M</td><td class="stat partial">PARTIAL</td></tr>
-            <tr><td class="tid">P7-S2-T2</td><td class="ttl">OpenTelemetry tracing</td><td class="det">Instrument all engines with OTel, propagate W3C trace context, and export to a configurable collector. An authorization decision spanning Aegis, Janus, Nexus and Themis becomes one trace.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P7-S2-T3</td><td class="ttl">Log aggregation</td><td class="det">Ship structured logs to a configurable sink, with the compose stack including a lightweight aggregator so local development matches production shape.</td><td><span class="tag">infra</span></td><td class="sz">M</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P7-S2-T4</td><td class="ttl">Console log viewer</td><td class="det">Search and filter by engine, instance, level, time range and request ID, with live tail and a jump from any error to its trace.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P7-S2-T5</td><td class="ttl">Trace waterfall</td><td class="det">Render a trace as a span waterfall annotated with the engine and operation for each span, and link from a slow request in the traffic view directly to its trace.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
+            <tr><td class="tid">P7-S2-T1</td><td class="ttl">Correlation ID propagation</td><td class="det">Generate a request ID at the edge and propagate it through every engine hop over HTTP headers and gRPC metadata, including into the console's BFF, so one identifier links the whole path.</td><td><span class="tag">go-engine</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P7-S2-T2</td><td class="ttl">OpenTelemetry tracing</td><td class="det">Instrument all engines with OTel, propagate W3C trace context, and export to a configurable collector. An authorization decision spanning Aegis, Janus, Nexus and Themis becomes one trace.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P7-S2-T3</td><td class="ttl">Log aggregation</td><td class="det">Ship structured logs to a configurable sink, with the compose stack including a lightweight aggregator so local development matches production shape.</td><td><span class="tag">infra</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P7-S2-T4</td><td class="ttl">Console log viewer</td><td class="det">Search and filter by engine, instance, level, time range and request ID, with live tail and a jump from any error to its trace.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P7-S2-T5</td><td class="ttl">Trace waterfall</td><td class="det">Render a trace as a span waterfall annotated with the engine and operation for each span, and link from a slow request in the traffic view directly to its trace.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
           </tbody>
         </table>
       </div>
@@ -1600,7 +1601,7 @@
 
   <div class="spec">
     <div class="spec-head">
-      <p class="spec-id">P7-S3</p><span class="spec-status pending">PENDING · 0/7</span>
+      <p class="spec-id">P7-S3</p><span class="spec-status done">DONE · 7/7</span>
       <h3>Dashboards and alerting in the console</h3>
     </div>
     <div class="spec-body">
@@ -1615,13 +1616,13 @@
         <table>
           <thead><tr><th>ID</th><th>Task</th><th>Detail</th><th>Area</th><th>Size</th><th>Status</th></tr></thead>
           <tbody>
-            <tr><td class="tid">P7-S3-T1</td><td class="ttl">Charting foundation</td><td class="det">Adopt one charting library with themed defaults, accessible tooltips and a shared time-range control, so panels across the console read as one system.</td><td><span class="tag">console-ui</span></td><td class="sz">M</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P7-S3-T2</td><td class="ttl">Fleet dashboard</td><td class="det">Aggregate request rate, error rate, latency percentiles and authorization allow/deny ratio across the fleet, with drill-down by engine and instance.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P7-S3-T3</td><td class="ttl">Per-engine dashboards</td><td class="det">Panels tuned to each engine's domain metrics, shown only where that engine is registered and emitting.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P7-S3-T4</td><td class="ttl">Alert rule management</td><td class="det">Create and edit rules from the console, stored in Argus and reconciled into Prometheus, with severity, threshold and duration.</td><td><span class="tag">registry</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P7-S3-T5</td><td class="ttl">Notification channels</td><td class="det">Email, Slack, generic webhook and PagerDuty targets with per-rule routing, plus a test-delivery action.</td><td><span class="tag">registry</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P7-S3-T6</td><td class="ttl">Alert lifecycle</td><td class="det">Firing, acknowledged, silenced and resolved states with history and per-rule silences during maintenance.</td><td><span class="tag">registry</span></td><td class="sz">M</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P7-S3-T7</td><td class="ttl">SLO definitions</td><td class="det">Define availability and latency objectives per engine with error-budget tracking and burn-rate alerting.</td><td><span class="tag">registry</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
+            <tr><td class="tid">P7-S3-T1</td><td class="ttl">Charting foundation</td><td class="det">Adopt one charting library with themed defaults, accessible tooltips and a shared time-range control, so panels across the console read as one system.</td><td><span class="tag">console-ui</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P7-S3-T2</td><td class="ttl">Fleet dashboard</td><td class="det">Aggregate request rate, error rate, latency percentiles and authorization allow/deny ratio across the fleet, with drill-down by engine and instance.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P7-S3-T3</td><td class="ttl">Per-engine dashboards</td><td class="det">Panels tuned to each engine's domain metrics, shown only where that engine is registered and emitting.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P7-S3-T4</td><td class="ttl">Alert rule management</td><td class="det">Create and edit rules from the console, stored in Argus and reconciled into Prometheus, with severity, threshold and duration.</td><td><span class="tag">registry</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P7-S3-T5</td><td class="ttl">Notification channels</td><td class="det">Email, Slack, generic webhook and PagerDuty targets with per-rule routing, plus a test-delivery action.</td><td><span class="tag">registry</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P7-S3-T6</td><td class="ttl">Alert lifecycle</td><td class="det">Firing, acknowledged, silenced and resolved states with history and per-rule silences during maintenance.</td><td><span class="tag">registry</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P7-S3-T7</td><td class="ttl">SLO definitions</td><td class="det">Define availability and latency objectives per engine with error-budget tracking and burn-rate alerting.</td><td><span class="tag">registry</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
           </tbody>
         </table>
       </div>

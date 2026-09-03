@@ -35,7 +35,7 @@ export async function proxyRequest<T>(
   options?: ProxyOptions,
 ): Promise<NextResponse> {
   const requestId = randomUUID();
-  const headers = { "x-request-id": requestId };
+  const headers = { "x-request-id": requestId, "x-correlation-id": requestId };
 
   // 1. SSRF Protection (P3-S5-T1): reject unknown service destinations
   if (!BACKEND_URLS[service]) {
@@ -76,6 +76,7 @@ export async function proxyRequest<T>(
 
     const requestHeaders = new Headers(init?.headers);
     requestHeaders.set("x-request-id", requestId);
+    requestHeaders.set("x-correlation-id", requestId);
     requestHeaders.set("x-autorix-caller", "console");
     requestHeaders.set("x-autorix-console-token", "act_internal_console_trusted");
 
