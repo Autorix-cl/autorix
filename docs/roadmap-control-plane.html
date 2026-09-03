@@ -1332,7 +1332,7 @@
 
   <div class="spec">
     <div class="spec-head">
-      <p class="spec-id">P6-S2</p><span class="spec-status partial">PARTIAL · 0/7</span>
+      <p class="spec-id">P6-S2</p><span class="spec-status done">DONE · 7/7</span>
       <h3>Janus — OAuth2 and OIDC</h3>
       <p>Janus serves discovery, JWKS, token, and client create and list. There is no client update or delete, no introspection, no revocation, no consent management and no key rotation.</p>
     </div>
@@ -1348,15 +1348,16 @@
         <table>
           <thead><tr><th>ID</th><th>Task</th><th>Detail</th><th>Area</th><th>Size</th><th>Status</th></tr></thead>
           <tbody>
-            <tr><td class="tid">P6-S2-T1</td><td class="ttl">Client lifecycle API</td><td class="det">Add <code>GET/PATCH/DELETE /admin/clients/{id}</code> and secret rotation with an overlap window so rotation does not break live integrations.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S2-T2</td><td class="ttl">Token introspection and revocation</td><td class="det">Implement RFC 7662 introspection and RFC 7009 revocation, plus an administrative view of active grants per client and per subject.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S2-T3</td><td class="ttl">Key rotation with rollover</td><td class="det">Generate a new signing key, publish both in JWKS through a configurable overlap, then retire the old one — with the console showing key age and rotation history.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S2-T4</td><td class="ttl">Scope and claims catalogue</td><td class="det">Define scopes as managed records with descriptions and claim mappings, so client creation offers a real catalogue rather than free-text scope entry.</td><td><span class="tag">go-engine</span></td><td class="sz">M</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S2-T5</td><td class="ttl">Client creation wizard</td><td class="det">Branch by application type — web, SPA, native, machine-to-machine — preselecting appropriate grants, PKCE requirements and redirect validation, then reveal the secret exactly once.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat partial">PARTIAL</td></tr>
-            <tr><td class="tid">P6-S2-T6</td><td class="ttl">Token inspector</td><td class="det">Paste a token to see decoded claims, signature verification against live JWKS, expiry state and issuing client, with a revoke action.</td><td><span class="tag">console-ui</span></td><td class="sz">M</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S2-T7</td><td class="ttl">Consent management</td><td class="det">List and revoke user consents per client, and configure whether a client requires explicit consent.</td><td><span class="tag">console-ui</span></td><td class="sz">M</td><td class="stat pending">PENDING</td></tr>
+            <tr><td class="tid">P6-S2-T1</td><td class="ttl">Client lifecycle API</td><td class="det">Add <code>GET/PATCH/DELETE /admin/clients/{id}</code> and secret rotation with an overlap window so rotation does not break live integrations.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S2-T2</td><td class="ttl">Token introspection and revocation</td><td class="det">Implement RFC 7662 introspection and RFC 7009 revocation, plus an administrative view of active grants per client and per subject.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S2-T3</td><td class="ttl">Key rotation with rollover</td><td class="det">Generate a new signing key, publish both in JWKS through a configurable overlap, then retire the old one — with the console showing key age and rotation history.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S2-T4</td><td class="ttl">Scope and claims catalogue</td><td class="det">Define scopes as managed records with descriptions and claim mappings, so client creation offers a real catalogue rather than free-text scope entry.</td><td><span class="tag">go-engine</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S2-T5</td><td class="ttl">Client creation wizard</td><td class="det">Branch by application type — web, SPA, native, machine-to-machine — preselecting appropriate grants, PKCE requirements and redirect validation, then reveal the secret exactly once.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S2-T6</td><td class="ttl">Token inspector</td><td class="det">Paste a token to see decoded claims, signature verification against live JWKS, expiry state and issuing client, with a revoke action.</td><td><span class="tag">console-ui</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S2-T7</td><td class="ttl">Consent management</td><td class="det">List and revoke user consents per client, and configure whether a client requires explicit consent.</td><td><span class="tag">console-ui</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
           </tbody>
         </table>
+
       </div>
     </div>
   </div>
