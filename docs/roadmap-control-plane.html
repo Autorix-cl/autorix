@@ -1399,7 +1399,7 @@
 
   <div class="spec">
     <div class="spec-head">
-      <p class="spec-id">P6-S4</p><span class="spec-status partial">PARTIAL · 0/7</span>
+      <p class="spec-id">P6-S4</p><span class="spec-status done">DONE · 7/7</span>
       <h3>Themis — ABAC policy</h3>
       <p>Themis is the most complete engine, with full CRUD and evaluation already in place. The work here is depth: authoring, testing and safe change.</p>
     </div>
@@ -1414,13 +1414,13 @@
         <table>
           <thead><tr><th>ID</th><th>Task</th><th>Detail</th><th>Area</th><th>Size</th><th>Status</th></tr></thead>
           <tbody>
-            <tr><td class="tid">P6-S4-T1</td><td class="ttl">Policy versioning</td><td class="det">Store every revision with author and timestamp, exposing history, diff and rollback. Authorization policy changing without a revert path is an operational hazard.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S4-T2</td><td class="ttl">CEL validation endpoint</td><td class="det">A compile-and-explain endpoint returning parse errors with position, plus the variables an expression references — what powers editor diagnostics and autocomplete.</td><td><span class="tag">go-engine</span></td><td class="sz">M</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S4-T3</td><td class="ttl">Dry-run evaluation</td><td class="det">Evaluate a candidate policy against recorded payloads without activating it, reporting which decisions would change — making policy edits safe to reason about.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S4-T4</td><td class="ttl">CEL editor</td><td class="det">CodeMirror with CEL syntax highlighting, inline diagnostics from the validation endpoint, autocomplete over available variables, and a snippet library of common patterns.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S4-T5</td><td class="ttl">Policy playground</td><td class="det">A split view with the expression on one side and an editable JSON payload on the other, evaluating live and showing the result with the intermediate values that produced it.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat partial">PARTIAL</td></tr>
-            <tr><td class="tid">P6-S4-T6</td><td class="ttl">Priority ordering</td><td class="det">Drag-to-reorder with an immediate preview of evaluation order, since priority determines which policy wins and the current numeric field makes that hard to reason about.</td><td><span class="tag">console-ui</span></td><td class="sz">M</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S4-T7</td><td class="ttl">Test fixtures per policy</td><td class="det">Attach named payload fixtures with expected outcomes to each policy and run them as a regression suite before any change is applied.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
+            <tr><td class="tid">P6-S4-T1</td><td class="ttl">Policy versioning</td><td class="det">Store every revision with author and timestamp, exposing history, diff and rollback. Authorization policy changing without a revert path is an operational hazard.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S4-T2</td><td class="ttl">CEL validation endpoint</td><td class="det">A compile-and-explain endpoint returning parse errors with position, plus the variables an expression references — what powers editor diagnostics and autocomplete.</td><td><span class="tag">go-engine</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S4-T3</td><td class="ttl">Dry-run evaluation</td><td class="det">Evaluate a candidate policy against recorded payloads without activating it, reporting which decisions would change — making policy edits safe to reason about.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S4-T4</td><td class="ttl">CEL editor</td><td class="det">CodeMirror with CEL syntax highlighting, inline diagnostics from the validation endpoint, autocomplete over available variables, and a snippet library of common patterns.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S4-T5</td><td class="ttl">Policy playground</td><td class="det">A split view with the expression on one side and an editable JSON payload on the other, evaluating live and showing the result with the intermediate values that produced it.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S4-T6</td><td class="ttl">Priority ordering</td><td class="det">Drag-to-reorder with an immediate preview of evaluation order, since priority determines which policy wins and the current numeric field makes that hard to reason about.</td><td><span class="tag">console-ui</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S4-T7</td><td class="ttl">Test fixtures per policy</td><td class="det">Attach named payload fixtures with expected outcomes to each policy and run them as a regression suite before any change is applied.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
           </tbody>
         </table>
       </div>
