@@ -65,7 +65,16 @@ func TestMiddleware_HeaderExtraction(t *testing.T) {
 }
 
 func TestNexus_CheckWithCache(t *testing.T) {
+	var calls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"allowed":true}`))
+	}))
+	defer server.Close()
+
 	client := NewClient(Config{
+		NexusURL:    server.URL,
 		EnableCache: true,
 		CacheTTL:    50 * time.Millisecond,
 	})
@@ -77,11 +86,17 @@ func TestNexus_CheckWithCache(t *testing.T) {
 	if err != nil || !allowed {
 		t.Fatalf("expected allowed true, got %v (err: %v)", allowed, err)
 	}
+	if atomic.LoadInt32(&calls) != 1 {
+		t.Fatalf("expected 1 server call, got %d", calls)
+	}
 
 	// Second check: hits local cache
 	allowedCached, err := client.Check(ctx, "document", "doc_1", "viewer", "alice", nil)
 	if err != nil || !allowedCached {
 		t.Fatalf("expected cached allowed true, got %v", allowedCached)
+	}
+	if atomic.LoadInt32(&calls) != 1 {
+		t.Fatalf("expected 1 server call (cache hit), got %d", calls)
 	}
 }
 
