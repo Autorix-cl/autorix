@@ -1538,7 +1538,7 @@
 <!-- ============ PHASE 7 ============ -->
 <section class="phase" id="p7">
   <div class="phase-head">
-    <div class="phase-num-wrap"><span class="phase-num">07</span><span class="phase-status done">DONE · 18/18 tasks</span></div>
+    <div class="phase-num-wrap"><span class="phase-num">07</span><span class="phase-status done">DONE · 23/23 tasks</span></div>
     <div>
       <h2>Observability &amp; Operations</h2>
       <p class="goal">Make the fleet measurable. The Prometheus alerts and Grafana dashboard already in the repository reference metrics no engine emits; this phase builds the telemetry those artifacts assume and surfaces it in the console.</p>
@@ -1631,17 +1631,18 @@
 
   <div class="spec">
     <div class="spec-head">
-      <p class="spec-id">P7-S4</p><span class="spec-status pending">PENDING · 0/5</span>
+      <p class="spec-id">P7-S4</p><span class="spec-status done">DONE · 5/5</span>
       <h3>Diagnostics and incident support</h3>
     </div>
     <div class="spec-body">
       <div class="tw">
         <table>
-            <tr><td class="tid">P7-S4-T1</td><td class="ttl">Connectivity troubleshooter</td><td class="det">Trigger a live probe from one instance to another through Argus and report DNS resolution, TCP connect, TLS handshake and application response separately — turning "Aegis cannot reach Nexus" into a specific failure.</td><td><span class="tag">registry</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P7-S4-T2</td><td class="ttl">Configuration drift detection</td><td class="det">Compare advertised configuration across instances of the same engine type in one environment and flag divergence, which is a frequent cause of intermittent behaviour.</td><td><span class="tag">registry</span></td><td class="sz">M</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P7-S4-T3</td><td class="ttl">Migration status view</td><td class="det">Show each engine's applied schema version against expected, highlighting instances running against an out-of-date database.</td><td><span class="tag">registry</span></td><td class="sz">M</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P7-S4-T4</td><td class="ttl">Change correlation timeline</td><td class="det">Overlay configuration changes, deployments and registration events onto error-rate charts, so the question "what changed" has a visual answer.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P7-S4-T5</td><td class="ttl">Diagnostic bundle export</td><td class="det">One action collecting fleet state, recent events, configuration and redacted logs into a downloadable archive for support escalation.</td><td><span class="tag">registry</span></td><td class="sz">M</td><td class="stat pending">PENDING</td></tr>
+          <tbody>
+            <tr><td class="tid">P7-S4-T1</td><td class="ttl">Connectivity troubleshooter</td><td class="det">Trigger a live probe from one instance to another through Argus and report DNS resolution, TCP connect, TLS handshake and application response separately — turning "Aegis cannot reach Nexus" into a specific failure.</td><td><span class="tag">registry</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P7-S4-T2</td><td class="ttl">Configuration drift detection</td><td class="det">Compare advertised configuration across instances of the same engine type in one environment and flag divergence, which is a frequent cause of intermittent behaviour.</td><td><span class="tag">registry</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P7-S4-T3</td><td class="ttl">Migration status view</td><td class="det">Show each engine's applied schema version against expected, highlighting instances running against an out-of-date database.</td><td><span class="tag">registry</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P7-S4-T4</td><td class="ttl">Change correlation timeline</td><td class="det">Overlay configuration changes, deployments and registration events onto error-rate charts, so the question "what changed" has a visual answer.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P7-S4-T5</td><td class="ttl">Diagnostic bundle export</td><td class="det">One action collecting fleet state, recent events, configuration and redacted logs into a downloadable archive for support escalation.</td><td><span class="tag">registry</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
           </tbody>
         </table>
       </div>

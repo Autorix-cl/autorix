@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Activity, Server, FileText, Network, Bell, Target } from "lucide-react";
+import { Activity, Server, FileText, Network, Bell, Target, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FleetDashboard } from "./fleet-dashboard";
 import { PerEngineDashboard } from "./per-engine-dashboard";
@@ -9,11 +9,13 @@ import { LogViewer } from "./log-viewer";
 import { TraceExplorer } from "./trace-explorer";
 import { AlertsManager } from "./alerts-manager";
 import { SLODashboard } from "./slo-dashboard";
+import { DiagnosticsManager } from "./diagnostics-manager";
 
 export default function ObservabilityPage() {
   const [activeTab, setActiveTab] = React.useState<
-    "fleet" | "engine" | "logs" | "traces" | "alerts" | "slo"
+    "fleet" | "engine" | "logs" | "traces" | "alerts" | "slo" | "diagnostics"
   >("fleet");
+
   const [selectedEngine, setSelectedEngine] = React.useState<string>("nexus");
   const [selectedTraceId, setSelectedTraceId] = React.useState<string | undefined>(undefined);
 
@@ -93,6 +95,15 @@ export default function ObservabilityPage() {
           <Target className="h-3.5 w-3.5" />
           SLOs &amp; Budgets
         </Button>
+        <Button
+          variant={activeTab === "diagnostics" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("diagnostics")}
+          className="h-8 text-xs gap-1.5"
+        >
+          <Wrench className="h-3.5 w-3.5" />
+          Diagnostics &amp; Incident
+        </Button>
       </div>
 
       {/* Tab Panels */}
@@ -102,6 +113,8 @@ export default function ObservabilityPage() {
       {activeTab === "traces" && <TraceExplorer initialTraceId={selectedTraceId} />}
       {activeTab === "alerts" && <AlertsManager />}
       {activeTab === "slo" && <SLODashboard />}
+      {activeTab === "diagnostics" && <DiagnosticsManager />}
     </div>
   );
 }
+
