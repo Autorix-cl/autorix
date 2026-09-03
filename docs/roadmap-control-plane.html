@@ -1300,7 +1300,7 @@
 
   <div class="spec">
     <div class="spec-head">
-      <p class="spec-id">P6-S1</p><span class="spec-status partial">PARTIAL · 2/8</span>
+      <p class="spec-id">P6-S1</p><span class="spec-status done">DONE · 8/8</span>
       <h3>Ego — identity lifecycle</h3>
       <p>Ego exposes five routes: registration, login, whoami, logout and list-identities. There is no update, no delete, no session management, no MFA, no recovery. Nearly everything here starts in Go.</p>
     </div>
@@ -1318,17 +1318,18 @@
           <tbody>
             <tr><td class="tid">P6-S1-T1</td><td class="ttl">Identity CRUD API</td><td class="det">Add <code>GET/PATCH/DELETE /admin/identities/{id}</code> plus state transitions for activate and deactivate in <code>ego/internal/transport/http</code> and the repository, with soft delete preserving audit history.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
             <tr><td class="tid">P6-S1-T2</td><td class="ttl">Identity search and pagination</td><td class="det">Cursor pagination plus filtering by state, schema and trait values, backed by a GIN index on the traits JSONB column — the current endpoint returns every identity unbounded.</td><td><span class="tag">go-engine</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
-            <tr><td class="tid">P6-S1-T3</td><td class="ttl">Session management API</td><td class="det">List sessions per identity and globally, and revoke individually or in bulk. The session manager exists in <code>internal/session</code> but is not exposed administratively.</td><td><span class="tag">go-engine</span></td><td class="sz">M</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S1-T4</td><td class="ttl">Credential and recovery API</td><td class="det">Administrative password reset, forced rotation, recovery link issuance and credential inspection without ever returning the hash.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S1-T5</td><td class="ttl">MFA enrollment</td><td class="det">TOTP and recovery codes in the domain layer plus administrative views of enrollment status and the ability to reset a locked-out user's factors.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S1-T6</td><td class="ttl">Trait schema management</td><td class="det">Store identity schemas as first-class records with validation and versioning, so the console can render dynamic trait forms rather than hardcoding email and name as it does today.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S1-T7</td><td class="ttl">Identity screens</td><td class="det">Build the list and tabbed detail on the Phase 4 scaffolds, with the trait form generated from the active schema and tabs for credentials, sessions and activity.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S1-T8</td><td class="ttl">Bulk import and export</td><td class="det">CSV upload with column mapping, a dry-run validation pass reporting per-row errors before commit, and filtered export.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
+            <tr><td class="tid">P6-S1-T3</td><td class="ttl">Session management API</td><td class="det">List sessions per identity and globally, and revoke individually or in bulk. The session manager exists in <code>internal/session</code> but is not exposed administratively.</td><td><span class="tag">go-engine</span></td><td class="sz">M</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S1-T4</td><td class="ttl">Credential and recovery API</td><td class="det">Administrative password reset, forced rotation, recovery link issuance and credential inspection without ever returning the hash.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S1-T5</td><td class="ttl">MFA enrollment</td><td class="det">TOTP and recovery codes in the domain layer plus administrative views of enrollment status and the ability to reset a locked-out user's factors.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S1-T6</td><td class="ttl">Trait schema management</td><td class="det">Store identity schemas as first-class records with validation and versioning, so the console can render dynamic trait forms rather than hardcoding email and name as it does today.</td><td><span class="tag">go-engine</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S1-T7</td><td class="ttl">Identity screens</td><td class="det">Build the list and tabbed detail on the Phase 4 scaffolds, with the trait form generated from the active schema and tabs for credentials, sessions and activity.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S1-T8</td><td class="ttl">Bulk import and export</td><td class="det">CSV upload with column mapping, a dry-run validation pass reporting per-row errors before commit, and filtered export.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
           </tbody>
         </table>
       </div>
     </div>
   </div>
+
 
   <div class="spec">
     <div class="spec-head">

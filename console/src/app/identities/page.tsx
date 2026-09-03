@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Users, Plus, UserCheck, Search, RefreshCw } from "lucide-react";
+import { Users, Plus, UserCheck, Search, RefreshCw, UploadCloud, Download } from "lucide-react";
+
 import { useTranslation } from "@/lib/i18n";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import { getColumns, IdentityItem } from "./columns";
 import { IdentitySheet } from "./identity-sheet";
 import { IdentityBuilderSheet } from "./identity-builder-sheet";
 import { BulkActionBar } from "./bulk-action-bar";
+import { BulkImportDialog } from "./bulk-import-dialog";
 import { toast } from "sonner";
 
 function toIdentityItem(item: Identity): IdentityItem {
@@ -46,6 +48,7 @@ export default function IdentitiesPage() {
   
   const [selectedIdentity, setSelectedIdentity] = React.useState<IdentityItem | null>(null);
   const [isBuilderOpen, setIsBuilderOpen] = React.useState(false);
+  const [isBulkImportOpen, setIsBulkImportOpen] = React.useState(false);
 
   React.useEffect(() => {
     const handler = setTimeout(() => {
@@ -75,6 +78,26 @@ export default function IdentitiesPage() {
   
   const columns = React.useMemo(() => getColumns((identity) => setSelectedIdentity(identity)), []);
 
+  const handleExportCsv = () => {
+    if (identities.length === 0) {
+      toast.info("No identities to export");
+      return;
+    }
+    const headers = "id,email,name,state,createdAt\n";
+    const csvContent = identities
+      .map((i) => `"${i.id}","${i.email}","${i.name}","${i.state}","${i.createdAt}"`)
+      .join("\n");
+    const blob = new Blob([headers + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `autorix_identities_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(`Exported ${identities.length} identities`);
+  };
+
   if (!isEngineConnected("ego")) {
     return (
       <div className="space-y-6">
@@ -100,13 +123,12 @@ export default function IdentitiesPage() {
     }
   };
 
-  const handlePrevPage = () => {
-    setCursorHistory((prev) => {
-      const newHistory = [...prev];
-      const prevCursor = newHistory.pop() || "";
+  const handlePreviousPage = () => {
+    if (cursorHistory.length > 0) {
+      const prevCursor = cursorHistory[cursorHistory.length - 1];
+      setCursorHistory((prev) => prev.slice(0, -1));
       setCursor(prevCursor);
-      return newHistory;
-    });
+    }
   };
 
   return (
@@ -115,11 +137,19 @@ export default function IdentitiesPage() {
         identity={selectedIdentity} 
         isOpen={!!selectedIdentity} 
         onOpenChange={(open) => !open && setSelectedIdentity(null)} 
+        onIdentityUpdated={() => refetch()}
       />
 
       <IdentityBuilderSheet
         isOpen={isBuilderOpen}
         onOpenChange={setIsBuilderOpen}
+        onSuccess={() => refetch()}
+      />
+
+      <BulkImportDialog
+        isOpen={isBulkImportOpen}
+        onOpenChange={setIsBulkImportOpen}
+        onSuccess={() => refetch()}
       />
 
       {/* Page Header */}
@@ -134,6 +164,24 @@ export default function IdentitiesPage() {
             <UserCheck className="h-3.5 w-3.5" />
             <span>{t("identities.statusBadge")}</span>
           </Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCsv}
+            className="h-8 gap-1 text-xs"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span>Export CSV</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsBulkImportOpen(true)}
+            className="h-8 gap-1 text-xs"
+          >
+            <UploadCloud className="h-3.5 w-3.5" />
+            <span>Bulk Import</span>
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -195,7 +243,7 @@ export default function IdentitiesPage() {
               isLoading={isLoading || isFetching}
               manualPagination={true}
               onNextPage={handleNextPage}
-              onPreviousPage={handlePrevPage}
+              onPreviousPage={handlePreviousPage}
               canNextPage={!!identitiesRaw?.has_more}
               canPreviousPage={cursorHistory.length > 0}
               renderToolbar={(table) => {

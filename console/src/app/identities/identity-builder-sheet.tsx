@@ -19,9 +19,11 @@ import { toast } from "sonner";
 interface IdentityBuilderSheetProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  onSuccess?: () => void;
 }
 
-export function IdentityBuilderSheet({ isOpen, onOpenChange }: IdentityBuilderSheetProps) {
+export function IdentityBuilderSheet({ isOpen, onOpenChange, onSuccess }: IdentityBuilderSheetProps) {
+
   const queryClient = useQueryClient();
 
   const [email, setEmail] = React.useState("");
@@ -51,7 +53,9 @@ export function IdentityBuilderSheet({ isOpen, onOpenChange }: IdentityBuilderSh
     setFirstName("");
     setLastName("");
     onOpenChange(false);
+    onSuccess?.();
   };
+
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();

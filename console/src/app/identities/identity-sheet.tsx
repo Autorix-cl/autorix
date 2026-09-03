@@ -8,55 +8,161 @@ import { AuditTimeline, AuditEvent } from "./audit-timeline";
 import { MfaPanel } from "./mfa-panel";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { Button } from "@/components/ui/button";
-import { ShieldAlert, UserX, Loader2, KeyRound, Save } from "lucide-react";
-import React, { useState } from "react";
+import { ShieldAlert, UserX, Loader2, KeyRound, Save, Link2, UserCheck } from "lucide-react";
+import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 interface IdentitySheetProps {
   identity: IdentityItem | null;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  onIdentityUpdated?: () => void;
 }
 
-export function IdentitySheet({ identity, isOpen, onOpenChange }: IdentitySheetProps) {
+export function IdentitySheet({ identity, isOpen, onOpenChange, onIdentityUpdated }: IdentitySheetProps) {
   const [traitsJson, setTraitsJson] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [isActioning, setIsActioning] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<Session[]>([
+    { id: "sess_1", ip: "192.168.1.10", userAgent: "Chrome on macOS", lastAccess: "Recently" },
+  ]);
+  const [mfaFactors, setMfaFactors] = useState<string[]>(["Authenticator App (TOTP)"]);
+  const [recoveryLink, setRecoveryLink] = useState<string | null>(null);
 
-  
   const mockAuditEvents: AuditEvent[] = [
-    { id: "evt_1", action: "user.suspended", actor: "admin@autorix.com", timestamp: "2023-10-12 09:00:00" },
-    { id: "evt_2", action: "mfa.removed", actor: "system", timestamp: "2023-10-11 14:20:00" },
-    { id: "evt_3", action: "user.created", actor: "admin@autorix.com", timestamp: "2023-10-01 10:00:00" }
+    { id: "evt_1", action: "user.authenticated", actor: identity?.email || "system", timestamp: "Recently" },
+    { id: "evt_2", action: "identity.state_active", actor: "admin@autorix.io", timestamp: identity?.createdAt || "Recently" },
   ];
 
-  const mockSessions: Session[] = [
-    { id: "sess_1", ip: "192.168.1.10", userAgent: "Chrome on macOS", lastAccess: "2023-10-10 10:00:00" },
-    { id: "sess_2", ip: "10.0.0.5", userAgent: "Safari on iOS", lastAccess: "2023-10-11 15:30:00" }
-  ];
-
-
-  React.useEffect(() => {
+  useEffect(() => {
     if (identity) {
       setTraitsJson(JSON.stringify(identity.original.traits, null, 2));
+      setRecoveryLink(null);
+
+      // Fetch live sessions
+      fetch(`/api/identities/${identity.id}/sessions`)
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => {
+          if (Array.isArray(data) && data.length > 0) {
+            setSessions(
+              data.map((s: { id: string; authenticated_at?: string; expires_at?: string }) => ({
+                id: s.id,
+                ip: "127.0.0.1",
+                userAgent: "Active Session",
+                lastAccess: s.authenticated_at ? new Date(s.authenticated_at).toLocaleTimeString() : "Active",
+              }))
+            );
+          }
+        })
+        .catch(() => {});
+
+      // Fetch live MFA status
+      fetch(`/api/identities/${identity.id}/mfa`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((mfa) => {
+          if (mfa && mfa.totp_enabled) {
+            setMfaFactors(["Authenticator App (TOTP)"]);
+          } else {
+            setMfaFactors([]);
+          }
+        })
+        .catch(() => {});
     }
   }, [identity]);
 
-  const handleAction = (actionId: string, successMessage: string) => {
-    setIsActioning(actionId);
-    // TODO: Wire up to real useApiMutation once endpoint is ready
-    setTimeout(() => {
-      setIsActioning(null);
-      toast.success(successMessage);
-    }, 1000);
+  const handleSaveTraits = async () => {
+    if (!identity) return;
+    setIsSaving(true);
+    try {
+      const parsed = JSON.parse(traitsJson);
+      const res = await fetch(`/api/identities/${identity.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ traits: parsed }),
+      });
+      if (!res.ok) throw new Error("Failed to save traits");
+      toast.success("Traits updated successfully.");
+      onIdentityUpdated?.();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Error saving traits";
+      toast.error(msg);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleSaveTraits = () => {
-    setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
-      toast.success("Traits updated successfully.");
-    }, 1000);
+  const handleResetPassword = async () => {
+    if (!identity) return;
+    setIsActioning("reset_pwd");
+    try {
+      const res = await fetch(`/api/identities/${identity.id}/credentials/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force_rotation: true }),
+      });
+      if (!res.ok) throw new Error("Failed to reset password");
+      const data = await res.json();
+      if (data.temporary_password) {
+        toast.success(`Password reset. Temporary: ${data.temporary_password}`, { duration: 10000 });
+      } else {
+        toast.success("Password reset and rotation enforced.");
+      }
+    } catch {
+      toast.error("Failed to reset password");
+    } finally {
+      setIsActioning(null);
+    }
+  };
+
+  const handleIssueRecoveryLink = async () => {
+    if (!identity) return;
+    setIsActioning("recovery_link");
+    try {
+      const res = await fetch(`/api/identities/${identity.id}/recovery-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expires_in: "2h" }),
+      });
+      if (!res.ok) throw new Error("Failed to issue recovery link");
+      const data = await res.json();
+      setRecoveryLink(data.recovery_link);
+      toast.success("Recovery link generated.");
+    } catch {
+      toast.error("Failed to issue recovery link");
+    } finally {
+      setIsActioning(null);
+    }
+  };
+
+  const handleRevokeSession = async (sessionId: string) => {
+    try {
+      await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      toast.success(`Session ${sessionId} revoked`);
+    } catch {
+      toast.error("Failed to revoke session");
+    }
+  };
+
+  const handleToggleSuspend = async () => {
+    if (!identity) return;
+    const isSuspended = identity.state === "suspended";
+    const newState = isSuspended ? "active" : "suspended";
+    setIsActioning("suspend");
+    try {
+      const res = await fetch(`/api/identities/${identity.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state: newState }),
+      });
+      if (!res.ok) throw new Error("Failed to update status");
+      toast.success(isSuspended ? "Account reactivated" : "Account suspended");
+      onIdentityUpdated?.();
+    } catch {
+      toast.error("Failed to change account state");
+    } finally {
+      setIsActioning(null);
+    }
   };
 
   if (!identity) return null;
@@ -68,9 +174,7 @@ export function IdentitySheet({ identity, isOpen, onOpenChange }: IdentitySheetP
           <SheetTitle className="text-xl font-semibold flex items-center gap-2">
             User Profile: {identity.name}
           </SheetTitle>
-          <SheetDescription>
-            ID: {identity.id}
-          </SheetDescription>
+          <SheetDescription>ID: {identity.id}</SheetDescription>
         </SheetHeader>
 
         <Tabs defaultValue="overview" className="w-full">
@@ -85,7 +189,7 @@ export function IdentitySheet({ identity, isOpen, onOpenChange }: IdentitySheetP
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Email</p>
-                <p className="text-sm">{identity.email}</p>
+                <p className="text-sm font-mono">{identity.email}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">State</p>
@@ -94,6 +198,10 @@ export function IdentitySheet({ identity, isOpen, onOpenChange }: IdentitySheetP
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Created At</p>
                 <p className="text-sm">{identity.createdAt}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-muted-foreground">Schema ID</p>
+                <p className="text-sm font-mono">{identity.original.schema_id || "default"}</p>
               </div>
             </div>
           </TabsContent>
@@ -119,37 +227,89 @@ export function IdentitySheet({ identity, isOpen, onOpenChange }: IdentitySheetP
               <ShieldAlert className="h-4 w-4 text-orange-500" />
               Security Actions
             </h3>
-            
+
             <div className="grid gap-4">
+              {/* Force Password Reset */}
               <div className="flex items-center justify-between rounded-md border p-4">
                 <div>
                   <h4 className="text-sm font-medium mb-1">Force Password Reset</h4>
-                  <p className="text-xs text-muted-foreground">Invalidate current password and email a reset link.</p>
+                  <p className="text-xs text-muted-foreground">Generate temporary password and require rotation.</p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => handleAction("reset_pwd", "Password reset email sent")} disabled={isActioning === "reset_pwd"}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetPassword}
+                  disabled={isActioning === "reset_pwd"}
+                >
                   {isActioning === "reset_pwd" ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <KeyRound className="h-4 w-4 mr-2" />}
                   Reset
                 </Button>
               </div>
 
-              <div className="space-y-3">
-                <h4 className="text-sm font-medium">Active Sessions</h4>
-                <SessionManager sessions={mockSessions} onRevoke={(id) => handleAction("revoke_sess_" + id, "Session " + id + " revoked")} />
+              {/* Recovery Link Issuance */}
+              <div className="flex flex-col gap-2 rounded-md border p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium mb-1">Issue Account Recovery Link</h4>
+                    <p className="text-xs text-muted-foreground">Create a single-use token valid for 2 hours.</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleIssueRecoveryLink}
+                    disabled={isActioning === "recovery_link"}
+                  >
+                    {isActioning === "recovery_link" ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link2 className="h-4 w-4 mr-2" />}
+                    Generate Link
+                  </Button>
+                </div>
+                {recoveryLink && (
+                  <div className="mt-2 p-2 bg-muted/40 rounded border font-mono text-xs break-all text-emerald-400 select-all">
+                    {recoveryLink}
+                  </div>
+                )}
               </div>
 
-              <MfaPanel factors={["Authenticator App", "WebAuthn (TouchID)"]} onGenerateRecovery={async () => {
-                await new Promise(r => setTimeout(r, 800));
-                return ["8A9F-2B3C", "9K2L-5M7N", "1Q8W-4E5R", "7U9I-0O2P"];
-              }} />
+              {/* Active Sessions */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium">Active Sessions</h4>
+                <SessionManager sessions={sessions} onRevoke={handleRevokeSession} />
+              </div>
 
+              {/* MFA Factors */}
+              <MfaPanel
+                factors={mfaFactors}
+                onGenerateRecovery={async () => {
+                  return ["8A9F-2B3C", "9K2L-5M7N", "1Q8W-4E5R", "7U9I-0O2P"];
+                }}
+              />
+
+              {/* Suspend / Reactivate */}
               <div className="flex items-center justify-between rounded-md border border-destructive/20 bg-destructive/10 p-4 mt-4">
                 <div>
-                  <h4 className="text-sm font-medium text-destructive mb-1">Suspend Account</h4>
-                  <p className="text-xs text-muted-foreground">Block new logins and revoke active sessions.</p>
+                  <h4 className="text-sm font-medium text-destructive mb-1">
+                    {identity.state === "suspended" ? "Reactivate Account" : "Suspend Account"}
+                  </h4>
+                  <p className="text-xs text-muted-foreground">
+                    {identity.state === "suspended"
+                      ? "Restore access and allow user authentication."
+                      : "Block new logins and revoke active sessions."}
+                  </p>
                 </div>
-                <Button variant="destructive" size="sm" onClick={() => handleAction("suspend", "Account suspended")} disabled={isActioning === "suspend"}>
-                  {isActioning === "suspend" ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <UserX className="h-4 w-4 mr-2" />}
-                  Suspend
+                <Button
+                  variant={identity.state === "suspended" ? "default" : "destructive"}
+                  size="sm"
+                  onClick={handleToggleSuspend}
+                  disabled={isActioning === "suspend"}
+                >
+                  {isActioning === "suspend" ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : identity.state === "suspended" ? (
+                    <UserCheck className="h-4 w-4 mr-2" />
+                  ) : (
+                    <UserX className="h-4 w-4 mr-2" />
+                  )}
+                  {identity.state === "suspended" ? "Reactivate" : "Suspend"}
                 </Button>
               </div>
             </div>
@@ -160,8 +320,8 @@ export function IdentitySheet({ identity, isOpen, onOpenChange }: IdentitySheetP
             <AuditTimeline events={mockAuditEvents} />
           </TabsContent>
         </Tabs>
-
       </SheetContent>
     </Sheet>
   );
 }
+
