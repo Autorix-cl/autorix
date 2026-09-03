@@ -1075,13 +1075,23 @@ func (r *Repository) EnqueueNotification(ctx context.Context, recipient, templat
 }
 
 func (r *Repository) FetchPendingNotifications(ctx context.Context, limit int) ([]worker.Notification, error) {
+	// Atomic claiming via CTE with FOR UPDATE SKIP LOCKED.
+	// This transitions rows immediately from 'pending' to 'processing' within a single statement,
+	// preventing any other concurrent worker from claiming or processing the same notifications.
 	query := `
-		SELECT id, recipient, template, payload, status, attempts, max_attempts, last_error, next_attempt_at, created_at, delivered_at
-		FROM notification_outbox
-		WHERE status = 'pending' AND next_attempt_at <= NOW()
-		ORDER BY next_attempt_at ASC
-		LIMIT $1
-		FOR UPDATE SKIP LOCKED
+		WITH to_claim AS (
+			SELECT id
+			FROM notification_outbox
+			WHERE status = 'pending' AND next_attempt_at <= NOW()
+			ORDER BY next_attempt_at ASC
+			LIMIT $1
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE notification_outbox n
+		SET status = 'processing'
+		FROM to_claim tc
+		WHERE n.id = tc.id
+		RETURNING n.id, n.recipient, n.template, n.payload, n.status, n.attempts, n.max_attempts, n.last_error, n.next_attempt_at, n.created_at, n.delivered_at
 	`
 	rows, err := r.pool.Query(ctx, query, limit)
 	if err != nil {

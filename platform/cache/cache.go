@@ -13,11 +13,13 @@ import (
 // ErrNotFound is returned when a requested key does not exist or has expired.
 var ErrNotFound = errors.New("cache: key not found")
 
-// Cache defines the contract for key-value caching in Autorix engines.
+// Cache defines the contract for key-value caching and distributed invalidation in Autorix engines.
 type Cache interface {
 	Get(ctx context.Context, key string) ([]byte, error)
 	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
 	Delete(ctx context.Context, keys ...string) error
+	PublishInvalidation(ctx context.Context, channel, key string) error
+	SubscribeInvalidations(ctx context.Context, channel string, handler func(key string)) error
 	Close() error
 }
 
@@ -62,14 +64,14 @@ func (m *MemoryCache) Set(_ context.Context, key string, value []byte, ttl time.
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	var exp time.Time
+	var expiresAt time.Time
 	if ttl > 0 {
-		exp = time.Now().Add(ttl)
+		expiresAt = time.Now().Add(ttl)
 	}
 
 	m.items[key] = memItem{
 		data:      value,
-		expiresAt: exp,
+		expiresAt: expiresAt,
 	}
 	return nil
 }
@@ -81,6 +83,15 @@ func (m *MemoryCache) Delete(_ context.Context, keys ...string) error {
 	for _, k := range keys {
 		delete(m.items, k)
 	}
+	return nil
+}
+
+func (m *MemoryCache) PublishInvalidation(ctx context.Context, channel, key string) error {
+	return m.Delete(ctx, key)
+}
+
+func (m *MemoryCache) SubscribeInvalidations(_ context.Context, _ string, _ func(key string)) error {
+	// Standalone in-memory cache does not require network pub/sub
 	return nil
 }
 
@@ -99,6 +110,11 @@ type RedisCache struct {
 // NewRedisCache creates a new RedisCache from an existing go-redis client.
 func NewRedisCache(client *redis.Client) *RedisCache {
 	return &RedisCache{client: client}
+}
+
+// Client returns the underlying go-redis client for metrics/pool inspection.
+func (r *RedisCache) Client() *redis.Client {
+	return r.client
 }
 
 func (r *RedisCache) Get(ctx context.Context, key string) ([]byte, error) {
@@ -123,12 +139,38 @@ func (r *RedisCache) Delete(ctx context.Context, keys ...string) error {
 	return r.client.Del(ctx, keys...).Err()
 }
 
+func (r *RedisCache) PublishInvalidation(ctx context.Context, channel, key string) error {
+	return r.client.Publish(ctx, channel, key).Err()
+}
+
+func (r *RedisCache) SubscribeInvalidations(ctx context.Context, channel string, handler func(key string)) error {
+	pubsub := r.client.Subscribe(ctx, channel)
+	go func() {
+		defer pubsub.Close()
+		ch := pubsub.Channel()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-ch:
+				if !ok {
+					return
+				}
+				if msg != nil && msg.Payload != "" {
+					handler(msg.Payload)
+				}
+			}
+		}
+	}()
+	return nil
+}
+
 func (r *RedisCache) Close() error {
 	return r.client.Close()
 }
 
 // New creates a Cache instance. If redisURL is empty, it returns an in-memory cache for standalone/test environments.
-// If redisURL is provided, it connects to Redis and validates connectivity.
+// If redisURL is provided, it connects to Redis, hardens the connection pool topology, and validates connectivity.
 // If Redis is unreachable, it returns an explicit error to enforce fail-closed security and prevent split-brain clusters.
 func New(ctx context.Context, redisURL string) (Cache, error) {
 	if redisURL == "" {
@@ -140,9 +182,17 @@ func New(ctx context.Context, redisURL string) (Cache, error) {
 		return nil, fmt.Errorf("cache: invalid redis URL %q: %w", redisURL, err)
 	}
 
+	// Network Timeouts
 	opt.DialTimeout = 2 * time.Second
 	opt.ReadTimeout = 1 * time.Second
 	opt.WriteTimeout = 1 * time.Second
+
+	// Connection Pool Hardening
+	opt.PoolSize = 50
+	opt.MinIdleConns = 10
+	opt.ConnMaxLifetime = 30 * time.Minute
+	opt.PoolTimeout = 4 * time.Second
+	opt.ConnMaxIdleTime = 5 * time.Minute
 
 	client := redis.NewClient(opt)
 

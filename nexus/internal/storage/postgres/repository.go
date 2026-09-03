@@ -75,12 +75,7 @@ func (r *Repository) WriteTuplesWithToken(ctx context.Context, tuples []core.Tup
 	}
 
 	var lsnStr string
-	err = tx.QueryRow(ctx, `
-		SELECT CASE 
-			WHEN pg_is_in_recovery() THEN pg_last_wal_replay_lsn()::text 
-			ELSE pg_current_wal_lsn()::text 
-		END
-	`).Scan(&lsnStr)
+	err = tx.QueryRow(ctx, `SELECT pg_current_wal_lsn()::text`).Scan(&lsnStr)
 	if err != nil {
 		return "", fmt.Errorf("failed to retrieve database wal lsn: %w", err)
 	}

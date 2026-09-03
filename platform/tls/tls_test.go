@@ -113,3 +113,25 @@ func TestVerifyPeerIdentity(t *testing.T) {
 		t.Error("expected error on subject mismatch, got nil")
 	}
 }
+
+func TestExtractServiceFromSPIFFE(t *testing.T) {
+	tests := []struct {
+		uri      string
+		expected string
+		ok       bool
+	}{
+		{"spiffe://autorix.internal/service/nexus", "nexus", true},
+		{"spiffe://autorix.internal/service/EGO", "ego", true},
+		{"spiffe://autorix.internal/service/vulcan/", "vulcan", true},
+		{"spiffe://other.domain/service/nexus", "", false},
+		{"invalid-uri", "", false},
+	}
+
+	for _, tc := range tests {
+		svc, ok := ExtractServiceFromSPIFFE(tc.uri)
+		if ok != tc.ok || svc != tc.expected {
+			t.Errorf("ExtractServiceFromSPIFFE(%q) = (%q, %v); expected (%q, %v)", tc.uri, svc, ok, tc.expected, tc.ok)
+		}
+	}
+}
+

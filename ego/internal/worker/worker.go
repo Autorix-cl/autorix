@@ -13,6 +13,7 @@ import (
 
 const (
 	StatusPending    = "pending"
+	StatusProcessing = "processing"
 	StatusDelivered  = "delivered"
 	StatusDeadLetter = "dead_letter"
 	DefaultMaxRetries = 5
