@@ -68,19 +68,31 @@ func TestMemoryCache_Expiration(t *testing.T) {
 	}
 }
 
-func TestNew_FallbackToMemory(t *testing.T) {
+func TestNew_EmptyURL_UsesMemory(t *testing.T) {
 	ctx := context.Background()
-	// Unreachable redis URL should cleanly fall back to MemoryCache without error
-	c := New(ctx, "redis://127.0.0.1:1")
+	c, err := New(ctx, "")
+	if err != nil {
+		t.Fatalf("expected no error for empty URL, got %v", err)
+	}
 	defer c.Close()
 
-	err := c.Set(ctx, "foo", []byte("bar"), time.Minute)
-	if err != nil {
+	if err := c.Set(ctx, "foo", []byte("bar"), time.Minute); err != nil {
 		t.Fatalf("Set failed: %v", err)
 	}
-
 	val, err := c.Get(ctx, "foo")
 	if err != nil || string(val) != "bar" {
 		t.Fatalf("expected bar, got %s", string(val))
+	}
+}
+
+func TestNew_UnreachableRedis_FailsClosed(t *testing.T) {
+	ctx := context.Background()
+	// Unreachable redis URL must return an error (fail closed) to prevent split brain
+	c, err := New(ctx, "redis://127.0.0.1:1")
+	if err == nil {
+		if c != nil {
+			c.Close()
+		}
+		t.Fatalf("expected error connecting to unreachable redis, got nil")
 	}
 }

@@ -559,6 +559,87 @@ func TestResolver_ZookieCausalConsistency(t *testing.T) {
 	}
 }
 
+func TestResolver_PostgresLSNZookieCausalConsistency(t *testing.T) {
+	tuples := []core.Tuple{
+		{Namespace: "doc", Object: "42", Relation: "editor", SubjectNamespace: "user", SubjectObject: "alice"},
+	}
+
+	repo := &countingLSNMockRepo{tuples: tuples, lsn: 100}
+	eval := &mockCaveatEvaluator{allowed: true}
+	c := cache.NewMemoryCache()
+	defer c.Close()
+
+	resolver := NewResolver(repo, eval, WithCache(c))
+	ctx := context.Background()
+
+	req := core.CheckRequest{
+		Namespace: "doc", Object: "42", Relation: "editor",
+		Subject: core.Tuple{Namespace: "user", Object: "alice"},
+	}
+
+	// 1st Check at LSN 100: evaluates and caches with LSN 100
+	res1, err := resolver.Check(ctx, req)
+	if err != nil || !res1.Allowed {
+		t.Fatalf("1st check failed: %v", err)
+	}
+	if repo.queries != 1 {
+		t.Fatalf("expected 1 repo query, got %d", repo.queries)
+	}
+	parsed1, err := zookie.Parse(res1.SnapToken)
+	if err != nil || parsed1.LSN != 100 {
+		t.Fatalf("expected LSN 100 in snap token %s, got %v (err: %v)", res1.SnapToken, parsed1.LSN, err)
+	}
+
+	// 2nd Check requesting LSN 100 (same as cached): cache hit!
+	reqOld := req
+	reqOld.SnapToken = res1.SnapToken
+	res2, err := resolver.Check(ctx, reqOld)
+	if err != nil || !res2.Allowed {
+		t.Fatalf("2nd check failed: %v", err)
+	}
+	if repo.queries != 1 {
+		t.Fatalf("expected queries to remain 1 on cache hit, got %d", repo.queries)
+	}
+	if res2.Reason != "cached authorization decision" {
+		t.Fatalf("expected cached authorization decision, got %q", res2.Reason)
+	}
+
+	// 3rd Check requesting LSN 200 (a newer write committed in Postgres):
+	// Must recognize that cache LSN (100) < requested LSN (200), bypassing cache!
+	repo.lsn = 200 // simulate new commit in DB
+	newerToken := zookie.NewWithLSN(200)
+	reqNew := req
+	reqNew.SnapToken = newerToken.String()
+
+	res3, err := resolver.Check(ctx, reqNew)
+	if err != nil || !res3.Allowed {
+		t.Fatalf("3rd check failed: %v", err)
+	}
+	if repo.queries != 2 {
+		t.Fatalf("expected cache bypass due to database LSN mismatch, got %d queries", repo.queries)
+	}
+}
+
+type countingLSNMockRepo struct {
+	tuples  []core.Tuple
+	queries int
+	lsn     uint64
+}
+
+func (m *countingLSNMockRepo) ReadTuples(ctx context.Context, filter core.Tuple) ([]core.Tuple, error) {
+	m.queries++
+	return m.tuples, nil
+}
+
+func (m *countingLSNMockRepo) QueryTuples(ctx context.Context, filter core.Tuple) ([]core.Tuple, error) {
+	m.queries++
+	return m.tuples, nil
+}
+
+func (m *countingLSNMockRepo) CurrentLSN(ctx context.Context) (uint64, error) {
+	return m.lsn, nil
+}
+
 type countingMockRepo struct {
 	tuples  []core.Tuple
 	queries int

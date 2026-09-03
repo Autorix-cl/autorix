@@ -74,11 +74,42 @@ func (r *Repository) WriteTuplesWithToken(ctx context.Context, tuples []core.Tup
 		}
 	}
 
+	var lsnStr string
+	err = tx.QueryRow(ctx, `
+		SELECT CASE 
+			WHEN pg_is_in_recovery() THEN pg_last_wal_replay_lsn()::text 
+			ELSE pg_current_wal_lsn()::text 
+		END
+	`).Scan(&lsnStr)
+	if err != nil {
+		return "", fmt.Errorf("failed to retrieve database wal lsn: %w", err)
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return "", err
 	}
 
-	return zookie.Now().String(), nil
+	lsn, err := zookie.ParseLSN(lsnStr)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse database wal lsn: %w", err)
+	}
+
+	return zookie.NewWithLSN(lsn).String(), nil
+}
+
+// CurrentLSN returns the current database WAL Log Sequence Number, safe on primary and standby replicas.
+func (r *Repository) CurrentLSN(ctx context.Context) (uint64, error) {
+	var lsnStr string
+	err := r.pool.QueryRow(ctx, `
+		SELECT CASE 
+			WHEN pg_is_in_recovery() THEN pg_last_wal_replay_lsn()::text 
+			ELSE pg_current_wal_lsn()::text 
+		END
+	`).Scan(&lsnStr)
+	if err != nil {
+		return 0, fmt.Errorf("failed to retrieve database wal lsn: %w", err)
+	}
+	return zookie.ParseLSN(lsnStr)
 }
 
 // ReadTuples fetches tuples based on filters (namespace, object, relation)

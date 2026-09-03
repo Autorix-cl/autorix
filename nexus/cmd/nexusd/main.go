@@ -91,7 +91,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	appCache := cache.New(ctx, c.RedisURL)
+	appCache, err := cache.New(ctx, c.RedisURL)
+	if err != nil {
+		logger.Error("failed to initialize distributed cache", "error", err)
+		os.Exit(1)
+	}
 	defer appCache.Close()
 
 	resolver := graph.NewResolver(repo, celEvaluator, graph.WithNamespaceGetter(repo), graph.WithCache(appCache))

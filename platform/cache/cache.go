@@ -127,16 +127,17 @@ func (r *RedisCache) Close() error {
 	return r.client.Close()
 }
 
-// New initializes a distributed Redis cache if redisURL is provided and reachable,
-// or falls back cleanly to an in-memory cache.
-func New(ctx context.Context, redisURL string) Cache {
+// New creates a Cache instance. If redisURL is empty, it returns an in-memory cache for standalone/test environments.
+// If redisURL is provided, it connects to Redis and validates connectivity.
+// If Redis is unreachable, it returns an explicit error to enforce fail-closed security and prevent split-brain clusters.
+func New(ctx context.Context, redisURL string) (Cache, error) {
 	if redisURL == "" {
-		return NewMemoryCache()
+		return NewMemoryCache(), nil
 	}
 
 	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
-		return NewMemoryCache()
+		return nil, fmt.Errorf("cache: invalid redis URL %q: %w", redisURL, err)
 	}
 
 	opt.DialTimeout = 2 * time.Second
@@ -150,8 +151,8 @@ func New(ctx context.Context, redisURL string) Cache {
 
 	if err := client.Ping(pingCtx).Err(); err != nil {
 		_ = client.Close()
-		return NewMemoryCache()
+		return nil, fmt.Errorf("cache: failed to connect to configured redis at %s: %w", redisURL, err)
 	}
 
-	return NewRedisCache(client)
+	return NewRedisCache(client), nil
 }

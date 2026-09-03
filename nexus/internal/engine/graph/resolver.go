@@ -3,7 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
-	"strconv"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +17,11 @@ import (
 type Repository interface {
 	ReadTuples(ctx context.Context, filter core.Tuple) ([]core.Tuple, error)
 	QueryTuples(ctx context.Context, filter core.Tuple) ([]core.Tuple, error)
+}
+
+// LSNReader is an optional interface to read the current database LSN
+type LSNReader interface {
+	CurrentLSN(ctx context.Context) (uint64, error)
 }
 
 // NamespaceGetter allows retrieving namespace schemas for rewrite rules
@@ -74,24 +79,25 @@ func (r *Resolver) Check(ctx context.Context, req core.CheckRequest) (core.Check
 	}
 
 	// 1. Fast path: In-memory/Redis distributed cache lookup (for requests without dynamic caveats)
+	// Sanitize delimiter characters to prevent delimiter injection (JD-05)
 	cacheKey := fmt.Sprintf("chk:%s:%s#%s@%s:%s#%s",
-		req.Namespace, req.Object, req.Relation,
-		req.Subject.Namespace, req.Subject.Object, req.Subject.Relation)
+		url.QueryEscape(req.Namespace), url.QueryEscape(req.Object), url.QueryEscape(req.Relation),
+		url.QueryEscape(req.Subject.Namespace), url.QueryEscape(req.Subject.Object), url.QueryEscape(req.Subject.Relation))
 
 	if r.cache != nil && len(req.RequestContext) == 0 {
 		if val, err := r.cache.Get(ctx, cacheKey); err == nil {
 			strVal := string(val)
-			parts := strings.Split(strVal, ":")
+			parts := strings.SplitN(strVal, ":", 2)
 			allowed := parts[0] == "1"
-			cachedNano := int64(0)
+			var cachedToken zookie.Token
 			if len(parts) > 1 {
-				cachedNano, _ = strconv.ParseInt(parts[1], 10, 64)
+				cachedToken, _ = zookie.Parse(parts[1])
 			}
 
-			// Verify causal consistency against requested Zookie
+			// Verify causal consistency against requested Zookie (JD-01)
 			isFresh := true
-			if requestedZk != nil && cachedNano > 0 {
-				isFresh = requestedZk.IsAtLeastFresh(time.Unix(0, cachedNano))
+			if requestedZk != nil {
+				isFresh = requestedZk.IsAtLeastFresh(cachedToken)
 			}
 
 			if isFresh {
@@ -103,7 +109,7 @@ func (r *Resolver) Check(ctx context.Context, req core.CheckRequest) (core.Check
 				return core.CheckResult{
 					Allowed:   allowed,
 					Reason:    "cached authorization decision",
-					SnapToken: zookie.New(time.Unix(0, cachedNano)).String(),
+					SnapToken: cachedToken.String(),
 				}, nil
 			}
 		}
@@ -120,16 +126,29 @@ func (r *Resolver) Check(ctx context.Context, req core.CheckRequest) (core.Check
 	}
 	nexusCheckTotal.WithLabelValues(decision).Inc()
 
-	evalToken := zookie.Now()
+	// Mint evaluated snapshot Zookie: use database LSN if repository supports it (JD-01)
+	var evalToken zookie.Token
+	if lsnReader, ok := r.repo.(LSNReader); ok {
+		lsn, lsnErr := lsnReader.CurrentLSN(ctx)
+		if lsnErr != nil {
+			return core.CheckResult{}, fmt.Errorf("failed to determine database snapshot lsn: %w", lsnErr)
+		}
+		if lsn > 0 {
+			evalToken = zookie.NewWithLSN(lsn)
+		}
+	}
+	if evalToken.Version == "" {
+		evalToken = zookie.Now()
+	}
 	res.SnapToken = evalToken.String()
 
-	// 2. Cache successful evaluation with nanosecond commit timestamp for Zookie tracking
+	// 2. Cache successful evaluation with serialized Zookie token for causal consistency tracking
 	if r.cache != nil && len(req.RequestContext) == 0 && err == nil {
 		decisionCode := "0"
 		if res.Allowed {
 			decisionCode = "1"
 		}
-		val := []byte(fmt.Sprintf("%s:%d", decisionCode, evalToken.Timestamp.UnixNano()))
+		val := []byte(fmt.Sprintf("%s:%s", decisionCode, evalToken.String()))
 		_ = r.cache.Set(ctx, cacheKey, val, 30*time.Second)
 	}
 

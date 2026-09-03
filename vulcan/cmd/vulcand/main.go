@@ -87,7 +87,11 @@ func main() {
 	})
 
 	server := transport.NewServer(repo, cfg.LocationURL, healthHandler)
-	appCache := cache.New(ctx, cfg.RedisURL)
+	appCache, err := cache.New(ctx, cfg.RedisURL)
+	if err != nil {
+		logger.Error("failed to initialize distributed cache", "error", err)
+		os.Exit(1)
+	}
 	defer appCache.Close()
 	server.SetCache(appCache)
 
