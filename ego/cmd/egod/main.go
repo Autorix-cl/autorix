@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/autorix/ego/internal/session"
 	"github.com/autorix/ego/internal/storage/postgres"
 	transport "github.com/autorix/ego/internal/transport/http"
+	"github.com/autorix/ego/internal/worker"
 	"github.com/autorix/platform/config"
 	"github.com/autorix/platform/health"
 	"github.com/autorix/platform/httpx"
@@ -19,6 +21,7 @@ import (
 	platformpg "github.com/autorix/platform/postgres"
 	"github.com/autorix/platform/registry"
 	"github.com/autorix/platform/run"
+	autortls "github.com/autorix/platform/tls"
 	"github.com/autorix/platform/version"
 	"github.com/google/uuid"
 )
@@ -110,9 +113,21 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	if _, err := autortls.ConfigureHTTPServer(httpServer, logger, "ego"); err != nil {
+		logger.Error("failed to configure mTLS for ego", "error", err)
+		os.Exit(1)
+	}
+
 	logger.Info("Autorix Ego listening", "port", cfg.Port, "protocol", "HTTP REST")
 
-	// 4. Optional control-plane registration (Argus). No-op unless
+	// 4. Background Transactional Notification Worker
+	notificationSender := worker.NewLoggingSender(logger)
+	notificationWorker := worker.New(repo, notificationSender, logger, worker.Config{
+		PollInterval: 2 * time.Second,
+		BatchSize:    25,
+	})
+
+	// 5. Optional control-plane registration (Argus). No-op unless
 	// AUTORIX_ARGUS_URL/AUTORIX_ENROLLMENT_TOKEN are set; never blocks or
 	// fails engine startup.
 	registryClient := registry.NewFromEnv("ego", registry.Endpoints{REST: "http://localhost:" + cfg.Port},
@@ -125,12 +140,24 @@ func main() {
 		{
 			Name: "ego-http",
 			Serve: func() error {
-				if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				if err := autortls.ServeHTTP(httpServer); err != nil && !errors.Is(err, http.ErrServerClosed) {
 					return err
 				}
 				return run.ErrServerClosed
 			},
 			Shutdown: httpServer.Shutdown,
+		},
+		{
+			Name: "ego-notifications",
+			Serve: func() error {
+				notificationWorker.Start(ctx)
+				<-ctx.Done()
+				return run.ErrServerClosed
+			},
+			Shutdown: func(ctx context.Context) error {
+				notificationWorker.Stop()
+				return nil
+			},
 		},
 		{
 			Name:     "argus-registry",

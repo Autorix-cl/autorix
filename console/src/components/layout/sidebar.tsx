@@ -253,7 +253,7 @@ export function Sidebar() {
                 allHealthy ? "bg-emerald-500/10 text-emerald-400" : "bg-muted text-muted-foreground",
               )}
             >
-              {healthLoading ? t("common.checking") : `${healthyCount}/${totalCount || 7} UP`}
+              {healthLoading ? t("common.checking") : `${healthyCount}/${totalCount || 7} ONLINE`}
             </span>
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground">

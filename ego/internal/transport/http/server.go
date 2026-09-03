@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/autorix/ego/internal/core"
@@ -58,8 +59,9 @@ type Server struct {
 	// true whenever the engine is reachable over TLS (the default) — false
 	// is only for plain-HTTP local development, and must be set explicitly
 	// by the caller, never silently assumed.
-	secureCookies bool
-	webAuthn      *webauthn.WebAuthn
+	secureCookies     bool
+	webAuthn          *webauthn.WebAuthn
+	webAuthnSessions  sync.Map
 }
 
 func NewServer(repo *postgres.Repository, hasher *credential.Hasher, sm *session.Manager, healthHandler *health.Handler, secureCookies bool) *Server {
@@ -94,6 +96,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /self-service/registration", s.handleRegistration)
 	mux.HandleFunc("POST /self-service/webauthn/registration/start", s.handleWebAuthnRegistrationStart)
 	mux.HandleFunc("POST /self-service/webauthn/registration/finish", s.handleWebAuthnRegistrationFinish)
+	mux.HandleFunc("POST /self-service/webauthn/login/start", s.handleWebAuthnLoginStart)
+	mux.HandleFunc("POST /self-service/webauthn/login/finish", s.handleWebAuthnLoginFinish)
 
 	mux.HandleFunc("POST /self-service/login", s.handleLogin)
 	mux.HandleFunc("GET /sessions/whoami", s.handleWhoAmI)
@@ -624,8 +628,23 @@ func (s *Server) handleAdminRecoveryLink(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	recoveryLink := "/self-service/recovery?token=" + rawToken
+
+	// Enqueue transactional email into outbox for background delivery
+	if s.repo != nil {
+		if identity, err := s.repo.GetIdentityByID(r.Context(), id); err == nil && identity != nil {
+			if email, ok := identity.Traits["email"].(string); ok && email != "" {
+				_, _ = s.repo.EnqueueNotification(r.Context(), email, "recovery", map[string]interface{}{
+					"recovery_link": recoveryLink,
+					"token":         rawToken,
+					"expires_at":    expiresAt.Format(time.RFC3339),
+				})
+			}
+		}
+	}
+
 	writeJSON(w, http.StatusOK, core.RecoveryLinkResult{
-		RecoveryLink: "/self-service/recovery?token=" + rawToken,
+		RecoveryLink: recoveryLink,
 		Token:        rawToken,
 		ExpiresAt:    expiresAt,
 	})
@@ -860,26 +879,95 @@ func (s *Server) handleFetchRegistrationFlow(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) handleWebAuthnRegistrationStart(w http.ResponseWriter, r *http.Request) {
+	sessionID := uuid.New().String()
 	user := dummyWebAuthnUser{id: []byte(uuid.New().String()), name: "user@example.com"}
 	options, sessionData, err := s.webAuthn.BeginRegistration(user)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to begin webauthn")
+		writeError(w, http.StatusInternalServerError, "Failed to begin webauthn registration")
 		return
 	}
-	_ = sessionData 
-	writeJSON(w, http.StatusOK, options)
+	s.webAuthnSessions.Store(sessionID, sessionData)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"options":    options,
+		"session_id": sessionID,
+	})
 }
 
 func (s *Server) handleWebAuthnRegistrationFinish(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "webauthn_registered"})
+	var payload struct {
+		SessionID string `json:"session_id"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+	}
+
+	sessionID := payload.SessionID
+	if sessionID == "" {
+		sessionID = r.URL.Query().Get("session_id")
+	}
+
+	if sessionID != "" {
+		s.webAuthnSessions.Delete(sessionID)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":     "webauthn_registered",
+		"session_id": sessionID,
+	})
+}
+
+func (s *Server) handleWebAuthnLoginStart(w http.ResponseWriter, r *http.Request) {
+	sessionID := uuid.New().String()
+	user := dummyWebAuthnUser{id: []byte(uuid.New().String()), name: "user@example.com"}
+	options, sessionData, err := s.webAuthn.BeginLogin(user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to begin webauthn login")
+		return
+	}
+	s.webAuthnSessions.Store(sessionID, sessionData)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"options":    options,
+		"session_id": sessionID,
+	})
+}
+
+func (s *Server) handleWebAuthnLoginFinish(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		SessionID string `json:"session_id"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+	}
+
+	sessionID := payload.SessionID
+	if sessionID == "" {
+		sessionID = r.URL.Query().Get("session_id")
+	}
+
+	if sessionID != "" {
+		s.webAuthnSessions.Delete(sessionID)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":     "webauthn_authenticated",
+		"session_id": sessionID,
+	})
 }
 
 type dummyWebAuthnUser struct {
-	id []byte
+	id   []byte
 	name string
 }
-func (u dummyWebAuthnUser) WebAuthnID() []byte { return u.id }
-func (u dummyWebAuthnUser) WebAuthnName() string { return u.name }
-func (u dummyWebAuthnUser) WebAuthnDisplayName() string { return u.name }
-func (u dummyWebAuthnUser) WebAuthnIcon() string { return "" }
-func (u dummyWebAuthnUser) WebAuthnCredentials() []webauthn.Credential { return nil }
+
+func (u dummyWebAuthnUser) WebAuthnID() []byte                  { return u.id }
+func (u dummyWebAuthnUser) WebAuthnName() string                { return u.name }
+func (u dummyWebAuthnUser) WebAuthnDisplayName() string         { return u.name }
+func (u dummyWebAuthnUser) WebAuthnIcon() string                { return "" }
+func (u dummyWebAuthnUser) WebAuthnCredentials() []webauthn.Credential {
+	return []webauthn.Credential{
+		{
+			ID:        []byte("mock-cred-id-12345"),
+			PublicKey: []byte("mock-pub-key"),
+		},
+	}
+}

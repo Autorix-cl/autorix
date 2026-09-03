@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/autorix/ego/internal/core"
+	"github.com/autorix/ego/internal/worker"
 	"github.com/autorix/platform/paging"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -1052,3 +1053,92 @@ func (r *Repository) AddWebAuthnCredential(ctx context.Context, identityID uuid.
 	`, uuid.New(), identityID, dataJSON, time.Now())
 	return err
 }
+
+// --- Notification Outbox Methods ---
+
+func (r *Repository) EnqueueNotification(ctx context.Context, recipient, template string, payload map[string]interface{}) (uuid.UUID, error) {
+	id := uuid.New()
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("marshal payload: %w", err)
+	}
+
+	query := `
+		INSERT INTO notification_outbox (id, recipient, template, payload, status, attempts, max_attempts, next_attempt_at, created_at)
+		VALUES ($1, $2, $3, $4, 'pending', 0, 5, NOW(), NOW())
+	`
+	_, err = r.pool.Exec(ctx, query, id, recipient, template, payloadJSON)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("insert notification: %w", err)
+	}
+	return id, nil
+}
+
+func (r *Repository) FetchPendingNotifications(ctx context.Context, limit int) ([]worker.Notification, error) {
+	query := `
+		SELECT id, recipient, template, payload, status, attempts, max_attempts, last_error, next_attempt_at, created_at, delivered_at
+		FROM notification_outbox
+		WHERE status = 'pending' AND next_attempt_at <= NOW()
+		ORDER BY next_attempt_at ASC
+		LIMIT $1
+		FOR UPDATE SKIP LOCKED
+	`
+	rows, err := r.pool.Query(ctx, query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query pending notifications: %w", err)
+	}
+	defer rows.Close()
+
+	var list []worker.Notification
+	for rows.Next() {
+		var n worker.Notification
+		var payloadJSON []byte
+		err := rows.Scan(
+			&n.ID,
+			&n.Recipient,
+			&n.Template,
+			&payloadJSON,
+			&n.Status,
+			&n.Attempts,
+			&n.MaxAttempts,
+			&n.LastError,
+			&n.NextAttemptAt,
+			&n.CreatedAt,
+			&n.DeliveredAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan notification: %w", err)
+		}
+		_ = json.Unmarshal(payloadJSON, &n.Payload)
+		list = append(list, n)
+	}
+	return list, nil
+}
+
+func (r *Repository) MarkDelivered(ctx context.Context, id uuid.UUID) error {
+	query := `
+		UPDATE notification_outbox
+		SET status = 'delivered', delivered_at = NOW()
+		WHERE id = $1
+	`
+	_, err := r.pool.Exec(ctx, query, id)
+	return err
+}
+
+func (r *Repository) MarkFailed(ctx context.Context, id uuid.UUID, lastError string, nextAttempt time.Time, deadLetter bool) error {
+	status := "pending"
+	if deadLetter {
+		status = "dead_letter"
+	}
+	query := `
+		UPDATE notification_outbox
+		SET attempts = attempts + 1,
+		    last_error = $2,
+		    next_attempt_at = $3,
+		    status = $4
+		WHERE id = $1
+	`
+	_, err := r.pool.Exec(ctx, query, id, lastError, nextAttempt, status)
+	return err
+}
+

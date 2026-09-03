@@ -3,6 +3,8 @@ import { z } from "zod";
 import { proxyRequest } from "@/lib/api/proxy";
 import { goPolicySchema } from "@/lib/api/schemas/themis";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const tenantId = searchParams.get("tenant_id") || "default";
@@ -17,9 +19,11 @@ export async function GET(req: NextRequest) {
   const res = await proxyRequest("themis", `/policies?${query.toString()}`, z.any());
   if (!res.ok) return res;
 
+  const search = searchParams.get("search")?.toLowerCase();
+
   const json = await res.json();
   const rawList = Array.isArray(json) ? json : json.data || [];
-  const data = rawList.map((p: Record<string, unknown>) => ({
+  let data = rawList.map((p: Record<string, unknown>) => ({
     ID: (p.id ?? p.ID) as string,
     TenantID: ((p.tenant_id ?? p.TenantID) as string) ?? "default",
     Name: (p.name ?? p.Name) as string,
@@ -31,6 +35,21 @@ export async function GET(req: NextRequest) {
     CreatedAt: ((p.created_at ?? p.CreatedAt) as string) ?? "",
     UpdatedAt: ((p.updated_at ?? p.UpdatedAt) as string) ?? "",
   }));
+
+  if (search) {
+    data = data.filter(
+      (p: { Name: string; Expression: string; Description: string }) =>
+        p.Name.toLowerCase().includes(search) ||
+        p.Expression.toLowerCase().includes(search) ||
+        p.Description.toLowerCase().includes(search),
+    );
+  }
+
+  // Sort newest first
+  data.sort(
+    (a: { CreatedAt: string }, b: { CreatedAt: string }) =>
+      new Date(b.CreatedAt).getTime() - new Date(a.CreatedAt).getTime(),
+  );
 
   return NextResponse.json({
     data,

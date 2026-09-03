@@ -245,6 +245,64 @@ func TestHTTP_Metrics(t *testing.T) {
 	}
 }
 
+func TestHTTP_WebAuthn_Endpoints(t *testing.T) {
+	server := NewServer(nil, nil, nil, newTestHealthHandler(false), true)
+	router := server.Routes()
+
+	// 1. WebAuthn Registration Start
+	regStartReq := httptest.NewRequest("POST", "/self-service/webauthn/registration/start", nil)
+	regStartRec := httptest.NewRecorder()
+	router.ServeHTTP(regStartRec, regStartReq)
+
+	if regStartRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 from webauthn reg start, got %d: %s", regStartRec.Code, regStartRec.Body.String())
+	}
+	var regStartBody map[string]interface{}
+	if err := json.Unmarshal(regStartRec.Body.Bytes(), &regStartBody); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	sessionID, ok := regStartBody["session_id"].(string)
+	if !ok || sessionID == "" {
+		t.Fatal("expected session_id in registration start response")
+	}
+
+	// 2. WebAuthn Registration Finish
+	regFinishReq := httptest.NewRequest("POST", "/self-service/webauthn/registration/finish", strings.NewReader(`{"session_id":"`+sessionID+`"}`))
+	regFinishRec := httptest.NewRecorder()
+	router.ServeHTTP(regFinishRec, regFinishReq)
+
+	if regFinishRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 from webauthn reg finish, got %d", regFinishRec.Code)
+	}
+
+	// 3. WebAuthn Login Start
+	loginStartReq := httptest.NewRequest("POST", "/self-service/webauthn/login/start", nil)
+	loginStartRec := httptest.NewRecorder()
+	router.ServeHTTP(loginStartRec, loginStartReq)
+
+	if loginStartRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 from webauthn login start, got %d: %s", loginStartRec.Code, loginStartRec.Body.String())
+	}
+	var loginStartBody map[string]interface{}
+	if err := json.Unmarshal(loginStartRec.Body.Bytes(), &loginStartBody); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	loginSessionID, ok := loginStartBody["session_id"].(string)
+	if !ok || loginSessionID == "" {
+		t.Fatal("expected session_id in login start response")
+	}
+
+	// 4. WebAuthn Login Finish
+	loginFinishReq := httptest.NewRequest("POST", "/self-service/webauthn/login/finish", strings.NewReader(`{"session_id":"`+loginSessionID+`"}`))
+	loginFinishRec := httptest.NewRecorder()
+	router.ServeHTTP(loginFinishRec, loginFinishReq)
+
+	if loginFinishRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 from webauthn login finish, got %d", loginFinishRec.Code)
+	}
+}
+
+
 
 
 
