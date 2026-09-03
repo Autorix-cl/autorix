@@ -66,7 +66,7 @@ describe("Vulcan API Routes", () => {
 
     // Now GET them
     const req = new Request("http://localhost/api/vulcan/keys", { method: "GET" });
-    const res = await GET();
+    const res = await GET(req);
     
     expect(res.status).toBe(200);
     const keys = await res.json();
