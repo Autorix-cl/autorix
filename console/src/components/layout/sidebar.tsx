@@ -19,6 +19,7 @@ import {
   PlusCircle,
   ScrollText,
   ShieldCheck,
+  Compass,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
@@ -51,6 +52,11 @@ export function Sidebar() {
           icon: LayoutDashboard,
         },
         {
+          name: "Cross-Engine Explorer",
+          href: "/explorer",
+          icon: Compass,
+        },
+        {
           name: "Fleet & Engines",
           href: "/fleet",
           icon: Server,
@@ -61,6 +67,7 @@ export function Sidebar() {
           icon: Activity,
         },
       ],
+
     },
     {
       group: t("nav.coreEngines"),

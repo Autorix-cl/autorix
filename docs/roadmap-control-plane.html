@@ -1282,7 +1282,7 @@
 <!-- ============ PHASE 6 ============ -->
 <section class="phase" id="p6">
   <div class="phase-head">
-    <div class="phase-num-wrap"><span class="phase-num">06</span><span class="phase-status partial">PARTIAL · 1 done / 10 partial / 46 pending</span></div>
+    <div class="phase-num-wrap"><span class="phase-num">06</span><span class="phase-status done">DONE · 57/57 tasks</span></div>
     <div>
       <h2>Engine Management Depth</h2>
       <p class="goal">Turn one shallow page per engine into complete administration. Most of this phase is Go work: the console cannot manage what the engines expose no API for, and today they expose 28 endpoints across seven services.</p>
@@ -1515,7 +1515,7 @@
 
   <div class="spec">
     <div class="spec-head">
-      <p class="spec-id">P6-S8</p><span class="spec-status pending">PENDING · 0/4</span>
+      <p class="spec-id">P6-S8</p><span class="spec-status done">DONE · 4/4</span>
       <h3>Cross-engine views</h3>
       <p>The value of an integrated suite is answering questions no single engine can. These views exist only because all seven are registered in one control plane.</p>
     </div>
@@ -1524,10 +1524,10 @@
         <table>
           <thead><tr><th>ID</th><th>Task</th><th>Detail</th><th>Area</th><th>Size</th><th>Status</th></tr></thead>
           <tbody>
-            <tr><td class="tid">P6-S8-T1</td><td class="ttl">Unified subject view</td><td class="det">One screen resolving a subject across engines: their Ego identity, active sessions, Nexus relations, OAuth2 grants, API keys and SAML linkage — the "everything about this person" view an incident responder needs.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S8-T2</td><td class="ttl">Effective access explorer</td><td class="det">Combine Nexus relations, Themis policies and Aegis rules to answer what a subject can reach through the proxy, showing which engine contributed each part of the decision.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S8-T3</td><td class="ttl">End-to-end request simulator</td><td class="det">Simulate a request entering Aegis and trace it through authentication, Nexus check and Themis evaluation to the upstream decision — the single most valuable debugging tool in the product.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
-            <tr><td class="tid">P6-S8-T4</td><td class="ttl">Configuration consistency checks</td><td class="det">Detect cross-engine misconfiguration: Aegis rules referencing Nexus namespaces that do not exist, OAuth2 clients with no matching proxy rule, orphaned tuples. Surface as a findings list with remediation links.</td><td><span class="tag">registry</span></td><td class="sz">L</td><td class="stat pending">PENDING</td></tr>
+            <tr><td class="tid">P6-S8-T1</td><td class="ttl">Unified subject view</td><td class="det">One screen resolving a subject across engines: their Ego identity, active sessions, Nexus relations, OAuth2 grants, API keys and SAML linkage — the "everything about this person" view an incident responder needs.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S8-T2</td><td class="ttl">Effective access explorer</td><td class="det">Combine Nexus relations, Themis policies and Aegis rules to answer what a subject can reach through the proxy, showing which engine contributed each part of the decision.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S8-T3</td><td class="ttl">End-to-end request simulator</td><td class="det">Simulate a request entering Aegis and trace it through authentication, Nexus check and Themis evaluation to the upstream decision — the single most valuable debugging tool in the product.</td><td><span class="tag">console-ui</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
+            <tr><td class="tid">P6-S8-T4</td><td class="ttl">Configuration consistency checks</td><td class="det">Detect cross-engine misconfiguration: Aegis rules referencing Nexus namespaces that do not exist, OAuth2 clients with no matching proxy rule, orphaned tuples. Surface as a findings list with remediation links.</td><td><span class="tag">registry</span></td><td class="sz">L</td><td class="stat done">DONE</td></tr>
           </tbody>
         </table>
       </div>

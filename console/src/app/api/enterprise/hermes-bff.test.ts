@@ -207,8 +207,21 @@ describe("Hermes Enterprise BFF Routes", () => {
     expect(getGroupRes.status).toBe(200);
 
     // PUT
+    const updatedGroup = {
+      schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+      id: "g-2",
+      displayName: "DevOps Updated",
+      members: [],
+      meta: {
+        resourceType: "Group",
+        created: "2026-09-02T10:00:00Z",
+        lastModified: "2026-09-02T10:00:00Z",
+        location: "/scim/v2/Groups/g-2",
+      },
+    };
+
     vi.mocked(global.fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: "g-2", displayName: "DevOps Updated" }), {
+      new Response(JSON.stringify(updatedGroup), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -224,7 +237,7 @@ describe("Hermes Enterprise BFF Routes", () => {
 
     // PATCH
     vi.mocked(global.fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: "g-2", displayName: "DevOps Patched" }), {
+      new Response(JSON.stringify({ ...updatedGroup, displayName: "DevOps Patched" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -237,6 +250,7 @@ describe("Hermes Enterprise BFF Routes", () => {
       { params: Promise.resolve({ id: "g-2" }) }
     );
     expect(patchRes.status).toBe(200);
+
 
     // 4. Delete
     vi.mocked(global.fetch).mockResolvedValueOnce(
