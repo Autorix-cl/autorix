@@ -81,6 +81,8 @@ func (s *Server) Routes() http.Handler {
 		mux.HandleFunc("DELETE /v1/auth/session", s.handleLogout)
 		mux.HandleFunc("GET /v1/operators", s.handleListOperators)
 		mux.HandleFunc("POST /v1/operators", s.handleCreateOperator)
+		mux.HandleFunc("PATCH /v1/operators/{id}", s.handleUpdateOperatorStatus)
+		mux.HandleFunc("DELETE /v1/operators/{id}", s.handleDeleteOperator)
 
 		// Audit & Governance (P8-S1, P8-S4)
 		mux.HandleFunc("GET /v1/audit", s.handleListAudit)
@@ -916,6 +918,68 @@ func (s *Server) handleCreateOperator(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, created)
+}
+
+type updateOperatorStatusRequest struct {
+	IsActive *bool `json:"is_active"`
+}
+
+func (s *Server) handleUpdateOperatorStatus(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid operator id format")
+		return
+	}
+
+	var req updateOperatorStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON payload")
+		return
+	}
+	if req.IsActive == nil {
+		writeError(w, http.StatusBadRequest, "is_active boolean field is required")
+		return
+	}
+
+	err = s.repo.UpdateOperatorStatus(r.Context(), id, *req.IsActive)
+	if err != nil {
+		if errors.Is(err, core.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "operator not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "updating operator status: "+err.Error())
+		return
+	}
+
+	updated, err := s.repo.GetOperatorByID(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "fetching updated operator: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func (s *Server) handleDeleteOperator(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid operator id format")
+		return
+	}
+
+	err = s.repo.DeleteOperator(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, core.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "operator not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "deleting operator: "+err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {

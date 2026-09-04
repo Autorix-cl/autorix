@@ -100,6 +100,8 @@ type Repository interface {
 	ListOperators(ctx context.Context) ([]Operator, error)
 	UpdateOperatorFailedAttempts(ctx context.Context, id uuid.UUID, failedAttempts int, lockedUntil *time.Time) error
 	ResetOperatorFailedAttempts(ctx context.Context, id uuid.UUID) error
+	UpdateOperatorStatus(ctx context.Context, id uuid.UUID, isActive bool) error
+	DeleteOperator(ctx context.Context, id uuid.UUID) error
 
 	// Console Identity: Sessions (P3-S2-T2)
 

@@ -48,4 +48,47 @@ test.describe("Argus Operator RBAC & Directory", () => {
     await page.waitForURL(/\/login\?from=%2Foperators/);
     await expect(page.getByRole("heading", { name: /autorix console/i })).toBeVisible();
   });
+
+  test("deactivates and permanently deletes an operator", async ({ page }) => {
+    await page.goto("/operators");
+    await page.waitForLoadState("networkidle");
+
+    // 1. Provision a disposable operator
+    const timestamp = Date.now();
+    const email = `decom-${timestamp}@autorix.io`;
+    const name = `Decom Test ${timestamp}`;
+
+    await page.getByRole("button", { name: /provision operator/i }).click();
+    await page.locator("#op-name").fill(name);
+    await page.locator("#op-email").fill(email);
+    await page.locator("#op-password").fill("SuperSecret123!");
+    await page.getByRole("button", { name: /create operator/i }).click();
+
+    // Verify operator appears in the list
+    const operatorRow = page.locator(".divide-y > div").filter({ hasText: email });
+    await expect(operatorRow).toBeVisible({ timeout: 10000 });
+    await expect(operatorRow.getByText("Active")).toBeVisible();
+
+    // 2. Deactivate the operator
+    await operatorRow.getByRole("button", { name: /deactivate/i }).click();
+
+    // Confirmation dialog should open
+    await expect(page.getByRole("heading", { name: /deactivate operator account/i })).toBeVisible();
+    await page.getByRole("button", { name: /confirm deactivation/i }).click();
+
+    // Verify status changes to Deactivated
+    await expect(operatorRow.getByText("Deactivated")).toBeVisible({ timeout: 10000 });
+    await expect(operatorRow.getByRole("button", { name: /reactivate/i })).toBeVisible();
+
+    // 3. Delete the operator permanently
+    await operatorRow.getByTitle(/delete operator permanently/i).click();
+
+    // Confirmation dialog should open
+    await expect(page.getByRole("heading", { name: /delete operator permanently/i })).toBeVisible();
+    await page.getByRole("button", { name: /delete permanently/i }).click();
+
+    // Verify operator is purged
+    await expect(page.locator("main").getByText(email)).not.toBeVisible({ timeout: 10000 });
+  });
 });
+

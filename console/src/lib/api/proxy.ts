@@ -133,6 +133,10 @@ export async function proxyRequest<T>(
     return NextResponse.json({ error: extractMessage(body, rawText, res.status) }, { status: res.status, headers });
   }
 
+  if (res.status === 204) {
+    return new NextResponse(null, { status: 204, headers });
+  }
+
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     const message = parsed.error.issues

@@ -384,4 +384,94 @@ func TestHTTP_GetMetricsSummary(t *testing.T) {
 	}
 }
 
+func TestHTTP_Operator_DeactivateAndLifecycle(t *testing.T) {
+	server, repo := newTestServerWithRepo(t)
+	ctx := context.Background()
+
+	// 1. Create operator
+	passHash, err := credential.HashPassword("OperatorPass123!")
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+
+	op := core.Operator{
+		Email:    "testop@autorix.io",
+		Name:     "Test Operator",
+		Role:     core.RoleOperator,
+		IsLocal:  true,
+		IsActive: true,
+	}
+	created, err := repo.CreateOperatorWithPassword(ctx, op, passHash)
+	if err != nil {
+		t.Fatalf("create operator: %v", err)
+	}
+
+	// 2. Deactivate operator via PATCH /v1/operators/{id}
+	patchBody := strings.NewReader(`{"is_active": false}`)
+	req := httptest.NewRequest(http.MethodPatch, "/v1/operators/"+created.ID.String(), patchBody)
+	rec := httptest.NewRecorder()
+	server.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on deactivate, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var patched core.Operator
+	if err := json.NewDecoder(rec.Body).Decode(&patched); err != nil {
+		t.Fatalf("decode patched operator: %v", err)
+	}
+	if patched.IsActive != false {
+		t.Fatalf("expected is_active=false, got %v", patched.IsActive)
+	}
+
+	// 3. Login attempt with deactivated operator should fail (403 Forbidden)
+	loginBody := strings.NewReader(`{"email": "testop@autorix.io", "password": "OperatorPass123!"}`)
+	req = httptest.NewRequest(http.MethodPost, "/v1/auth/login", loginBody)
+	rec = httptest.NewRecorder()
+	server.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden for deactivated operator, got %d", rec.Code)
+	}
+
+	// 4. Reactivate operator via PATCH /v1/operators/{id}
+	reactivateBody := strings.NewReader(`{"is_active": true}`)
+	req = httptest.NewRequest(http.MethodPatch, "/v1/operators/"+created.ID.String(), reactivateBody)
+	rec = httptest.NewRecorder()
+	server.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on reactivate, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// 5. Delete operator via DELETE /v1/operators/{id}
+	req = httptest.NewRequest(http.MethodDelete, "/v1/operators/"+created.ID.String(), nil)
+	rec = httptest.NewRecorder()
+	server.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 No Content on delete, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// 6. Verify operator no longer exists in list
+	req = httptest.NewRequest(http.MethodGet, "/v1/operators", nil)
+	rec = httptest.NewRecorder()
+	server.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on list operators, got %d", rec.Code)
+	}
+
+	var ops []core.Operator
+	if err := json.NewDecoder(rec.Body).Decode(&ops); err != nil {
+		t.Fatalf("decode operators list: %v", err)
+	}
+	for _, item := range ops {
+		if item.ID == created.ID {
+			t.Fatalf("deleted operator still present in operators list")
+		}
+	}
+}
+
+
 

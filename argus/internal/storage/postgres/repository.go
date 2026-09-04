@@ -1059,6 +1059,46 @@ func (r *Repository) ResetOperatorFailedAttempts(ctx context.Context, id uuid.UU
 	return nil
 }
 
+func (r *Repository) UpdateOperatorStatus(ctx context.Context, id uuid.UUID, isActive bool) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("beginning tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE operators
+		SET is_active = $2, updated_at = now()
+		WHERE id = $1
+	`, id, isActive)
+	if err != nil {
+		return fmt.Errorf("updating operator status: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return core.ErrNotFound
+	}
+
+	if !isActive {
+		_, err = tx.Exec(ctx, `DELETE FROM operator_sessions WHERE operator_id = $1`, id)
+		if err != nil {
+			return fmt.Errorf("revoking operator sessions: %w", err)
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (r *Repository) DeleteOperator(ctx context.Context, id uuid.UUID) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM operators WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("deleting operator: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return core.ErrNotFound
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------
 // Console Identity: Sessions (P3-S2-T2)
 // ---------------------------------------------------------------------
