@@ -26,6 +26,7 @@ test.describe("Vulcan API Keys & Macaroons Studio", () => {
   });
 
   test("switches between studio tabs and captures visual states", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1100 });
     // Initial tab: API Keys Vault
     await expect(page.getByRole("tab", { name: /API Keys Vault/i })).toBeVisible();
     await expect(page.getByText(/API Key Registry & Zero-Downtime Rotation/i)).toBeVisible();
@@ -42,6 +43,18 @@ test.describe("Vulcan API Keys & Macaroons Studio", () => {
     // Capture screenshot of Macaroon Inspector tab
     await page.screenshot({
       path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-vulcan-inspector.png",
+      fullPage: true,
+    });
+
+    // Load sample and test decode
+    await page.getByRole("button", { name: /Load Sample Macaroon/i }).click();
+    await page.getByRole("button", { name: "Decode" }).click();
+    await expect(page.getByText("Decoded Structure")).toBeVisible();
+
+    // Capture screenshot with decoded structure and verification playground
+    await page.screenshot({
+      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-vulcan-inspector-decoded.png",
+      fullPage: true,
     });
 
     // Switch to Attenuation Studio tab
