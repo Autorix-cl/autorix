@@ -45,6 +45,7 @@ export default function IdentitiesPage() {
 
   const [searchQueryInput, setSearchQueryInput] = React.useState("");
   const [searchQuery, setSearchQuery] = React.useState("");
+  const [pageSize, setPageSize] = React.useState(10);
   const [cursor, setCursor] = React.useState("");
   const [cursorHistory, setCursorHistory] = React.useState<string[]>([]);
   
@@ -70,9 +71,9 @@ export default function IdentitiesPage() {
     error,
     refetch,
   } = useApiQuery(
-    ["identities", { q: searchQuery, cursor }],
+    ["identities", { q: searchQuery, cursor, limit: pageSize }],
     () => fetchAndParse<PaginatedIdentities>(
-      `/api/identities?q=${encodeURIComponent(searchQuery)}&cursor=${encodeURIComponent(cursor)}`, 
+      `/api/identities?q=${encodeURIComponent(searchQuery)}&cursor=${encodeURIComponent(cursor)}&limit=${pageSize}`, 
       paginatedIdentityListSchema
     )
   );
@@ -132,6 +133,12 @@ export default function IdentitiesPage() {
       setCursorHistory((prev) => prev.slice(0, -1));
       setCursor(prevCursor);
     }
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCursor("");
+    setCursorHistory([]);
   };
 
   return (
@@ -292,6 +299,10 @@ export default function IdentitiesPage() {
                 data={identities} 
                 isLoading={isLoading || isFetching}
                 manualPagination={true}
+                pageIndex={cursorHistory.length}
+                pageSize={pageSize}
+                defaultPageSize={pageSize}
+                onPageSizeChange={handlePageSizeChange}
                 onNextPage={handleNextPage}
                 onPreviousPage={handlePreviousPage}
                 canNextPage={!!identitiesRaw?.has_more}

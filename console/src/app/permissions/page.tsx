@@ -66,6 +66,7 @@ export default function PermissionsPage() {
     path: string;
   } | null>(null);
 
+  const [pageSize, setPageSize] = React.useState(10);
   const [cursor, setCursor] = React.useState("");
   const [cursorHistory, setCursorHistory] = React.useState<string[]>([]);
   const [isBuilderOpen, setIsBuilderOpen] = React.useState(false);
@@ -78,8 +79,8 @@ export default function PermissionsPage() {
     error: tuplesError,
     refetch: refetchTuples,
   } = useApiQuery(
-    ["nexus-tuples", { cursor }],
-    () => fetchAndParse<PaginatedTuples>(`/api/permissions?cursor=${encodeURIComponent(cursor)}`, paginatedTupleListSchema)
+    ["nexus-tuples", { cursor, limit: pageSize }],
+    () => fetchAndParse<PaginatedTuples>(`/api/permissions?cursor=${encodeURIComponent(cursor)}&limit=${pageSize}`, paginatedTupleListSchema)
   );
 
   const tuples: ZanzibarTupleItem[] = React.useMemo(() => (tuplesRaw?.data ?? []).map(toZanzibarTuple), [tuplesRaw]);
@@ -175,6 +176,12 @@ export default function PermissionsPage() {
       setCursor(prevCursor);
       return newHistory;
     });
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCursor("");
+    setCursorHistory([]);
   };
 
   if (!isEngineConnected("nexus")) {
@@ -446,6 +453,10 @@ export default function PermissionsPage() {
                 data={tuples}
                 isLoading={isLoadingTuples || isFetchingTuples}
                 manualPagination={true}
+                pageIndex={cursorHistory.length}
+                pageSize={pageSize}
+                defaultPageSize={pageSize}
+                onPageSizeChange={handlePageSizeChange}
                 onNextPage={handleNextPage}
                 onPreviousPage={handlePrevPage}
                 canNextPage={!!tuplesRaw?.has_more}

@@ -60,4 +60,38 @@ describe("DataTable", () => {
     expect(screen.getByRole("button", { name: /previous/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /next/i })).toBeInTheDocument();
   });
+
+  it("caps rendered rows to pageSize when manualPagination is true", () => {
+    const manyUsers: User[] = [
+      { id: "1", name: "User 1", email: "u1@example.com" },
+      { id: "2", name: "User 2", email: "u2@example.com" },
+      { id: "3", name: "User 3", email: "u3@example.com" },
+      { id: "4", name: "User 4", email: "u4@example.com" },
+    ];
+    render(
+      <DataTable
+        columns={columns}
+        data={manyUsers}
+        manualPagination={true}
+        pageSize={2}
+      />
+    );
+    expect(screen.getByText("User 1")).toBeInTheDocument();
+    expect(screen.getByText("User 2")).toBeInTheDocument();
+    expect(screen.queryByText("User 3")).not.toBeInTheDocument();
+    expect(screen.queryByText("User 4")).not.toBeInTheDocument();
+  });
+
+  it("renders cursor-based page indicator without total page count when manualPagination is true and pageCount is omitted", () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={data}
+        manualPagination={true}
+        pageIndex={2}
+      />
+    );
+    expect(screen.getByText("Page 3")).toBeInTheDocument();
+  });
 });
+

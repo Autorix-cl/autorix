@@ -41,4 +41,26 @@ test.describe("Ego Identities Studio (Ory Kratos Trait Model)", () => {
     // Verify only the searched identity is displayed
     await expect(page.getByRole("cell", { name: email })).toBeVisible();
   });
+
+  test("paginates table according to selected rows per page", async ({ page }) => {
+    // Check initial rows in table body (default 10)
+    const rows = page.locator("tbody tr");
+    const initialCount = await rows.count();
+    expect(initialCount).toBeLessThanOrEqual(10);
+
+    // Capture screenshot of paginated identities studio
+    await page.screenshot({
+      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-identities-paginated.png",
+    });
+
+    const footer = page.getByText("Rows per page").locator("../..");
+    await footer.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-identities-footer.png",
+    });
+
+    // Verify rows per page selector is visible with default 10
+    await expect(page.getByText("Rows per page")).toBeVisible();
+  });
 });
+

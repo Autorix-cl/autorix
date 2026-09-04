@@ -57,6 +57,8 @@ interface DataTableProps<TData, TValue> {
   defaultDensity?: "comfortable" | "compact";
   pageSizeOptions?: number[];
   defaultPageSize?: number;
+  pageSize?: number;
+  pageIndex?: number;
   onPageSizeChange?: (pageSize: number) => void;
 }
 
@@ -65,6 +67,7 @@ export function DataTable<TData, TValue>({
   data,
   manualPagination,
   pageCount,
+  pageIndex: controlledPageIndex,
   onNextPage,
   onPreviousPage,
   canNextPage,
@@ -76,6 +79,7 @@ export function DataTable<TData, TValue>({
   defaultDensity = "comfortable",
   pageSizeOptions = [10, 20, 50, 100],
   defaultPageSize = 10,
+  pageSize: controlledPageSize,
   onPageSizeChange,
 }: DataTableProps<TData, TValue>) {
   const [density, setDensity] = React.useState<"comfortable" | "compact">(defaultDensity);
@@ -84,9 +88,21 @@ export function DataTable<TData, TValue>({
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = React.useState({});
   const [pagination, setPagination] = React.useState({
-    pageIndex: 0,
-    pageSize: defaultPageSize,
+    pageIndex: controlledPageIndex ?? 0,
+    pageSize: controlledPageSize ?? defaultPageSize,
   });
+
+  React.useEffect(() => {
+    if (controlledPageSize !== undefined && controlledPageSize !== pagination.pageSize) {
+      setPagination((prev) => ({ ...prev, pageSize: controlledPageSize, pageIndex: 0 }));
+    }
+  }, [controlledPageSize]);
+
+  React.useEffect(() => {
+    if (controlledPageIndex !== undefined && controlledPageIndex !== pagination.pageIndex) {
+      setPagination((prev) => ({ ...prev, pageIndex: controlledPageIndex }));
+    }
+  }, [controlledPageIndex]);
 
   const table = useReactTable({
     data,
@@ -110,6 +126,12 @@ export function DataTable<TData, TValue>({
       pagination,
     },
   });
+
+  const activeRows = table.getRowModel().rows;
+  const rowsToRender =
+    manualPagination && activeRows.length > pagination.pageSize
+      ? activeRows.slice(0, pagination.pageSize)
+      : activeRows;
 
   return (
     <div>
@@ -208,8 +230,8 @@ export function DataTable<TData, TValue>({
                   </div>
                 </TableCell>
               </TableRow>
-            ) : table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
+            ) : rowsToRender.length ? (
+              rowsToRender.map((row) => (
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
@@ -286,6 +308,7 @@ export function DataTable<TData, TValue>({
               value={String(table.getState().pagination.pageSize)}
               onValueChange={(value) => {
                 const newSize = Number(value);
+                setPagination((prev) => ({ ...prev, pageSize: newSize, pageIndex: 0 }));
                 table.setPageSize(newSize);
                 if (onPageSizeChange) onPageSizeChange(newSize);
               }}
@@ -304,8 +327,8 @@ export function DataTable<TData, TValue>({
           </div>
 
           <div className="flex items-center justify-center text-xs font-medium">
-            Page {table.getState().pagination.pageIndex + 1} of{" "}
-            {manualPagination ? (pageCount || 1) : (table.getPageCount() || 1)}
+            Page {(controlledPageIndex ?? table.getState().pagination.pageIndex) + 1}
+            {manualPagination ? (pageCount ? ` of ${pageCount}` : "") : ` of ${table.getPageCount() || 1}`}
           </div>
 
           <div className="flex items-center space-x-2">

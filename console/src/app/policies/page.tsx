@@ -70,7 +70,7 @@ export default function PoliciesPage() {
   const [evalJsonError, setEvalJsonError] = React.useState("");
 
   // Pagination state
-  const limit = 10;
+  const [pageSize, setPageSize] = React.useState(10);
   const [cursorHistory, setCursorHistory] = React.useState<string[]>([]);
   const [cursorIndex, setCursorIndex] = React.useState(0);
   const currentCursor = cursorHistory[cursorIndex] || "";
@@ -81,6 +81,12 @@ export default function PoliciesPage() {
     setCursorIndex(0);
   }, [searchQuery]);
 
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCursorHistory([]);
+    setCursorIndex(0);
+  };
+
   const {
     data: paginatedPolicies,
     isLoading,
@@ -88,8 +94,8 @@ export default function PoliciesPage() {
     isError,
     error,
     refetch,
-  } = useApiQuery(["policies", tenantId, currentCursor, searchQuery], () => {
-    const params = new URLSearchParams({ tenant_id: tenantId, limit: String(limit) });
+  } = useApiQuery(["policies", tenantId, currentCursor, searchQuery, pageSize], () => {
+    const params = new URLSearchParams({ tenant_id: tenantId, limit: String(pageSize) });
     if (currentCursor) params.append("cursor", currentCursor);
     if (searchQuery) params.append("search", searchQuery);
     return fetchAndParse(`/api/policies?${params.toString()}`, paginatedPolicyListSchema);
@@ -335,6 +341,10 @@ export default function PoliciesPage() {
                 data={policies}
                 isLoading={isLoading}
                 manualPagination={true}
+                pageIndex={cursorIndex}
+                pageSize={pageSize}
+                defaultPageSize={pageSize}
+                onPageSizeChange={handlePageSizeChange}
                 onNextPage={handleNextPage}
                 onPreviousPage={handlePreviousPage}
                 canNextPage={paginatedPolicies?.has_more ?? false}
