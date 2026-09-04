@@ -24,4 +24,33 @@ test.describe("Vulcan API Keys & Macaroons Studio", () => {
     // Verify secret modal appears
     await expect(page.getByText(/Save your secret key/i)).toBeVisible({ timeout: 10_000 });
   });
+
+  test("switches between studio tabs and captures visual states", async ({ page }) => {
+    // Initial tab: API Keys Vault
+    await expect(page.getByRole("tab", { name: /API Keys Vault/i })).toBeVisible();
+    await expect(page.getByText(/API Key Registry & Zero-Downtime Rotation/i)).toBeVisible();
+
+    // Capture screenshot of API Keys tab
+    await page.screenshot({
+      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-vulcan-keys.png",
+    });
+
+    // Switch to Macaroon Inspector tab
+    await page.getByRole("tab", { name: /Macaroon Inspector/i }).click();
+    await expect(page.getByText(/Capability Token Inspector & Live Verification/i)).toBeVisible();
+
+    // Capture screenshot of Macaroon Inspector tab
+    await page.screenshot({
+      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-vulcan-inspector.png",
+    });
+
+    // Switch to Attenuation Studio tab
+    await page.getByRole("tab", { name: /Attenuation Studio/i }).click();
+    await expect(page.getByText(/Cryptographic Attenuation Studio/i)).toBeVisible();
+
+    // Capture screenshot of Attenuation Studio tab
+    await page.screenshot({
+      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-vulcan-attenuation.png",
+    });
+  });
 });

@@ -93,7 +93,7 @@ export function AttenuationStudio() {
   };
 
   return (
-    <div className="space-y-6 mt-8">
+    <div className="space-y-6">
       {/* Visual Capability Narrowing Chain (P6-S6-T5) */}
       <Card className="border-border bg-card/60">
         <CardHeader className="pb-3">
