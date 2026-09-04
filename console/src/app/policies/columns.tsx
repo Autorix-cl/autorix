@@ -1,16 +1,50 @@
-"use client";
-
+import * as React from "react";
 import { ColumnDef } from "@tanstack/react-table";
 import { Policy } from "@/lib/api/schemas/themis";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Trash2 } from "lucide-react";
+import { Trash2, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useApiMutation } from "@/lib/query/use-api-mutation";
 import { deletePolicyResponseSchema } from "@/lib/api/schemas/themis";
 import { fetchAndParse } from "@/lib/api/schema";
 import { useQueryClient } from "@tanstack/react-query";
 
+function ExpressionCell({ expression }: { expression: string }) {
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(expression);
+      setCopied(true);
+      toast.success("CEL expression copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy");
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 font-mono text-xs text-purple-300 group max-w-md">
+      <span
+        className="rounded bg-purple-500/10 px-2 py-0.5 border border-purple-500/20 truncate"
+        title={expression}
+      >
+        {expression}
+      </span>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={handleCopy}
+        className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground shrink-0"
+        title="Copy CEL expression"
+      >
+        {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+      </Button>
+    </div>
+  );
+}
 
 export function getColumns(tenantId: string): ColumnDef<Policy, unknown>[] {
   return [
@@ -22,13 +56,7 @@ export function getColumns(tenantId: string): ColumnDef<Policy, unknown>[] {
     {
       accessorKey: "Expression",
       header: "Expression",
-      cell: ({ row }) => (
-        <div className="font-mono text-xs text-purple-300">
-          <span className="rounded bg-purple-500/10 px-2 py-0.5 border border-purple-500/20">
-            {row.original.Expression}
-          </span>
-        </div>
-      ),
+      cell: ({ row }) => <ExpressionCell expression={row.original.Expression} />,
     },
     {
       accessorKey: "TenantID",
