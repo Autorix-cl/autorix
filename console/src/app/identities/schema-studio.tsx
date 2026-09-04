@@ -556,15 +556,14 @@ export function SchemaStudio({ onSchemaCreated }: SchemaStudioProps) {
               {/* Metadata Inputs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="schemaId" className="text-xs font-medium flex items-center justify-between">
-                    <span>Schema Identifier (ID)</span>
-                    <span className="text-[10px] text-muted-foreground font-mono">e.g. customer_v1</span>
+                  <Label htmlFor="schemaId" className="text-xs font-medium">
+                    Schema Identifier (ID)
                   </Label>
                   <Input
                     id="schemaId"
                     value={schemaId}
                     onChange={(e) => setSchemaId(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
-                    placeholder="e.g. partner_v1"
+                    placeholder="e.g. customer_v1"
                     disabled={!isCreatingNew && schemaId === "default"}
                     className="h-8 text-xs font-mono"
                   />
@@ -578,7 +577,7 @@ export function SchemaStudio({ onSchemaCreated }: SchemaStudioProps) {
                     id="schemaName"
                     value={schemaName}
                     onChange={(e) => setSchemaName(e.target.value)}
-                    placeholder="e.g. Partner Workload Profile"
+                    placeholder="e.g. Customer Profile"
                     className="h-8 text-xs"
                   />
                 </div>
