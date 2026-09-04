@@ -66,4 +66,50 @@ describe("DynamicSchemaForm", () => {
       expect.objectContaining({ email: "new@autorix.io" })
     );
   });
+
+  it("renders enum selects and specialized input formats", () => {
+    const onChange = vi.fn();
+    const extendedSchema = {
+      title: "Extended Identity",
+      type: "object",
+      properties: {
+        traits: {
+          type: "object",
+          properties: {
+            department: {
+              type: "string",
+              title: "Department",
+              enum: ["Engineering", "Security", "Operations"],
+            },
+            phone: {
+              type: "string",
+              format: "tel",
+              title: "Phone Number",
+            },
+          },
+        },
+      },
+    };
+
+    render(
+      <DynamicSchemaForm
+        schema={extendedSchema}
+        value={{ department: "Security", phone: "+15551234" }}
+        onChange={onChange}
+      />
+    );
+
+    const select = screen.getByLabelText(/department/i) as HTMLSelectElement;
+    expect(select).toBeDefined();
+    expect(select.value).toBe("Security");
+
+    fireEvent.change(select, { target: { value: "Engineering" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ department: "Engineering" })
+    );
+
+    const phoneInput = screen.getByLabelText(/phone number/i) as HTMLInputElement;
+    expect(phoneInput.type).toBe("tel");
+    expect(phoneInput.value).toBe("+15551234");
+  });
 });

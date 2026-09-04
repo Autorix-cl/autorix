@@ -10,6 +10,7 @@ export interface JSONSchemaProperty {
   title?: string;
   description?: string;
   format?: string;
+  enum?: string[];
   required?: string[];
   properties?: Record<string, JSONSchemaProperty>;
   items?: JSONSchemaProperty;
@@ -156,8 +157,45 @@ export function DynamicSchemaForm({
       );
     }
 
-    // String type (email, text, password)
-    const inputType = prop.format === "email" ? "email" : "text";
+    // Enum select dropdown
+    if (prop.enum && Array.isArray(prop.enum)) {
+      const val = (getFieldValue(path) as string) ?? (prop.default as string) ?? "";
+      return (
+        <div key={fieldId} className="space-y-1.5">
+          <Label htmlFor={fieldId} className="text-xs font-medium">
+            {title} {isRequired && <span className="text-destructive">*</span>}
+          </Label>
+          <select
+            id={fieldId}
+            value={val}
+            disabled={disabled}
+            required={isRequired}
+            onChange={(e) => handleFieldChange(path, e.target.value)}
+            className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring text-foreground"
+          >
+            <option value="" disabled={isRequired}>
+              {prop.description || `Select ${title.toLowerCase()}...`}
+            </option>
+            {prop.enum.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+          {prop.description && (
+            <p className="text-[10px] text-muted-foreground">{prop.description}</p>
+          )}
+        </div>
+      );
+    }
+
+    // String type (email, tel, url, date, text)
+    let inputType = "text";
+    if (prop.format === "email") inputType = "email";
+    else if (prop.format === "tel") inputType = "tel";
+    else if (prop.format === "uri" || prop.format === "url") inputType = "url";
+    else if (prop.format === "date") inputType = "date";
+
     const val = (getFieldValue(path) as string) ?? "";
     const isIdentifier = Boolean(prop["autorix.io/credentials"]?.password?.identifier);
 

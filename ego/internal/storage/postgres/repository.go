@@ -876,19 +876,20 @@ func (r *Repository) CreateSchema(ctx context.Context, schema *core.IdentitySche
 	}, nil
 }
 
-// SeedDefaultSchema ensures the default identity schema is present in the database.
+// SeedDefaultSchema ensures identity schemas are present and up-to-date in the database.
 func (r *Repository) SeedDefaultSchema(ctx context.Context) error {
-	_, err := r.GetSchemaByID(ctx, "default")
-	if err == nil {
-		return nil // Already seeded
-	}
-
-	schemaData, err := os.ReadFile("schemas/default.identity.schema.json")
-	if err != nil {
-		schemaData = []byte(`{
+	schemaDefs := []struct {
+		id       string
+		fallback string
+		filename string
+	}{
+		{
+			id:       "default",
+			filename: "schemas/default.identity.schema.json",
+			fallback: `{
   "$id": "https://schemas.autorix.io/default.identity.schema.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Default Identity Schema",
+  "title": "Default User Identity",
   "type": "object",
   "properties": {
     "traits": {
@@ -899,44 +900,134 @@ func (r *Repository) SeedDefaultSchema(ctx context.Context) error {
           "format": "email",
           "title": "E-Mail Address",
           "autorix.io/credentials": {
-            "password": {
-              "identifier": true
-            }
+            "password": { "identifier": true }
           }
         },
         "name": {
           "type": "object",
+          "title": "Full Name",
           "properties": {
             "first": { "type": "string", "title": "First Name" },
             "last": { "type": "string", "title": "Last Name" }
           },
           "required": ["first"]
+        },
+        "phone": {
+          "type": "string",
+          "format": "tel",
+          "title": "Phone Number",
+          "description": "Direct contact phone number"
+        },
+        "department": {
+          "type": "string",
+          "title": "Department",
+          "description": "Organizational unit or department",
+          "enum": ["Engineering", "Product", "Operations", "Security", "Support"]
+        },
+        "security_advisories": {
+          "type": "boolean",
+          "title": "Subscribe to Security Advisories"
         }
       },
       "required": ["email"],
       "additionalProperties": false
     }
   }
-}`)
+}`,
+		},
+		{
+			id:       "employee",
+			filename: "schemas/employee.identity.schema.json",
+			fallback: `{
+  "$id": "https://schemas.autorix.io/employee.identity.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Employee / Staff Identity",
+  "type": "object",
+  "properties": {
+    "traits": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "title": "Corporate E-Mail",
+          "autorix.io/credentials": {
+            "password": { "identifier": true }
+          }
+        },
+        "name": {
+          "type": "object",
+          "title": "Employee Name",
+          "properties": {
+            "first": { "type": "string", "title": "First Name" },
+            "last": { "type": "string", "title": "Last Name" }
+          },
+          "required": ["first"]
+        },
+        "employee_id": {
+          "type": "string",
+          "title": "Employee ID",
+          "description": "Internal badge or payroll identifier"
+        },
+        "department": {
+          "type": "string",
+          "title": "Department",
+          "description": "Assigned division",
+          "enum": ["Infrastructure", "Security Operations", "Core Engineering", "Compliance", "Executive"]
+        },
+        "role": {
+          "type": "string",
+          "title": "Operator Role",
+          "enum": ["admin", "operator", "auditor", "viewer"]
+        },
+        "security_clearance": {
+          "type": "boolean",
+          "title": "High Security Clearance"
+        }
+      },
+      "required": ["email"],
+      "additionalProperties": false
+    }
+  }
+}`,
+		},
 	}
 
-	var parsed map[string]interface{}
-	if err := json.Unmarshal(schemaData, &parsed); err != nil {
-		return fmt.Errorf("failed to unmarshal default schema: %w", err)
+	for _, item := range schemaDefs {
+		schemaData, err := os.ReadFile(item.filename)
+		if err != nil {
+			schemaData = []byte(item.fallback)
+		}
+
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(schemaData, &parsed); err != nil {
+			continue
+		}
+
+		title := item.id
+		if t, ok := parsed["title"].(string); ok && t != "" {
+			title = t
+		}
+
+		rawJSON, err := json.Marshal(parsed)
+		if err != nil {
+			continue
+		}
+
+		query := `
+			INSERT INTO identity_schemas (id, name, schema, version, created_at, updated_at)
+			VALUES ($1, $2, $3, 1, NOW(), NOW())
+			ON CONFLICT (id) DO UPDATE
+			SET name = EXCLUDED.name,
+			    schema = EXCLUDED.schema,
+			    updated_at = NOW()
+		`
+		if _, err := r.pool.Exec(ctx, query, item.id, title, rawJSON); err != nil {
+			return fmt.Errorf("failed to upsert schema %s: %w", item.id, err)
+		}
 	}
 
-	title := "Default Identity Schema"
-	if t, ok := parsed["title"].(string); ok && t != "" {
-		title = t
-	}
-
-	_, err = r.CreateSchema(ctx, &core.IdentitySchema{
-		ID:      "default",
-		Name:    title,
-		Schema:  parsed,
-		Version: 1,
-	})
-	return err
+	return nil
 }
 
 // GetSchemaByID retrieves an identity schema by its ID string

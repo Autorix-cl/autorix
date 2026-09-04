@@ -1,7 +1,7 @@
 {
-  "$id": "https://schemas.autorix.io/default.identity.schema.json",
+  "$id": "https://schemas.autorix.io/employee.identity.schema.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "User Identity",
+  "title": "Employee / Staff Identity",
   "type": "object",
   "properties": {
     "traits": {
@@ -10,7 +10,7 @@
         "email": {
           "type": "string",
           "format": "email",
-          "title": "E-Mail Address",
+          "title": "Corporate E-Mail",
           "autorix.io/credentials": {
             "password": {
               "identifier": true
@@ -19,7 +19,7 @@
         },
         "name": {
           "type": "object",
-          "title": "Full Name",
+          "title": "Employee Name",
           "properties": {
             "first": {
               "type": "string",
@@ -32,21 +32,25 @@
           },
           "required": ["first"]
         },
-        "phone": {
+        "employee_id": {
           "type": "string",
-          "format": "tel",
-          "title": "Phone Number",
-          "description": "Direct contact phone number"
+          "title": "Employee ID",
+          "description": "Internal badge or payroll identifier"
         },
         "department": {
           "type": "string",
           "title": "Department",
-          "description": "Organizational unit or department",
-          "enum": ["Engineering", "Product", "Operations", "Security", "Support"]
+          "description": "Assigned division",
+          "enum": ["Infrastructure", "Security Operations", "Core Engineering", "Compliance", "Executive"]
         },
-        "security_advisories": {
+        "role": {
+          "type": "string",
+          "title": "Operator Role",
+          "enum": ["admin", "operator", "auditor", "viewer"]
+        },
+        "security_clearance": {
           "type": "boolean",
-          "title": "Subscribe to Security Advisories"
+          "title": "High Security Clearance"
         }
       },
       "required": ["email"],
