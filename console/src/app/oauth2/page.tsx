@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { KeyRound, Plus, Shield, Key, Search, Loader2, RefreshCw } from "lucide-react";
+import { KeyRound, Plus, Shield, Key, Search, Loader2, RefreshCw, Activity } from "lucide-react";
+import { ServiceHeader } from "@/components/layout/service-header";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "@/lib/i18n";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -157,26 +158,48 @@ export default function OAuth2Page() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("oauth2.title")}</h1>
-            <Badge variant="warning" className="gap-1.5 py-0.5 px-2.5 text-[11px] font-mono whitespace-nowrap shrink-0">
-              <Key className="h-3.5 w-3.5" />
-              <span>{t("oauth2.statusBadge")}</span>
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">{t("oauth2.subtitle")}</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading} className="h-8 gap-1 text-xs">
+      {/* Cloud Service Header & Telemetry HUD */}
+      <ServiceHeader
+        serviceName="Janus OAuth2 / OIDC Engine"
+        title={t("oauth2.title")}
+        description={t("oauth2.subtitle")}
+        icon={KeyRound}
+        iconColor="text-amber-400"
+        statusText={t("oauth2.statusBadge")}
+        statusVariant="warning"
+        metrics={[
+          {
+            label: "Registered Clients",
+            value: clients.length,
+            hint: "Confidential & Public",
+            icon: KeyRound,
+          },
+          {
+            label: "Signing Algorithm",
+            value: "RS256",
+            hint: "JWKS Key Set",
+            icon: Key,
+          },
+          {
+            label: "SPA Security",
+            value: "PKCE Strict",
+            hint: "S256 Code Challenge",
+            icon: Shield,
+          },
+          {
+            label: "Engine Gateway",
+            value: "Port 4435",
+            hint: "Hydra-compatible OIDC",
+            icon: Activity,
+          },
+        ]}
+        actions={
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading} className="h-8 gap-1.5 text-xs">
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             <span>{t("common.refresh")}</span>
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       <Tabs defaultValue="clients" className="w-full space-y-6">
         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 max-w-2xl">

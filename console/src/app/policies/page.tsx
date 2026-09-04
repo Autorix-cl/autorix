@@ -10,7 +10,11 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
+  Shield,
+  Zap,
+  Activity,
 } from "lucide-react";
+import { ServiceHeader } from "@/components/layout/service-header";
 import { useTranslation } from "@/lib/i18n";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -157,33 +161,57 @@ export default function PoliciesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("themis.title")}</h1>
-            <Badge variant="purple" className="gap-1.5 py-0.5 px-2.5 text-[11px] font-mono whitespace-nowrap shrink-0">
-              <Scale className="h-3.5 w-3.5" />
-              <span>{t("themis.statusBadge")}</span>
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">{t("themis.subtitle")}</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <PolicyBuilderSheet tenantId={tenantId} />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="h-8 gap-1 text-xs"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
-            <span>{t("common.refresh")}</span>
-          </Button>
-        </div>
-      </div>
+      {/* Cloud Service Header & Telemetry HUD */}
+      <ServiceHeader
+        serviceName="Themis ABAC Engine"
+        title={t("themis.title")}
+        description={t("themis.subtitle")}
+        icon={Scale}
+        iconColor="text-purple-400"
+        statusText={t("themis.statusBadge")}
+        statusVariant="purple"
+        metrics={[
+          {
+            label: "Registered Policies",
+            value: policies.length,
+            hint: "CEL Declarative rules",
+            icon: Scale,
+          },
+          {
+            label: "Default Verdict",
+            value: "DENY",
+            hint: "Zero-Trust Fail Closed",
+            icon: Shield,
+          },
+          {
+            label: "AST Evaluation",
+            value: "CEL v0.12",
+            hint: "Google Compiler",
+            icon: Zap,
+          },
+          {
+            label: "Engine Gateway",
+            value: "Port 4437",
+            hint: "In-Memory Evaluator",
+            icon: Activity,
+          },
+        ]}
+        actions={
+          <>
+            <PolicyBuilderSheet tenantId={tenantId} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+              <span>{t("common.refresh")}</span>
+            </Button>
+          </>
+        }
+      />
 
       {/* Live CEL Evaluation Studio Card */}
       <Card className="bg-card/80 flex flex-col justify-between">

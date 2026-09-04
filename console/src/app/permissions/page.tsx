@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Play, CheckCircle2, XCircle, Zap, Database, GitGraph, Plus, RefreshCw } from "lucide-react";
+import { Play, CheckCircle2, XCircle, Zap, Database, GitGraph, Plus, RefreshCw, Network, Shield, Activity } from "lucide-react";
+import { ServiceHeader } from "@/components/layout/service-header";
 import { useTranslation } from "@/lib/i18n";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -197,19 +198,64 @@ export default function PermissionsPage() {
     <div className="space-y-6">
       <TupleBuilderSheet isOpen={isBuilderOpen} onOpenChange={setIsBuilderOpen} />
 
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("permissions.title")}</h1>
-            <Badge variant="purple" className="gap-1.5 py-0.5 px-2.5 text-[11px] font-mono whitespace-nowrap shrink-0">
-              <Zap className="h-3.5 w-3.5" />
-              <span>{t("permissions.statusBadge")}</span>
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">{t("permissions.subtitle")}</p>
-        </div>
-      </div>
+      {/* Cloud Service Header & Telemetry HUD */}
+      <ServiceHeader
+        serviceName="Nexus ReBAC Engine"
+        title={t("permissions.title")}
+        description={t("permissions.subtitle")}
+        icon={Network}
+        iconColor="text-purple-400"
+        statusText={t("permissions.statusBadge")}
+        statusVariant="purple"
+        metrics={[
+          {
+            label: "Relation Tuples",
+            value: tuples.length,
+            hint: "Active Zanzibar facts",
+            icon: Network,
+          },
+          {
+            label: "Consistency Model",
+            value: "Zookies v2",
+            hint: "WAL LSN Causal Token",
+            icon: Shield,
+          },
+          {
+            label: "Graph Traversal",
+            value: "< 1.5ms",
+            hint: "Parallel Goroutines",
+            icon: Zap,
+          },
+          {
+            label: "Engine Gateway",
+            value: "Port 4434",
+            hint: "gRPC & HTTP/2",
+            icon: Activity,
+          },
+        ]}
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetchTuples()}
+              disabled={isFetchingTuples || isLoadingTuples}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetchingTuples ? "animate-spin" : ""}`} />
+              <span>{t("common.refresh")}</span>
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setIsBuilderOpen(true)}
+              className="h-8 gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 text-white font-medium shadow-sm"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>{t("permissions.newTupleButton")}</span>
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Simulator Query Form */}

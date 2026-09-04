@@ -4,7 +4,6 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ShieldCheck,
-  Award,
   FileBadge,
   Download,
   CheckCircle2,
@@ -18,6 +17,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ServiceHeader } from "@/components/layout/service-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -113,100 +113,54 @@ export default function CompliancePage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-500/5 text-emerald-400 text-xs font-mono mb-2">
-            <Award className="w-3 h-3" />
-            SOC 2 & ISO 27001 CONTINUOUS COMPLIANCE
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Compliance & Evidence Center</h1>
-          <p className="text-sm text-muted-foreground">
-            Automated continuous compliance verification, auditor evidence export, and cryptographic access reviews across all 7 Autorix engines.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
+      {/* Cloud Service Header & Telemetry HUD */}
+      <ServiceHeader
+        serviceName="Continuous Compliance & Evidence"
+        title="Compliance & Evidence Center"
+        description="Automated continuous compliance verification, auditor evidence export, and cryptographic access reviews across all 7 Autorix engines."
+        icon={ShieldCheck}
+        iconColor="text-emerald-400"
+        statusText="SOC2-ISO27001-CONTINUOUS-VERIFIED"
+        statusVariant="success"
+        metrics={[
+          {
+            label: "Controls Evaluated",
+            value: `${totalCount} Controls`,
+            hint: "SOC 2 Type II + ISO 27001",
+            icon: FileCheck,
+          },
+          {
+            label: "Compliance Score",
+            value: `${passingPercent}%`,
+            hint: `${passingCount}/${totalCount} controls passing`,
+            icon: ShieldCheck,
+          },
+          {
+            label: "Evidence Probes",
+            value: "7/7 Online",
+            hint: "Continuous engine telemetry",
+            icon: Server,
+          },
+          {
+            label: "Cryptographic Audit Chain",
+            value: "INTACT",
+            hint: "SHA-256 tamper-evident proof",
+            icon: Lock,
+          },
+        ]}
+        actions={
           <Button
             variant="outline"
             size="sm"
             onClick={() => refetch()}
-            className="gap-1.5 text-xs"
+            disabled={isLoading}
+            className="h-8 gap-1.5 text-xs"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh Evidence
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+            <span>Refresh Evidence</span>
           </Button>
-        </div>
-      </div>
-
-      {/* Overview Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-border/70 bg-card/60 backdrop-blur-sm">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">Controls Evaluated</span>
-              <FileCheck className="w-4 h-4 text-primary" />
-            </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl font-bold font-mono text-foreground">{totalCount}</span>
-              <span className="text-xs text-emerald-400 font-medium">100% active</span>
-            </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              SOC 2 Type II + ISO 27001:2022
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/70 bg-card/60 backdrop-blur-sm">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">Compliance Score</span>
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl font-bold font-mono text-emerald-400">{passingPercent}%</span>
-              <span className="text-xs text-muted-foreground">({passingCount}/{totalCount} passing)</span>
-            </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Zero non-compliant controls
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/70 bg-card/60 backdrop-blur-sm">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">Evidence Engine Probes</span>
-              <Server className="w-4 h-4 text-blue-400" />
-            </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl font-bold font-mono text-foreground">7/7</span>
-              <span className="text-xs text-blue-400 font-medium">Engines Online</span>
-            </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Continuous automated telemetry
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/70 bg-card/60 backdrop-blur-sm">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">Cryptographic Audit Chain</span>
-              <Lock className="w-4 h-4 text-emerald-400" />
-            </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl font-bold font-mono text-foreground">1,042</span>
-              <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-[10px] font-mono">
-                INTACT
-              </Badge>
-            </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              SHA-256 tamper-evident proof
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+        }
+      />
 
       {/* SOC 2 / ISO 27001 Auditor Export Package Generator Card */}
       <Card className="border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 via-card/60 to-card/60 backdrop-blur-sm shadow-xs">

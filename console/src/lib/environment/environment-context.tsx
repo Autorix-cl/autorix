@@ -65,3 +65,7 @@ export function useEnvironment() {
   }
   return ctx;
 }
+
+export function useOptionalEnvironment() {
+  return React.useContext(EnvironmentContext);
+}

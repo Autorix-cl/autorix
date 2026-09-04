@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { LucideIcon, ChevronRight, Activity } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useEnvironment } from "@/lib/environment/environment-context";
+import { useOptionalEnvironment, DEFAULT_ENVIRONMENTS } from "@/lib/environment/environment-context";
 import { cn } from "@/lib/utils";
 
 export interface ServiceMetric {
@@ -44,7 +44,8 @@ export function ServiceHeader({
   metrics,
   className,
 }: ServiceHeaderProps) {
-  const { currentEnv } = useEnvironment();
+  const envCtx = useOptionalEnvironment();
+  const currentEnv = envCtx?.currentEnv ?? DEFAULT_ENVIRONMENTS[0];
 
   return (
     <div className={cn("space-y-4 pb-2", className)}>

@@ -6,7 +6,8 @@ import { KeyBuilderSheet } from "./key-builder-sheet";
 import { AttenuationStudio } from "./attenuation-studio";
 import { MacaroonInspector } from "./macaroon-inspector";
 import { ScopeCatalogSheet } from "./scope-catalog-sheet";
-import { Shield, ListFilter } from "lucide-react";
+import { Shield, ListFilter, Layers, KeyRound, Zap, Activity } from "lucide-react";
+import { ServiceHeader } from "@/components/layout/service-header";
 import { Button } from "@/components/ui/button";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -16,30 +17,57 @@ export default function VulcanPage() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="flex-1 space-y-6 p-8">
-        <div className="flex items-center justify-between space-y-2">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-              <Shield className="h-6 w-6 text-primary" />
-              Vulcan (API Keys & Macaroons)
-            </h1>
-            <p className="text-muted-foreground text-sm">
-              Machine-to-machine credentials, decentralized capability tokens, and cryptographic attenuation.
-            </p>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setScopeSheetOpen(true)}
-              className="gap-1.5 text-xs h-8"
-            >
-              <ListFilter className="w-3.5 h-3.5 text-primary" />
-              Scope Catalogue
-            </Button>
-            <KeyBuilderSheet />
-          </div>
-        </div>
+      <div className="space-y-6">
+        {/* Cloud Service Header & Telemetry HUD */}
+        <ServiceHeader
+          serviceName="Vulcan Capability Engine"
+          title="Vulcan (API Keys & Macaroons)"
+          description="Machine-to-machine credentials, decentralized capability tokens, and cryptographic attenuation."
+          icon={Layers}
+          iconColor="text-amber-400"
+          statusText="CHAVEZ-ATTENUATED"
+          statusVariant="warning"
+          metrics={[
+            {
+              label: "Token Model",
+              value: "Macaroons v2",
+              hint: "Chained Caveat Hashes",
+              icon: Shield,
+            },
+            {
+              label: "Caveat Discharge",
+              value: "Third-Party",
+              hint: "Encrypted Location Tickets",
+              icon: KeyRound,
+            },
+            {
+              label: "Verification Latency",
+              value: "< 0.8ms",
+              hint: "HMAC-SHA256 Cascade",
+              icon: Zap,
+            },
+            {
+              label: "Engine Gateway",
+              value: "Port 4439",
+              hint: "API Key Authority & Signer",
+              icon: Activity,
+            },
+          ]}
+          actions={
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setScopeSheetOpen(true)}
+                className="h-8 gap-1.5 text-xs"
+              >
+                <ListFilter className="h-3.5 w-3.5" />
+                <span>Scope Catalogue</span>
+              </Button>
+              <KeyBuilderSheet />
+            </>
+          }
+        />
 
         {/* Keys Table with Telemetry and Rotation */}
         <div className="space-y-4">

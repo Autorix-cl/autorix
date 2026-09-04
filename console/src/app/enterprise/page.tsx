@@ -1,12 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Building2, RefreshCw, FileCode } from "lucide-react";
+import { Building2, RefreshCw, FileCode, Users, Shield, Activity } from "lucide-react";
+import { ServiceHeader } from "@/components/layout/service-header";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "@/lib/i18n";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { CodeBlock } from "@/components/ui/code-block";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { fetchAndParse } from "@/lib/api/schema";
@@ -113,27 +113,55 @@ export default function EnterprisePage() {
   }
 
   return (
-    <div className="space-y-6 p-8">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("enterprise.title")}</h1>
-            <Badge variant="rose" className="gap-1.5 py-0.5 px-2.5 text-[11px] font-mono whitespace-nowrap shrink-0">
-              <Building2 className="h-3.5 w-3.5" />
-              <span>{t("enterprise.statusBadge")}</span>
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">{t("enterprise.subtitle")}</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading} className="h-8 gap-1 text-xs">
+    <div className="space-y-6">
+      {/* Cloud Service Header & Telemetry HUD */}
+      <ServiceHeader
+        serviceName="Hermes Federation Engine"
+        title={t("enterprise.title")}
+        description={t("enterprise.subtitle")}
+        icon={Building2}
+        iconColor="text-rose-400"
+        statusText={t("enterprise.statusBadge")}
+        statusVariant="rose"
+        metrics={[
+          {
+            label: "SAML Providers",
+            value: providers.length,
+            hint: "Active IdP Connections",
+            icon: Building2,
+          },
+          {
+            label: "SCIM Directory",
+            value: scimUsers.length,
+            hint: "Synced Corporate Users",
+            icon: Users,
+          },
+          {
+            label: "Metadata Protocol",
+            value: "SAML 2.0",
+            hint: "XML SP & IdP SLO",
+            icon: Shield,
+          },
+          {
+            label: "Engine Gateway",
+            value: "Port 4438",
+            hint: "Enterprise SSO Gateway",
+            icon: Activity,
+          },
+        ]}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={loading}
+            className="h-8 gap-1.5 text-xs"
+          >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             <span>{t("common.refresh")}</span>
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* SAML 2.0 Identity Providers Table with Diagnostics & Wizard */}
       <SAMLProvidersTable

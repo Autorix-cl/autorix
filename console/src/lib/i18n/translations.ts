@@ -132,6 +132,7 @@ export const translations = {
       colCreated: "Registered",
       successMsg: "Identity {email} successfully registered and encoded with Argon2id!",
       searchPlaceholder: "Filter identities by name or email...",
+      createButton: "Create Identity",
     },
     permissions: {
       title: "Autorix Nexus: Zanzibar ReBAC & CEL Studio",
@@ -455,6 +456,7 @@ export const translations = {
       colCreated: "Registrado",
       successMsg: "¡Identidad {email} registrada con éxito y codificada con Argon2id!",
       searchPlaceholder: "Filtrar identidades por nombre o correo...",
+      createButton: "Crear Identidad",
     },
     permissions: {
       title: "Autorix Nexus: Estudio ReBAC Zanzibar y CEL",

@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Activity, Server, FileText, Network, Bell, Target, Wrench } from "lucide-react";
+import { Activity, Server, FileText, Network, Bell, Target, Wrench, BarChart2 } from "lucide-react";
+import { ServiceHeader } from "@/components/layout/service-header";
 import { Button } from "@/components/ui/button";
 import { FleetDashboard } from "./fleet-dashboard";
 import { PerEngineDashboard } from "./per-engine-dashboard";
@@ -30,14 +31,43 @@ export default function ObservabilityPage() {
   };
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold tracking-tight">Fleet Observability &amp; Telemetry</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Real-time RED instrumentation, structured logs, distributed trace waterfalls, alerts and SLOs
-        </p>
-      </div>
+    <div className="space-y-6">
+      {/* Cloud Service Header & Telemetry HUD */}
+      <ServiceHeader
+        serviceName="Control Plane Observability"
+        title="Fleet Observability & Telemetry"
+        description="Real-time RED instrumentation, structured logs, distributed trace waterfalls, alerts and SLOs."
+        icon={Activity}
+        iconColor="text-cyan-400"
+        statusText="TELEMETRY-MESH-LIVE"
+        statusVariant="cyan"
+        metrics={[
+          {
+            label: "Monitored Fleet",
+            value: "7 Engines",
+            hint: "Unified Control Plane",
+            icon: Server,
+          },
+          {
+            label: "Fleet Health Rate",
+            value: "99.98% OK",
+            hint: "RED Synthetic Ingress",
+            icon: BarChart2,
+          },
+          {
+            label: "Distributed Tracing",
+            value: "W3C Context",
+            hint: "OTel High-Water Spans",
+            icon: Network,
+          },
+          {
+            label: "SLO Error Budget",
+            value: "99.95% Target",
+            hint: "Rolling 30-Day Budget",
+            icon: Target,
+          },
+        ]}
+      />
 
       {/* Navigation Sub-Tabs */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-border pb-2">

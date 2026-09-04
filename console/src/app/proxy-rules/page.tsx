@@ -13,7 +13,10 @@ import {
   AlertTriangle,
   Layers,
   ArrowRight,
+  Activity,
+  Filter,
 } from "lucide-react";
+import { ServiceHeader } from "@/components/layout/service-header";
 import { useTranslation } from "@/lib/i18n";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -204,26 +207,48 @@ export default function ProxyRulesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-              {t("proxyRules.title")}
-            </h1>
-            <Badge variant="success" className="gap-1.5 py-0.5 px-2.5 text-[11px] font-mono whitespace-nowrap shrink-0">
-              <Shield className="h-3.5 w-3.5" />
-              <span>{t("proxyRules.statusBadge")}</span>
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">{t("proxyRules.subtitle")}</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <VersionsDialog />
-          <RuleBuilderSheet onSuccess={refetchRules} />
-        </div>
-      </div>
+      {/* Cloud Service Header & Telemetry HUD */}
+      <ServiceHeader
+        serviceName="Aegis Reverse Proxy"
+        title={t("proxyRules.title")}
+        description={t("proxyRules.subtitle")}
+        icon={Shield}
+        iconColor="text-emerald-400"
+        statusText={t("proxyRules.statusBadge")}
+        statusVariant="success"
+        metrics={[
+          {
+            label: "Active Rules",
+            value: apiRules.length,
+            hint: "Ordered Pipeline Rules",
+            icon: Layers,
+          },
+          {
+            label: "Pipeline Stages",
+            value: "3 Stages",
+            hint: "Authn › Authz › Mutator",
+            icon: Filter,
+          },
+          {
+            label: "Default Verdict",
+            value: "DENY",
+            hint: "Fail-closed Security",
+            icon: Shield,
+          },
+          {
+            label: "Engine Gateway",
+            value: "Port 4436",
+            hint: "Envoy / Go Reverse Proxy",
+            icon: Activity,
+          },
+        ]}
+        actions={
+          <>
+            <VersionsDialog />
+            <RuleBuilderSheet onSuccess={refetchRules} />
+          </>
+        }
+      />
 
       {/* Simulator Card */}
       <Card className="bg-card/80">

@@ -239,7 +239,7 @@ export default function IdentitiesPage() {
               className="h-8 gap-1.5 text-xs bg-cyan-600 hover:bg-cyan-700 text-white font-medium shadow-sm"
             >
               <Plus className="h-3.5 w-3.5" />
-              <span>{t("identities.inviteButton")}</span>
+              <span>{t("identities.createButton") || "Create Identity"}</span>
             </Button>
           </>
         }

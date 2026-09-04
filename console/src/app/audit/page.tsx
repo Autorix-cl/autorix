@@ -18,6 +18,7 @@ import {
   Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ServiceHeader } from "@/components/layout/service-header";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -185,49 +186,74 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-blue-500/20 bg-blue-500/5 text-blue-400 text-xs font-mono mb-2">
-            <ScrollText className="w-3 h-3" />
-            CRYPTOGRAPHIC AUDIT LOG
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Immutable Audit Trail</h1>
-          <p className="text-sm text-muted-foreground">
-            Append-only, tamper-evident cryptographic hash chain recording all mutations, authentication events, and authorization decisions.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleExport("csv")}
-            className="gap-1.5 text-xs"
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5" />
-            Export CSV
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleExport("json")}
-            className="gap-1.5 text-xs"
-          >
-            <FileCode className="h-3.5 w-3.5" />
-            Export JSON
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() => refetchLogs()}
-            className="gap-1.5 text-xs"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
-          </Button>
-        </div>
-      </div>
+      {/* Cloud Service Header & Telemetry HUD */}
+      <ServiceHeader
+        serviceName="Zero-Trust Audit Log"
+        title="Immutable Audit Trail"
+        description="Append-only, tamper-evident cryptographic hash chain recording all mutations, authentication events, and authorization decisions."
+        icon={ScrollText}
+        iconColor="text-blue-400"
+        statusText="CRYPTOGRAPHIC-HASH-CHAIN-INTACT"
+        statusVariant="info"
+        metrics={[
+          {
+            label: "Audit Ledger",
+            value: auditEntries?.length ?? 0,
+            hint: "Total Hash Chain Events",
+            icon: ScrollText,
+          },
+          {
+            label: "Chain Integrity",
+            value: "SHA-256",
+            hint: "Tamper-Evident Linking",
+            icon: Hash,
+          },
+          {
+            label: "Retention Policy",
+            value: "365 Days",
+            hint: "Immutable Append-Only",
+            icon: Clock,
+          },
+          {
+            label: "Verification Engine",
+            value: "Active",
+            hint: "Zero-Knowledge Checksum",
+            icon: ShieldCheck,
+          },
+        ]}
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleExport("csv")}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              <span>Export CSV</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleExport("json")}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <FileCode className="h-3.5 w-3.5" />
+              <span>Export JSON</span>
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => refetchLogs()}
+              disabled={isLogsLoading}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isLogsLoading ? "animate-spin" : ""}`} />
+              <span>Refresh</span>
+            </Button>
+          </>
+        }
+      />
 
       {/* Cryptographic Tamper-Evidence Verification Card */}
       <Card className="border-border/80 bg-card/60 backdrop-blur-sm shadow-xs">
