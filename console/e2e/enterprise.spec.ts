@@ -6,10 +6,35 @@ test.describe("Hermes SAML & SCIM Enterprise Studio", () => {
     await page.waitForLoadState("networkidle");
   });
 
-  test("renders SAML SP metadata XML and SCIM directory overview", async ({ page }) => {
+  test("renders SAML SP metadata XML and SCIM directory overview across studio tabs", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1100 });
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Autorix Hermes|Enterprise/i);
-    await expect(page.getByText(/Service Provider \(SP\) Metadata XML/i).first()).toBeVisible();
+
+    // Tab 1: SAML Identity Providers
+    await expect(page.getByRole("tab", { name: /SAML Identity Providers/i })).toBeVisible();
+    await expect(page.getByText(/Active IdP Connections & Assertion Mappings/i)).toBeVisible();
+    await page.screenshot({
+      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-hermes-providers.png",
+      fullPage: true,
+    });
+
+    // Tab 2: SCIM Directory Sync
+    await page.getByRole("tab", { name: /SCIM Directory Sync/i }).click();
     await expect(page.getByText(/SCIM 2.0 Directory Management & Sync Monitor/i).first()).toBeVisible();
+    await page.screenshot({
+      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-hermes-scim.png",
+      fullPage: true,
+    });
+
+    // Tab 3: SP Metadata & Endpoints
+    await page.getByRole("tab", { name: /SP Metadata & Endpoints/i }).click();
+    await expect(page.getByText(/Service Provider \(SP\) Metadata XML/i).first()).toBeVisible();
+    await expect(page.getByText(/LIVE SAML SP METADATA/i)).toBeVisible();
+    await expect(page.getByText("http://localhost:4477/saml/acs", { exact: true })).toBeVisible();
+    await page.screenshot({
+      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-hermes-metadata.png",
+      fullPage: true,
+    });
   });
 
   test("registers a new enterprise SAML 2.0 identity provider and verifies success", async ({ page }) => {

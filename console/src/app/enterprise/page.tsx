@@ -1,12 +1,26 @@
 "use client";
 
 import * as React from "react";
-import { Building2, RefreshCw, FileCode, Users, Shield, Activity } from "lucide-react";
+import {
+  Building2,
+  RefreshCw,
+  FileCode,
+  Users,
+  Shield,
+  Activity,
+  Download,
+  Copy,
+  Check,
+  Terminal,
+} from "lucide-react";
 import { ServiceHeader } from "@/components/layout/service-header";
+import { CloudSection } from "@/components/layout/cloud-section";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "@/lib/i18n";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { CodeBlock } from "@/components/ui/code-block";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { fetchAndParse } from "@/lib/api/schema";
@@ -22,6 +36,7 @@ import { ErrorState } from "@/components/state/error-state";
 import { NotConnectedState } from "@/components/state/not-connected-state";
 import { NotConnectedEngine } from "@/components/resources/not-connected-engine";
 import { useCapabilities } from "@/lib/capabilities/capability-context";
+import { toast } from "sonner";
 import { SAMLProvidersTable } from "./saml-providers-table";
 import { SCIMSyncMonitor } from "./scim-sync-monitor";
 
@@ -50,6 +65,33 @@ async function fetchMetadataXml(): Promise<ApiResult<string>> {
       },
     };
   }
+}
+
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      toast.success(`${label} copied to clipboard`);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy");
+    }
+  };
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      onClick={handleCopy}
+      className="h-6 w-6 text-muted-foreground hover:text-foreground"
+      title={`Copy ${label}`}
+    >
+      {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+    </Button>
+  );
 }
 
 export default function EnterprisePage() {
@@ -90,6 +132,18 @@ export default function EnterprisePage() {
     providersQuery.refetch();
     refetchScim();
     refetchMetadata();
+  };
+
+  const handleDownloadXml = () => {
+    if (!metadataXml) return;
+    const blob = new Blob([metadataXml], { type: "application/xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "autorix-saml-sp-metadata.xml";
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("Downloaded autorix-saml-sp-metadata.xml");
   };
 
   const loading = isScimFetching || isMetaFetching || providersQuery.isFetching;
@@ -163,53 +217,193 @@ export default function EnterprisePage() {
         }
       />
 
-      {/* SAML 2.0 Identity Providers Table with Diagnostics & Wizard */}
-      <SAMLProvidersTable
-        providers={providers}
-        isLoading={providersQuery.isLoading}
-        onRefresh={() => {
-          providersQuery.refetch();
-          queryClient.invalidateQueries({ queryKey: ["enterprise-saml-providers"] });
-        }}
-      />
+      {/* Studio Navigation Tabs */}
+      <Tabs defaultValue="providers" className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border pb-3">
+          <TabsList className="bg-muted/40 p-1">
+            <TabsTrigger value="providers" className="gap-2 text-xs font-medium">
+              <Building2 className="h-3.5 w-3.5 text-rose-400" />
+              <span>SAML Identity Providers</span>
+            </TabsTrigger>
+            <TabsTrigger value="scim" className="gap-2 text-xs font-medium">
+              <Users className="h-3.5 w-3.5 text-emerald-400" />
+              <span>SCIM Directory Sync</span>
+            </TabsTrigger>
+            <TabsTrigger value="metadata" className="gap-2 text-xs font-medium">
+              <FileCode className="h-3.5 w-3.5 text-blue-400" />
+              <span>SP Metadata & Endpoints</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-      {/* Grid: SP Metadata Descriptor & Live SCIM Endpoint */}
-      <Card className="bg-card/80">
-        <CardHeader className="p-5 pb-3">
-          <div className="flex items-center gap-2">
-            <FileCode className="h-4 w-4 text-blue-400" />
-            <CardTitle className="text-sm font-semibold">{t("enterprise.spMetadataTitle")}</CardTitle>
-          </div>
-          <CardDescription className="text-xs">{t("enterprise.spMetadataDesc")}</CardDescription>
-        </CardHeader>
-
-        <CardContent className="p-5 pt-0 space-y-3">
-          {isMetaLoading ? (
-            <LoadingState label="Loading SAML SP metadata from Hermes..." />
-          ) : isMetaError ? (
-            metaError?.kind === "engine-unreachable" ? (
-              <NotConnectedState engineName="Hermes" onRetry={refetchMetadata} />
-            ) : (
-              <ErrorState error={metaError} onRetry={refetchMetadata} />
-            )
-          ) : (
-            <CodeBlock
-              code={metadataXml || ""}
-              language="xml"
-              title="LIVE SAML SP METADATA DESCRIPTOR"
-              className="max-h-44"
+        {/* Tab 1: SAML 2.0 Identity Providers Table with Diagnostics & Wizard */}
+        <TabsContent value="providers" className="space-y-4 focus-visible:outline-none">
+          <CloudSection
+            title="SAML 2.0 Identity Providers"
+            description="Active IdP Connections & Assertion Mappings"
+            icon={Building2}
+            badge="Federation Gateways"
+            badgeVariant="rose"
+          >
+            <SAMLProvidersTable
+              providers={providers}
+              isLoading={providersQuery.isLoading}
+              onRefresh={() => {
+                providersQuery.refetch();
+                queryClient.invalidateQueries({ queryKey: ["enterprise-saml-providers"] });
+              }}
             />
-          )}
+          </CloudSection>
+        </TabsContent>
 
-          <div className="rounded-lg border border-border/70 bg-muted/30 p-2.5 flex items-center justify-between text-xs">
-            <span className="text-[10px] font-bold uppercase text-blue-400">{t("enterprise.scimBaseLabel")}</span>
-            <span className="font-mono text-xs text-foreground font-semibold">http://localhost:4477/scim/v2</span>
-          </div>
-        </CardContent>
-      </Card>
+        {/* Tab 2: SCIM 2.0 Directory Management & Sync Monitoring */}
+        <TabsContent value="scim" className="space-y-4 focus-visible:outline-none">
+          <CloudSection
+            title="SCIM 2.0 Directory Management & Sync Monitor"
+            description="Automated provisioning of corporate users, role groups, and real-time synchronization telemetry"
+            icon={Users}
+            badge="Directory Sync"
+            badgeVariant="success"
+          >
+            <SCIMSyncMonitor users={scimUsers} onRefresh={refetchScim} />
+          </CloudSection>
+        </TabsContent>
 
-      {/* SCIM 2.0 Directory Management & Sync Monitoring */}
-      <SCIMSyncMonitor users={scimUsers} onRefresh={refetchScim} />
+        {/* Tab 3: SP Metadata Descriptor & Federation Endpoints */}
+        <TabsContent value="metadata" className="space-y-4 focus-visible:outline-none">
+          <CloudSection
+            title="Service Provider (SP) Metadata & Federation Endpoints"
+            description="SAML 2.0 SP EntityDescriptor XML, Assertion Consumer Service (ACS) endpoints, and SCIM credentials"
+            icon={FileCode}
+            badge="SAML 2.0 SP"
+            badgeVariant="info"
+          >
+            {/* Endpoints Quick-Reference Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-3.5 rounded-lg border border-border/80 bg-card/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">ACS Endpoint (POST)</span>
+                  <CopyButton text="http://localhost:4477/saml/acs" label="ACS URL" />
+                </div>
+                <div className="font-mono text-xs text-foreground font-semibold truncate select-all">
+                  http://localhost:4477/saml/acs
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Assertion Consumer Service receiving signed IdP assertions
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-lg border border-border/80 bg-card/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400">SP Entity ID / Issuer</span>
+                  <CopyButton text="https://hermes.autorix.io/saml/metadata" label="Entity ID" />
+                </div>
+                <div className="font-mono text-xs text-foreground font-semibold truncate select-all">
+                  https://hermes.autorix.io/saml/metadata
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Global unique URI identifying this Autorix Service Provider
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-lg border border-border/80 bg-card/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">SCIM 2.0 Base URL</span>
+                  <CopyButton text="http://localhost:4477/scim/v2" label="SCIM Base URL" />
+                </div>
+                <div className="font-mono text-xs text-foreground font-semibold truncate select-all">
+                  http://localhost:4477/scim/v2
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  RFC 7644 SCIM endpoint for corporate user & group provisioning
+                </p>
+              </div>
+            </div>
+
+            {/* SAML SP Metadata XML Card */}
+            <Card className="border-border">
+              <CardHeader className="p-5 pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <FileCode className="h-4 w-4 text-blue-400" />
+                      <span>{t("enterprise.spMetadataTitle")}</span>
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      {t("enterprise.spMetadataDesc")}
+                    </CardDescription>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {metadataXml && (
+                      <Badge variant="outline" className="font-mono text-[10px] px-2 py-0.5">
+                        {metadataXml.trim().split("\n").length} lines · {(new Blob([metadataXml]).size / 1024).toFixed(1)} KB
+                      </Badge>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!metadataXml}
+                      onClick={handleDownloadXml}
+                      className="h-7 text-xs gap-1.5"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download XML</span>
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-5 pt-0 space-y-4">
+                {isMetaLoading ? (
+                  <LoadingState label="Loading SAML SP metadata from Hermes..." />
+                ) : isMetaError ? (
+                  metaError?.kind === "engine-unreachable" ? (
+                    <NotConnectedState engineName="Hermes" onRetry={refetchMetadata} />
+                  ) : (
+                    <ErrorState error={metaError} onRetry={refetchMetadata} />
+                  )
+                ) : (
+                  <div className="space-y-3">
+                    <CodeBlock
+                      code={metadataXml || ""}
+                      language="xml"
+                      title="LIVE SAML SP METADATA DESCRIPTOR (XML)"
+                      showLineNumbers={true}
+                      maxHeight="max-h-[520px]"
+                    />
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-muted-foreground px-1">
+                      <span>Public SP EntityDescriptor generated dynamically by Autorix Hermes federation engine</span>
+                      <span className="font-mono">Audience: https://hermes.autorix.io/saml/metadata</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Automation & CLI Card */}
+            <Card className="border-border">
+              <CardHeader className="p-4 pb-2">
+                <CardTitle className="text-xs font-semibold flex items-center gap-2">
+                  <Terminal className="h-3.5 w-3.5 text-primary" />
+                  <span>Programmatic Federation Retrieval (cURL)</span>
+                </CardTitle>
+                <CardDescription className="text-[11px]">
+                  Retrieve the live SAML SP descriptor in CI/CD or identity configuration scripts
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <CodeBlock
+                  code="curl -s http://localhost:4477/saml/metadata | xmllint --format -"
+                  language="bash"
+                  title="BASH"
+                  maxHeight="none"
+                />
+              </CardContent>
+            </Card>
+          </CloudSection>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
