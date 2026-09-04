@@ -160,15 +160,17 @@ export default function OAuth2Page() {
       {/* Page Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("oauth2.title")}</h1>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("oauth2.title")}</h1>
+            <Badge variant="warning" className="gap-1.5 py-0.5 px-2.5 text-[11px] font-mono whitespace-nowrap shrink-0">
+              <Key className="h-3.5 w-3.5" />
+              <span>{t("oauth2.statusBadge")}</span>
+            </Badge>
+          </div>
           <p className="text-xs text-muted-foreground mt-1">{t("oauth2.subtitle")}</p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Badge variant="warning" className="gap-1.5 py-1 px-3">
-            <Key className="h-3.5 w-3.5" />
-            <span>{t("oauth2.statusBadge")}</span>
-          </Badge>
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading} className="h-8 gap-1 text-xs">
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             <span>{t("common.refresh")}</span>

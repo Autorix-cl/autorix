@@ -162,20 +162,22 @@ export default function IdentitiesPage() {
       {/* Page Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("identities.title")}</h1>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("identities.title")}</h1>
+            <Badge variant="cyan" className="gap-1.5 py-0.5 px-2.5 text-[11px] font-mono whitespace-nowrap shrink-0">
+              <UserCheck className="h-3 w-3 text-cyan-400" />
+              <span>{t("identities.statusBadge")}</span>
+            </Badge>
+          </div>
           <p className="text-xs text-muted-foreground mt-1">{t("identities.subtitle")}</p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Badge variant="info" className="gap-1.5 py-1 px-3">
-            <UserCheck className="h-3.5 w-3.5" />
-            <span>{t("identities.statusBadge")}</span>
-          </Badge>
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => setIsSchemaDialogOpen(true)}
-            className="h-8 gap-1 text-xs"
+            className="h-8 gap-1.5 text-xs"
           >
             <FileCode className="h-3.5 w-3.5 text-cyan-400" />
             <span>Schemas</span>
@@ -184,7 +186,7 @@ export default function IdentitiesPage() {
             variant="outline"
             size="sm"
             onClick={handleExportCsv}
-            className="h-8 gap-1 text-xs"
+            className="h-8 gap-1.5 text-xs"
           >
             <Download className="h-3.5 w-3.5" />
             <span>Export CSV</span>
@@ -193,7 +195,7 @@ export default function IdentitiesPage() {
             variant="outline"
             size="sm"
             onClick={() => setIsBulkImportOpen(true)}
-            className="h-8 gap-1 text-xs"
+            className="h-8 gap-1.5 text-xs"
           >
             <UploadCloud className="h-3.5 w-3.5" />
             <span>Bulk Import</span>
@@ -203,7 +205,7 @@ export default function IdentitiesPage() {
             size="sm"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="h-8 gap-1 text-xs"
+            className="h-8 gap-1.5 text-xs"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
             <span>{t("common.refresh")}</span>
@@ -211,10 +213,10 @@ export default function IdentitiesPage() {
           <Button
             size="sm"
             onClick={() => setIsBuilderOpen(true)}
-            className="h-8 gap-1 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+            className="h-8 gap-1.5 text-xs bg-cyan-600 hover:bg-cyan-700 text-white font-medium shadow-sm"
           >
             <Plus className="h-3.5 w-3.5" />
-            <span>Create Identity</span>
+            <span>{t("identities.inviteButton")}</span>
           </Button>
         </div>
       </div>

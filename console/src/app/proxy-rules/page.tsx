@@ -207,19 +207,21 @@ export default function ProxyRulesPage() {
       {/* Page Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-            {t("proxyRules.title")}
-          </h1>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+              {t("proxyRules.title")}
+            </h1>
+            <Badge variant="success" className="gap-1.5 py-0.5 px-2.5 text-[11px] font-mono whitespace-nowrap shrink-0">
+              <Shield className="h-3.5 w-3.5" />
+              <span>{t("proxyRules.statusBadge")}</span>
+            </Badge>
+          </div>
           <p className="text-xs text-muted-foreground mt-1">{t("proxyRules.subtitle")}</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <VersionsDialog />
           <RuleBuilderSheet onSuccess={refetchRules} />
-          <Badge variant="success" className="gap-1.5 py-1 px-3">
-            <Shield className="h-3.5 w-3.5" />
-            <span>{t("proxyRules.statusBadge")}</span>
-          </Badge>
         </div>
       </div>
 
