@@ -103,12 +103,15 @@ export function KeysTable() {
     {
       accessorKey: "prefix",
       header: "Key Prefix",
-      cell: ({ row }) => (
-        <CopyableIdentifier
-          value={row.getValue("prefix")}
-          label="Key Prefix"
-        />
-      ),
+      cell: ({ row }) => {
+        const prefix = (row.getValue("prefix") as string) || row.original.id?.slice(0, 8) || "key";
+        return (
+          <CopyableIdentifier
+            value={prefix}
+            label="Key Prefix"
+          />
+        );
+      },
     },
     {
       accessorKey: "scopes",

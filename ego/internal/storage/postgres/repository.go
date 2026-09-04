@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -873,6 +874,69 @@ func (r *Repository) CreateSchema(ctx context.Context, schema *core.IdentitySche
 		CreatedAt: now,
 		UpdatedAt: now,
 	}, nil
+}
+
+// SeedDefaultSchema ensures the default identity schema is present in the database.
+func (r *Repository) SeedDefaultSchema(ctx context.Context) error {
+	_, err := r.GetSchemaByID(ctx, "default")
+	if err == nil {
+		return nil // Already seeded
+	}
+
+	schemaData, err := os.ReadFile("schemas/default.identity.schema.json")
+	if err != nil {
+		schemaData = []byte(`{
+  "$id": "https://schemas.autorix.io/default.identity.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Default Identity Schema",
+  "type": "object",
+  "properties": {
+    "traits": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "title": "E-Mail Address",
+          "autorix.io/credentials": {
+            "password": {
+              "identifier": true
+            }
+          }
+        },
+        "name": {
+          "type": "object",
+          "properties": {
+            "first": { "type": "string", "title": "First Name" },
+            "last": { "type": "string", "title": "Last Name" }
+          },
+          "required": ["first"]
+        }
+      },
+      "required": ["email"],
+      "additionalProperties": false
+    }
+  }
+}`)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(schemaData, &parsed); err != nil {
+		return fmt.Errorf("failed to unmarshal default schema: %w", err)
+	}
+
+	title := "Default Identity Schema"
+	if t, ok := parsed["title"].(string); ok && t != "" {
+		title = t
+	}
+
+	_, err = r.CreateSchema(ctx, &core.IdentitySchema{
+		ID:      "default",
+		Name:    title,
+		Schema:  parsed,
+		Version: 1,
+	})
+	return err
 }
 
 // GetSchemaByID retrieves an identity schema by its ID string

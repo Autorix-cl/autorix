@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Users, Plus, UserCheck, Search, RefreshCw, UploadCloud, Download } from "lucide-react";
+import { Users, Plus, UserCheck, Search, RefreshCw, UploadCloud, Download, FileCode } from "lucide-react";
 
 import { useTranslation } from "@/lib/i18n";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -19,6 +19,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { getColumns, IdentityItem } from "./columns";
 import { IdentitySheet } from "./identity-sheet";
 import { IdentityBuilderSheet } from "./identity-builder-sheet";
+import { SchemaDialog } from "./schema-dialog";
 import { BulkActionBar } from "./bulk-action-bar";
 import { BulkImportDialog } from "./bulk-import-dialog";
 import { toast } from "sonner";
@@ -49,6 +50,7 @@ export default function IdentitiesPage() {
   const [selectedIdentity, setSelectedIdentity] = React.useState<IdentityItem | null>(null);
   const [isBuilderOpen, setIsBuilderOpen] = React.useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = React.useState(false);
+  const [isSchemaDialogOpen, setIsSchemaDialogOpen] = React.useState(false);
 
   React.useEffect(() => {
     const handler = setTimeout(() => {
@@ -152,6 +154,11 @@ export default function IdentitiesPage() {
         onSuccess={() => refetch()}
       />
 
+      <SchemaDialog
+        isOpen={isSchemaDialogOpen}
+        onOpenChange={setIsSchemaDialogOpen}
+      />
+
       {/* Page Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -164,6 +171,15 @@ export default function IdentitiesPage() {
             <UserCheck className="h-3.5 w-3.5" />
             <span>{t("identities.statusBadge")}</span>
           </Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsSchemaDialogOpen(true)}
+            className="h-8 gap-1 text-xs"
+          >
+            <FileCode className="h-3.5 w-3.5 text-cyan-400" />
+            <span>Schemas</span>
+          </Button>
           <Button
             variant="outline"
             size="sm"

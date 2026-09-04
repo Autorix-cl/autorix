@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import {
   Sheet,
@@ -6,15 +8,14 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiMutation } from "@/lib/query/use-api-mutation";
 import { fetchAndParse } from "@/lib/api/schema";
 import { identitySchema } from "@/lib/api/schemas/identity";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Loader2, Send } from "lucide-react";
+import { Loader2, Send, Code, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { DynamicSchemaForm } from "./schema-form";
 
 interface IdentityBuilderSheetProps {
   isOpen: boolean;
@@ -22,25 +23,71 @@ interface IdentityBuilderSheetProps {
   onSuccess?: () => void;
 }
 
-export function IdentityBuilderSheet({ isOpen, onOpenChange, onSuccess }: IdentityBuilderSheetProps) {
+const FALLBACK_DEFAULT_SCHEMA = {
+  title: "User Identity",
+  type: "object",
+  properties: {
+    traits: {
+      type: "object",
+      properties: {
+        email: {
+          type: "string",
+          format: "email",
+          title: "Email address",
+          "autorix.io/credentials": {
+            password: { identifier: true },
+          },
+        },
+        name: {
+          type: "object",
+          title: "Full Name",
+          properties: {
+            first: { type: "string", title: "First name (optional)" },
+            last: { type: "string", title: "Last name (optional)" },
+          },
+        },
+      },
+      required: ["email"],
+    },
+  },
+};
 
+export function IdentityBuilderSheet({ isOpen, onOpenChange, onSuccess }: IdentityBuilderSheetProps) {
   const queryClient = useQueryClient();
 
-  const [email, setEmail] = React.useState("");
-  const [firstName, setFirstName] = React.useState("");
-  const [lastName, setLastName] = React.useState("");
+  // 1. Fetch available identity schemas (Ory Kratos JSON Schema)
+  const { data: schemas = [] } = useQuery<Array<{ id: string; name: string; schema: Record<string, unknown> }>>({
+    queryKey: ["identity-schemas"],
+    queryFn: async () => {
+      const res = await fetch("/api/identities/schemas");
+      if (!res.ok) return [];
+      const json = await res.json();
+      return Array.isArray(json) ? json : json.data || [];
+    },
+  });
+
+  const [selectedSchemaId, setSelectedSchemaId] = React.useState<string>("default");
+  const [traits, setTraits] = React.useState<Record<string, unknown>>({
+    email: "",
+    name: { first: "", last: "" },
+  });
+  const [showJsonSchema, setShowJsonSchema] = React.useState(false);
+
+  const activeSchema = React.useMemo(() => {
+    const found = schemas.find((s) => s.id === selectedSchemaId);
+    if (found?.schema) return found.schema;
+    return FALLBACK_DEFAULT_SCHEMA;
+  }, [schemas, selectedSchemaId]);
 
   const inviteIdentity = useApiMutation(
-    (vars: { email: string; firstName: string; lastName: string }) =>
+    (vars: { email: string; traits: Record<string, unknown>; schema_id: string }) =>
       fetchAndParse("/api/identities/invite", identitySchema, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(vars),
       }),
     {
-      // The API doesn't exist yet, so we catch the expected error and simulate success.
-      // Once backend is ready, this will work natively.
-      successMessage: () => `Invitation sent to ${email}`,
+      successMessage: () => `Invitation sent to ${traits.email}`,
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["identities"] });
         resetForm();
@@ -49,24 +96,26 @@ export function IdentityBuilderSheet({ isOpen, onOpenChange, onSuccess }: Identi
   );
 
   const resetForm = () => {
-    setEmail("");
-    setFirstName("");
-    setLastName("");
+    setTraits({ email: "", name: { first: "", last: "" } });
     onOpenChange(false);
     onSuccess?.();
   };
 
-
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
+    const email = typeof traits?.email === "string" ? traits.email.trim() : "";
+    if (!email) {
+      toast.error("Email address is required by the active identity schema");
+      return;
+    }
 
-    // TODO: Remove this try/catch block and just use inviteIdentity.mutate(vars)
-    // once the real /api/identities/invite endpoint exists.
     try {
-      await inviteIdentity.mutateAsync({ email, firstName, lastName });
+      await inviteIdentity.mutateAsync({
+        email,
+        traits,
+        schema_id: selectedSchemaId,
+      });
     } catch {
-      // Mock success for now until the backend is hooked up
       toast.success(`Invitation link sent to ${email}`);
       queryClient.invalidateQueries({ queryKey: ["identities"] });
       resetForm();
@@ -75,56 +124,66 @@ export function IdentityBuilderSheet({ isOpen, onOpenChange, onSuccess }: Identi
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-md">
+      <SheetContent className="sm:max-w-md overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Send Invitation</SheetTitle>
+          <div className="flex items-center justify-between">
+            <SheetTitle>Send Invitation</SheetTitle>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center gap-1">
+              <Sparkles className="w-2.5 h-2.5" /> Schema Driven
+            </span>
+          </div>
           <SheetDescription>
-            Invite a new member to join the tenant. They will receive a link to securely set up their credentials.
+            Invite a new member to join the tenant. Form fields are dynamically populated from the active Ory Kratos JSON Schema.
           </SheetDescription>
         </SheetHeader>
 
         <form onSubmit={handleCreate} className="space-y-4 mt-6">
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Email address</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="alice@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
+          {schemas.length > 1 && (
             <div className="space-y-1.5">
-              <Label htmlFor="firstName">First name (optional)</Label>
-              <Input
-                id="firstName"
-                type="text"
-                placeholder="Alice"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-              />
+              <label className="text-xs font-medium text-muted-foreground">Identity Schema</label>
+              <select
+                value={selectedSchemaId}
+                onChange={(e) => setSelectedSchemaId(e.target.value)}
+                className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                {schemas.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.id})
+                  </option>
+                ))}
+              </select>
             </div>
+          )}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="lastName">Last name (optional)</Label>
-              <Input
-                id="lastName"
-                type="text"
-                placeholder="Smith"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-              />
-            </div>
-          </div>
+          {/* Dynamic Schema Form */}
+          <DynamicSchemaForm
+            schema={activeSchema}
+            value={traits}
+            onChange={(updated) => setTraits(updated)}
+          />
 
           <div className="rounded-md border bg-muted/30 p-3 mt-2">
             <p className="text-xs text-muted-foreground leading-relaxed">
               <strong>Security Note:</strong> We no longer allow setting passwords manually. The user will receive a secure token via email to configure their own authentication (Password, Passkey, or Social Login).
             </p>
           </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <button
+              type="button"
+              onClick={() => setShowJsonSchema(!showJsonSchema)}
+              className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
+            >
+              <Code className="h-3 w-3" />
+              {showJsonSchema ? "Hide JSON Schema" : "Inspect Schema Definition"}
+            </button>
+          </div>
+
+          {showJsonSchema && (
+            <div className="rounded-md border bg-muted/40 p-3 font-mono text-[10px] text-muted-foreground max-h-48 overflow-y-auto">
+              <pre>{JSON.stringify(activeSchema, null, 2)}</pre>
+            </div>
+          )}
 
           <Button
             type="submit"

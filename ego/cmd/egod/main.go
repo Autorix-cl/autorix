@@ -77,6 +77,9 @@ func main() {
 
 	// 2. Initialize Domain & Storage
 	repo := postgres.NewRepository(pool)
+	if err := repo.SeedDefaultSchema(ctx); err != nil {
+		logger.Warn("failed to seed default identity schema", "error", err)
+	}
 	hasher := credential.NewHasher(nil)
 	sessionManager := session.NewManager(30 * 24 * time.Hour)
 

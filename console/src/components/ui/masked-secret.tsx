@@ -113,16 +113,17 @@ interface CopyableIdentifierProps {
  * with instant 1-click clipboard micro-interaction and visual checkmark feedback.
  */
 export function CopyableIdentifier({
-  value,
+  value = "",
   label = "identifier",
   truncateLength = 32,
   className = "",
 }: CopyableIdentifierProps) {
   const [copied, setCopied] = React.useState(false);
+  const safeValue = typeof value === "string" ? value : String(value ?? "");
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(value);
+      await navigator.clipboard.writeText(safeValue);
       setCopied(true);
       toast.success(`Copied ${label}`);
       setTimeout(() => setCopied(false), 2000);
@@ -132,19 +133,19 @@ export function CopyableIdentifier({
   };
 
   const displayValue =
-    truncateLength && value.length > truncateLength
-      ? `${value.slice(0, truncateLength / 2)}...${value.slice(-truncateLength / 2)}`
-      : value;
+    truncateLength && safeValue.length > truncateLength
+      ? `${safeValue.slice(0, truncateLength / 2)}...${safeValue.slice(-truncateLength / 2)}`
+      : safeValue;
 
   return (
     <button
       type="button"
       onClick={handleCopy}
-      title={`Click to copy ${label}: ${value}`}
-      aria-label={`Copy ${label}: ${value}`}
+      title={`Click to copy ${label}: ${safeValue}`}
+      aria-label={`Copy ${label}: ${safeValue}`}
       className={`group inline-flex items-center gap-1.5 rounded border border-border/50 bg-muted/20 px-2 py-0.5 font-mono text-xs text-muted-foreground hover:border-border hover:bg-muted/40 hover:text-foreground transition-colors ${className}`}
     >
-      <span className="truncate">{displayValue}</span>
+      <span className="truncate">{displayValue || "—"}</span>
       {copied ? (
         <Check className="h-3 w-3 text-emerald-400 shrink-0" />
       ) : (
