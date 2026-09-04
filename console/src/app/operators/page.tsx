@@ -1,13 +1,18 @@
 "use client";
 
+import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ShieldAlert, KeyRound, UserCheck, RefreshCw, AlertCircle, Lock } from "lucide-react";
+import { ShieldAlert, KeyRound, UserCheck, RefreshCw, AlertCircle, Lock, UserPlus, Users, Shield, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { ServiceHeader } from "@/components/layout/service-header";
+import { CloudSection } from "@/components/layout/cloud-section";
+import { OperatorBuilderSheet } from "./operator-builder-sheet";
 import type { OperatorDTO } from "@/lib/api/schemas/operator";
 
 export default function OperatorsPage() {
+  const [isBuilderOpen, setIsBuilderOpen] = React.useState(false);
   const { data: operators, isLoading, error, refetch } = useQuery<OperatorDTO[]>({
     queryKey: ["operators"],
     queryFn: async () => {
@@ -22,37 +27,108 @@ export default function OperatorsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header Section */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-amber-500/20 bg-amber-500/5 text-amber-400 text-xs font-mono mb-2">
-            <Lock className="w-3 h-3" />
-            CONSOLE IDENTITY & RBAC
+      <OperatorBuilderSheet
+        isOpen={isBuilderOpen}
+        onOpenChange={setIsBuilderOpen}
+        onSuccess={() => refetch()}
+      />
+
+      {/* Cloud Service Header & Telemetry HUD */}
+      <ServiceHeader
+        serviceName="Argus Control Plane"
+        title="Console Operators & RBAC"
+        description="Manage authenticated operators, break-glass administrator access, and role assignments."
+        icon={ShieldAlert}
+        iconColor="text-amber-400"
+        statusText="SOVEREIGN-LOCAL-VAULT-ACTIVE"
+        statusVariant="warning"
+        metrics={[
+          {
+            label: "Active Operators",
+            value: operators?.length ?? 0,
+            hint: "Administrative Principals",
+            icon: Users,
+          },
+          {
+            label: "Sovereign Vault",
+            value: "PostgreSQL",
+            hint: "Local Argon2id Vault",
+            icon: Lock,
+          },
+          {
+            label: "Role Hierarchy",
+            value: "4 Roles",
+            hint: "Owner › Admin › Op › Auditor",
+            icon: Shield,
+          },
+          {
+            label: "Control Gateway",
+            value: "Port 4432",
+            hint: "Argus Control Plane",
+            icon: Activity,
+          },
+        ]}
+        actions={
+          <>
+            <Button
+              size="sm"
+              onClick={() => setIsBuilderOpen(true)}
+              className="h-8 gap-1.5 text-xs bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-sm"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              <span>Provision Operator</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span>Refresh</span>
+            </Button>
+          </>
+        }
+      />
+
+      {/* Cloud Section 1: Sovereignty & Security Policy */}
+      <CloudSection
+        title="Sovereignty & Security Policy"
+        description="Emergency local access procedures when upstream identity federations are unreachable"
+        icon={ShieldAlert}
+        badge="POLICY ENFORCED"
+        badgeVariant="warning"
+      >
+        <div className="p-4 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent flex items-start gap-3.5">
+          <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-xs space-y-1">
+            <h3 className="font-semibold text-amber-300">Break-Glass Sovereignty Policy (P3-S1-T3)</h3>
+            <p className="text-slate-400">
+              Local credentials stored in Argus remain valid when upstream SSO providers (Janus / Ego / Hermes) are unreachable. Break-glass logins trigger high-priority audit events and are locked after 5 consecutive failed attempts.
+            </p>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Console Operators</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage authenticated operators, break-glass administrator access, and role assignments.
-          </p>
         </div>
+      </CloudSection>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-1.5 text-xs">
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
+      {/* Cloud Section 2: Operators Directory & Role Bindings */}
+      <CloudSection
+        title="Administrative Directory & Role Bindings"
+        description="Active console principals and role-based permissions matrix"
+        icon={Users}
+        badge={`${operators?.length ?? 0} ACTIVE`}
+        badgeVariant="cyan"
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setIsBuilderOpen(true)}
+            className="h-7 gap-1 text-xs"
+          >
+            <UserPlus className="w-3 h-3 text-amber-400" />
+            <span>Add Operator</span>
           </Button>
-        </div>
-      </div>
-
-      {/* Break-glass Policy Banner */}
-      <div className="p-4 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent flex items-start gap-3.5">
-        <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-        <div className="text-xs space-y-1">
-          <h3 className="font-semibold text-amber-300">Break-Glass Sovereignty Policy (P3-S1-T3)</h3>
-          <p className="text-slate-400">
-            Local credentials stored in Argus remain valid when upstream SSO providers (Janus / Ego / Hermes) are unreachable. Break-glass logins trigger high-priority audit events and are locked after 5 consecutive failed attempts.
-          </p>
-        </div>
-      </div>
+        }
+      >
 
       {/* Operators List */}
       <Card className="border-border/80 bg-card/60 backdrop-blur-sm shadow-xs">
@@ -126,6 +202,7 @@ export default function OperatorsPage() {
           )}
         </CardContent>
       </Card>
+      </CloudSection>
     </div>
   );
 }

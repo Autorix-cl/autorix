@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Users, Plus, UserCheck, Search, RefreshCw, UploadCloud, Download, FileCode, Shield } from "lucide-react";
 import { ServiceHeader } from "@/components/layout/service-header";
+import { CloudSection } from "@/components/layout/cloud-section";
 
 import { useTranslation } from "@/lib/i18n";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -245,66 +246,74 @@ export default function IdentitiesPage() {
         }
       />
 
-      {/* Identities Directory Table */}
-      <Card className="bg-card/80">
-        <CardHeader className="p-6 pb-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Users className="h-4 w-4 text-blue-400" />
-                <span>{t("identities.tableTitle")}</span>
-              </CardTitle>
-              <CardDescription className="text-xs">{t("identities.tableDesc")}</CardDescription>
-            </div>
+      {/* Identities Directory Section */}
+      <CloudSection
+        title="Identity Directory & Trait Profiles"
+        description="Cryptographically authenticated subjects and managed SPIFFE identities"
+        icon={Users}
+        badge={`${identities.length} Identities`}
+        badgeVariant="cyan"
+      >
+        <Card className="bg-card/80">
+          <CardHeader className="p-6 pb-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Users className="h-4 w-4 text-blue-400" />
+                  <span>{t("identities.tableTitle")}</span>
+                </CardTitle>
+                <CardDescription className="text-xs">{t("identities.tableDesc")}</CardDescription>
+              </div>
 
-            {/* Filter Search */}
-            <div className="flex items-center gap-2 w-full sm:w-72">
-              <div className="relative w-full">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  id="searchQuery"
-                  placeholder={t("identities.searchPlaceholder")}
-                  value={searchQueryInput}
-                  onChange={(e) => setSearchQueryInput(e.target.value)}
-                  className="pl-8 h-8 text-xs bg-muted/30"
-                />
+              {/* Filter Search */}
+              <div className="flex items-center gap-2 w-full sm:w-72">
+                <div className="relative w-full">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    id="searchQuery"
+                    placeholder={t("identities.searchPlaceholder")}
+                    value={searchQueryInput}
+                    onChange={(e) => setSearchQueryInput(e.target.value)}
+                    className="pl-8 h-8 text-xs bg-muted/30"
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        </CardHeader>
+          </CardHeader>
 
-        <CardContent className="p-6 pt-0">
-          {isError && error?.kind === "engine-unreachable" ? (
-            <NotConnectedState engineName="Ego" onRetry={refetch} />
-          ) : isError ? (
-            <ErrorState error={error} onRetry={refetch} />
-          ) : (
-            <DataTable 
-              columns={columns} 
-              data={identities} 
-              isLoading={isLoading || isFetching}
-              manualPagination={true}
-              onNextPage={handleNextPage}
-              onPreviousPage={handlePreviousPage}
-              canNextPage={!!identitiesRaw?.has_more}
-              canPreviousPage={cursorHistory.length > 0}
-              renderToolbar={(table) => {
-                const selectedCount = Object.keys(table.getState().rowSelection).length;
-                return (
-                  <BulkActionBar 
-                    selectedCount={selectedCount} 
-                    onSuspend={() => {
-                      toast.success(`Suspended ${selectedCount} identities`);
-                      table.resetRowSelection();
-                    }}
-                    onClearSelection={() => table.resetRowSelection()}
-                  />
-                );
-              }}
-            />
-          )}
-        </CardContent>
-      </Card>
+          <CardContent className="p-6 pt-0">
+            {isError && error?.kind === "engine-unreachable" ? (
+              <NotConnectedState engineName="Ego" onRetry={refetch} />
+            ) : isError ? (
+              <ErrorState error={error} onRetry={refetch} />
+            ) : (
+              <DataTable 
+                columns={columns} 
+                data={identities} 
+                isLoading={isLoading || isFetching}
+                manualPagination={true}
+                onNextPage={handleNextPage}
+                onPreviousPage={handlePreviousPage}
+                canNextPage={!!identitiesRaw?.has_more}
+                canPreviousPage={cursorHistory.length > 0}
+                renderToolbar={(table) => {
+                  const selectedCount = Object.keys(table.getState().rowSelection).length;
+                  return (
+                    <BulkActionBar 
+                      selectedCount={selectedCount} 
+                      onSuspend={() => {
+                        toast.success(`Suspended ${selectedCount} identities`);
+                        table.resetRowSelection();
+                      }}
+                      onClearSelection={() => table.resetRowSelection()}
+                    />
+                  );
+                }}
+              />
+            )}
+          </CardContent>
+        </Card>
+      </CloudSection>
     </div>
   );
 }

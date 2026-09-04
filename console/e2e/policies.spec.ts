@@ -20,6 +20,7 @@ test.describe("Themis ABAC / CEL Studio", () => {
     await page.locator("#name").fill(policyName);
     await page.locator("#expression").fill('request.auth.claims.department == "finance"');
     await page.getByRole("button", { name: /Compile & Save Policy/i }).click();
+    await expect(page.getByRole("dialog")).toBeHidden();
 
     // Filter by the unique policy name to account for multi-page directories
     await page.getByPlaceholder(/Filter policies/i).fill(unique);

@@ -80,6 +80,7 @@ func (s *Server) Routes() http.Handler {
 		mux.HandleFunc("GET /v1/auth/session", s.handleValidateSession)
 		mux.HandleFunc("DELETE /v1/auth/session", s.handleLogout)
 		mux.HandleFunc("GET /v1/operators", s.handleListOperators)
+		mux.HandleFunc("POST /v1/operators", s.handleCreateOperator)
 
 		// Audit & Governance (P8-S1, P8-S4)
 		mux.HandleFunc("GET /v1/audit", s.handleListAudit)
@@ -860,6 +861,61 @@ func (s *Server) handleListOperators(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, operators)
+}
+
+type createOperatorRequest struct {
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	Role     string `json:"role"`
+	Password string `json:"password"`
+}
+
+func (s *Server) handleCreateOperator(w http.ResponseWriter, r *http.Request) {
+	var req createOperatorRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON request")
+		return
+	}
+	email := strings.TrimSpace(strings.ToLower(req.Email))
+	name := strings.TrimSpace(req.Name)
+	role := strings.TrimSpace(strings.ToLower(req.Role))
+
+	if email == "" || name == "" || role == "" || req.Password == "" {
+		writeError(w, http.StatusBadRequest, "email, name, role and password are required")
+		return
+	}
+	if len(req.Password) < 8 {
+		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+
+	validRoles := map[string]bool{
+		"owner": true, "admin": true, "operator": true, "auditor": true,
+	}
+	if !validRoles[role] {
+		writeError(w, http.StatusBadRequest, "invalid role: must be owner, admin, operator, or auditor")
+		return
+	}
+
+	passHash, err := credential.HashPassword(req.Password)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "hashing password")
+		return
+	}
+
+	op := core.Operator{
+		Email:    email,
+		Name:     name,
+		Role:     core.OperatorRole(role),
+		IsLocal:  true,
+		IsActive: true,
+	}
+	created, err := s.repo.CreateOperatorWithPassword(r.Context(), op, passHash)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "creating operator: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, created)
 }
 
 func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {

@@ -31,7 +31,14 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Loader2, SlidersHorizontal, Rows, FolderOpen } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Loader2, SlidersHorizontal, Rows, FolderOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DataTableProps<TData, TValue> {
@@ -48,6 +55,9 @@ interface DataTableProps<TData, TValue> {
   renderToolbar?: (table: TanStackTable<TData>) => React.ReactNode;
   emptyState?: React.ReactNode;
   defaultDensity?: "comfortable" | "compact";
+  pageSizeOptions?: number[];
+  defaultPageSize?: number;
+  onPageSizeChange?: (pageSize: number) => void;
 }
 
 export function DataTable<TData, TValue>({
@@ -64,12 +74,19 @@ export function DataTable<TData, TValue>({
   renderToolbar,
   emptyState,
   defaultDensity = "comfortable",
+  pageSizeOptions = [10, 20, 50, 100],
+  defaultPageSize = 10,
+  onPageSizeChange,
 }: DataTableProps<TData, TValue>) {
   const [density, setDensity] = React.useState<"comfortable" | "compact">(defaultDensity);
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = React.useState({});
+  const [pagination, setPagination] = React.useState({
+    pageIndex: 0,
+    pageSize: defaultPageSize,
+  });
 
   const table = useReactTable({
     data,
@@ -82,6 +99,7 @@ export function DataTable<TData, TValue>({
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
+    onPaginationChange: setPagination,
     manualPagination,
     pageCount,
     state: {
@@ -89,6 +107,7 @@ export function DataTable<TData, TValue>({
       columnFilters,
       columnVisibility,
       rowSelection,
+      pagination,
     },
   });
 
@@ -244,38 +263,79 @@ export function DataTable<TData, TValue>({
           </TableBody>
         </Table>
       </div>
-      <div className="flex items-center justify-between space-x-2 py-4">
-        <div className="flex-1 text-sm text-muted-foreground">
-          {table.getFilteredSelectedRowModel().rows.length > 0 && (
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2">
+          {table.getFilteredSelectedRowModel().rows.length > 0 ? (
             <span>
               {table.getFilteredSelectedRowModel().rows.length} of{" "}
               {table.getFilteredRowModel().rows.length} row(s) selected.
             </span>
+          ) : (
+            <span>
+              Total: {manualPagination && pageCount ? "Paginated" : table.getFilteredRowModel().rows.length} records
+            </span>
           )}
         </div>
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              if (onPreviousPage) onPreviousPage();
-              else table.previousPage();
-            }}
-            disabled={manualPagination ? !canPreviousPage : !table.getCanPreviousPage()}
-          >
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              if (onNextPage) onNextPage();
-              else table.nextPage();
-            }}
-            disabled={manualPagination ? !canNextPage : !table.getCanNextPage()}
-          >
-            Next
-          </Button>
+
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+              Rows per page
+            </span>
+            <Select
+              value={String(table.getState().pagination.pageSize)}
+              onValueChange={(value) => {
+                const newSize = Number(value);
+                table.setPageSize(newSize);
+                if (onPageSizeChange) onPageSizeChange(newSize);
+              }}
+            >
+              <SelectTrigger className="h-8 w-[76px] text-xs font-mono">
+                <SelectValue placeholder={String(table.getState().pagination.pageSize)} />
+              </SelectTrigger>
+              <SelectContent side="top">
+                {pageSizeOptions.map((size) => (
+                  <SelectItem key={size} value={String(size)} className="text-xs font-mono">
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center justify-center text-xs font-medium">
+            Page {table.getState().pagination.pageIndex + 1} of{" "}
+            {manualPagination ? (pageCount || 1) : (table.getPageCount() || 1)}
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1 text-xs"
+              onClick={() => {
+                if (onPreviousPage) onPreviousPage();
+                else table.previousPage();
+              }}
+              disabled={manualPagination ? !canPreviousPage : !table.getCanPreviousPage()}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              <span>Previous</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1 text-xs"
+              onClick={() => {
+                if (onNextPage) onNextPage();
+                else table.nextPage();
+              }}
+              disabled={manualPagination ? !canNextPage : !table.getCanNextPage()}
+            >
+              <span>Next</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>

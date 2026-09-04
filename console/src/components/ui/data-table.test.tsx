@@ -53,12 +53,11 @@ describe("DataTable", () => {
     expect(screen.getByTestId("custom-empty")).toBeInTheDocument();
   });
 
-  it("toggles table density between comfortable and compact", () => {
-    render(<DataTable columns={columns} data={data} />);
-    const densityBtn = screen.getByTitle(/toggle table density/i);
-    expect(densityBtn).toHaveTextContent(/comfortable/i);
-
-    fireEvent.click(densityBtn);
-    expect(densityBtn).toHaveTextContent(/compact/i);
+  it("renders rows per page and pagination controls", () => {
+    render(<DataTable columns={columns} data={data} defaultPageSize={20} />);
+    expect(screen.getByText(/rows per page/i)).toBeInTheDocument();
+    expect(screen.getByText(/page 1 of 1/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /previous/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /next/i })).toBeInTheDocument();
   });
 });

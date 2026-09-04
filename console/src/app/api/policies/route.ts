@@ -9,17 +9,20 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const tenantId = searchParams.get("tenant_id") || "default";
   const cursor = searchParams.get("cursor") || "";
-  const limit = searchParams.get("limit") || "50";
+  const search = searchParams.get("search")?.toLowerCase();
 
   const query = new URLSearchParams();
   query.set("tenant_id", tenantId);
   if (cursor) query.set("cursor", cursor);
-  if (limit) query.set("limit", limit);
+  const limit = searchParams.get("limit") || "50";
+  if (search) {
+    query.set("limit", "100");
+  } else if (limit) {
+    query.set("limit", limit);
+  }
 
   const res = await proxyRequest("themis", `/policies?${query.toString()}`, z.any());
   if (!res.ok) return res;
-
-  const search = searchParams.get("search")?.toLowerCase();
 
   const json = await res.json();
   const rawList = Array.isArray(json) ? json : json.data || [];
