@@ -52,4 +52,33 @@ test.describe("Nexus ReBAC Permissions Studio (Google Zanzibar)", () => {
     // Verify ACCESS DENIED decision banner
     await expect(page.getByText(/ACCESS DENIED/i).first()).toBeVisible({ timeout: 10_000 });
   });
+
+  test("captures screenshots for all nexus cloud studio tabs", async ({ page }) => {
+    const destDir = "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots";
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    // Tab 1: Simulator
+    await page.screenshot({ path: `${destDir}/cloud-nexus-simulator.png` });
+
+    // Tab 2: Tuples
+    await page.getByRole("tab", { name: /Active Relation Tuples/i }).click();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${destDir}/cloud-nexus-tuples.png` });
+
+    // Tab 3: Schema
+    await page.getByRole("tab", { name: /Zanzibar Schema/i }).click();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${destDir}/cloud-nexus-schema.png` });
+
+    // Tab 4: Graph
+    await page.getByRole("tab", { name: /Relationship Graph/i }).click();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${destDir}/cloud-nexus-graph.png` });
+
+    // Tab 5: Caveats
+    await page.getByRole("tab", { name: /CEL Caveats/i }).click();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${destDir}/cloud-nexus-caveats.png` });
+  });
 });
+

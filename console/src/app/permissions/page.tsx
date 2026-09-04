@@ -1,12 +1,28 @@
 "use client";
 
 import * as React from "react";
-import { Play, CheckCircle2, XCircle, Zap, Database, GitGraph, Plus, RefreshCw, Network, Shield, Activity } from "lucide-react";
+import {
+  Play,
+  CheckCircle2,
+  XCircle,
+  Zap,
+  Database,
+  GitGraph,
+  Plus,
+  RefreshCw,
+  Network,
+  Shield,
+  Activity,
+  FileCode,
+  ShieldAlert,
+  Loader2,
+} from "lucide-react";
 import { ServiceHeader } from "@/components/layout/service-header";
 import { CloudSection } from "@/components/layout/cloud-section";
 import { useTranslation } from "@/lib/i18n";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +39,11 @@ import { ErrorState } from "@/components/state/error-state";
 import { NotConnectedState } from "@/components/state/not-connected-state";
 import { NotConnectedEngine } from "@/components/resources/not-connected-engine";
 import { useCapabilities } from "@/lib/capabilities/capability-context";
+import { toast } from "sonner";
+import { SchemaEditor } from "@/app/nexus/schema-editor";
+import { RelationshipGraph } from "@/app/nexus/relationship-graph";
+import { CaveatRegistry } from "@/app/nexus/caveat-registry";
+import { useNexusSchema, useSaveNexusSchema } from "@/hooks/use-nexus";
 import { getColumns, ZanzibarTupleItem } from "./columns";
 import { TupleBuilderSheet } from "./tuple-builder-sheet";
 
@@ -70,6 +91,9 @@ export default function PermissionsPage() {
   const [cursor, setCursor] = React.useState("");
   const [cursorHistory, setCursorHistory] = React.useState<string[]>([]);
   const [isBuilderOpen, setIsBuilderOpen] = React.useState(false);
+
+  const { data: schema, isLoading: isLoadingSchema } = useNexusSchema();
+  const { mutateAsync: saveSchema } = useSaveNexusSchema();
 
   const {
     data: tuplesRaw,
@@ -242,230 +266,317 @@ export default function PermissionsPage() {
           },
         ]}
         actions={
-          <>
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              size="sm"
+              size="icon-sm"
               onClick={() => refetchTuples()}
               disabled={isFetchingTuples || isLoadingTuples}
-              className="h-8 gap-1.5 text-xs"
+              title={t("common.refresh")}
+              className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isFetchingTuples ? "animate-spin" : ""}`} />
-              <span>{t("common.refresh")}</span>
             </Button>
             <Button
               size="sm"
               onClick={() => setIsBuilderOpen(true)}
-              className="h-8 gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 text-white font-medium shadow-sm"
+              className="h-8 gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 text-white font-medium shadow-sm shrink-0"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>{t("permissions.newTupleButton")}</span>
             </Button>
-          </>
+          </div>
         }
       />
 
-      <CloudSection
-        title="Evaluation & Traversal Studio"
-        description="Interactive Zanzibar relation checks with dynamic context and graph simulation"
-        icon={Play}
-        badge="Live Simulator"
-        badgeVariant="purple"
-      >
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Simulator Query Form */}
-          <Card className="bg-card/80">
-            <CardHeader className="p-6 pb-4">
-              <div className="flex items-center gap-2">
-                <Play className="h-4 w-4 text-purple-400" />
-                <CardTitle className="text-sm font-semibold">{t("permissions.simulatorTitle")}</CardTitle>
-              </div>
-              <CardDescription className="text-xs">{t("permissions.simulatorDesc")}</CardDescription>
-            </CardHeader>
+      {/* Studio Navigation Tabs */}
+      <Tabs defaultValue="simulator" className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border pb-3">
+          <TabsList className="bg-muted/40 p-1">
+            <TabsTrigger value="simulator" className="gap-2 text-xs font-medium">
+              <Play className="h-3.5 w-3.5 text-purple-400" />
+              <span>{t("permissions.simulatorTitle")}</span>
+            </TabsTrigger>
+            <TabsTrigger value="tuples" className="gap-2 text-xs font-medium">
+              <Database className="h-3.5 w-3.5 text-purple-400" />
+              <span>Active Relation Tuples</span>
+              <Badge variant="secondary" className="font-mono text-[10px] ml-1">
+                {tuples.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="schema" className="gap-2 text-xs font-medium">
+              <FileCode className="h-3.5 w-3.5 text-cyan-400" />
+              <span>Zanzibar Schema</span>
+            </TabsTrigger>
+            <TabsTrigger value="graph" className="gap-2 text-xs font-medium">
+              <GitGraph className="h-3.5 w-3.5 text-emerald-400" />
+              <span>Relationship Graph</span>
+            </TabsTrigger>
+            <TabsTrigger value="caveats" className="gap-2 text-xs font-medium">
+              <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
+              <span>CEL Caveats</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-            <CardContent className="p-6 pt-0">
-              <form onSubmit={handleSimulate} className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="namespace">{t("permissions.namespaceLabel")}</Label>
-                    <Input id="namespace" value={namespace} onChange={(e) => setNamespace(e.target.value)} required />
+        {/* Tab 1: Evaluation Simulator */}
+        <TabsContent value="simulator" className="space-y-4 focus-visible:outline-none">
+          <CloudSection
+            title="Evaluation & Traversal Studio"
+            description="Interactive Zanzibar relation checks with dynamic context and graph simulation"
+            icon={Play}
+            badge="Live Simulator"
+            badgeVariant="purple"
+          >
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {/* Simulator Query Form */}
+              <Card className="bg-card/80">
+                <CardHeader className="p-6 pb-4">
+                  <div className="flex items-center gap-2">
+                    <Play className="h-4 w-4 text-purple-400" />
+                    <CardTitle className="text-sm font-semibold">{t("permissions.simulatorTitle")}</CardTitle>
                   </div>
+                  <CardDescription className="text-xs">{t("permissions.simulatorDesc")}</CardDescription>
+                </CardHeader>
 
-                  <div className="space-y-1.5">
-                    <Label htmlFor="object">{t("permissions.objectLabel")}</Label>
-                    <Input id="object" value={object} onChange={(e) => setObject(e.target.value)} required />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="relation">{t("permissions.relationLabel")}</Label>
-                    <Select value={relation} onValueChange={setRelation}>
-                      <SelectTrigger id="relation">
-                        <SelectValue placeholder="Select relation" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="viewer">viewer</SelectItem>
-                        <SelectItem value="editor">editor</SelectItem>
-                        <SelectItem value="owner">owner</SelectItem>
-                        <SelectItem value="member">member</SelectItem>
-                        <SelectItem value="admin">admin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="subject">{t("permissions.subjectLabel")}</Label>
-                    <Input id="subject" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} required />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="context">{t("permissions.contextLabel")}</Label>
-                  <Textarea
-                    id="context"
-                    value={requestContext}
-                    onChange={(e) => setRequestContext(e.target.value)}
-                    rows={4}
-                    className="font-mono text-xs"
-                  />
-                </div>
-
-                <Button type="submit" variant="purple" disabled={evaluating} className="w-full gap-2 mt-2">
-                  <Zap className="h-4 w-4" />
-                  <span>{evaluating ? t("permissions.evaluatingBtn") : t("permissions.evaluateBtn")}</span>
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          {/* Results Panel */}
-          <Card className="bg-card/80 flex flex-col justify-between">
-            <CardHeader className="p-6 pb-4">
-              <div className="flex items-center gap-2">
-                <GitGraph className="h-4 w-4 text-purple-400" />
-                <CardTitle className="text-sm font-semibold">{t("permissions.resultTitle")}</CardTitle>
-              </div>
-              <CardDescription className="text-xs">
-                Live Zanzibar traversal graph & CEL ABAC execution trace.
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="p-6 pt-0 space-y-4 flex-1">
-              {result ? (
-                <div className="space-y-4">
-                  {/* Result Hero Banner */}
-                  <div
-                    className={`flex items-center gap-4 rounded-xl border p-4 transition-colors ${
-                      result.allowed
-                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                        : "border-rose-500/30 bg-rose-500/10 text-rose-400"
-                    }`}
-                  >
-                    {result.allowed ? (
-                      <CheckCircle2 className="h-8 w-8 text-emerald-400 flex-shrink-0" />
-                    ) : (
-                      <XCircle className="h-8 w-8 text-rose-400 flex-shrink-0" />
-                    )}
-                    <div>
-                      <div className="text-lg font-bold tracking-tight">
-                        {result.allowed ? t("permissions.allowed") : t("permissions.denied")}
+                <CardContent className="p-6 pt-0">
+                  <form onSubmit={handleSimulate} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="namespace">{t("permissions.namespaceLabel")}</Label>
+                        <Input id="namespace" value={namespace} onChange={(e) => setNamespace(e.target.value)} required />
                       </div>
-                      <div className="text-xs text-muted-foreground font-mono mt-0.5">
-                        {t("permissions.resolvedIn", { ms: result.latencyMs })}
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="object">{t("permissions.objectLabel")}</Label>
+                        <Input id="object" value={object} onChange={(e) => setObject(e.target.value)} required />
                       </div>
                     </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="relation">{t("permissions.relationLabel")}</Label>
+                        <Select value={relation} onValueChange={setRelation}>
+                          <SelectTrigger id="relation">
+                            <SelectValue placeholder="Select relation" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="viewer">viewer</SelectItem>
+                            <SelectItem value="editor">editor</SelectItem>
+                            <SelectItem value="owner">owner</SelectItem>
+                            <SelectItem value="member">member</SelectItem>
+                            <SelectItem value="admin">admin</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="subject">{t("permissions.subjectLabel")}</Label>
+                        <Input id="subject" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} required />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="context">{t("permissions.contextLabel")}</Label>
+                      <Textarea
+                        id="context"
+                        value={requestContext}
+                        onChange={(e) => setRequestContext(e.target.value)}
+                        rows={4}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+
+                    <Button type="submit" variant="purple" disabled={evaluating} className="w-full gap-2 mt-2">
+                      <Zap className="h-4 w-4" />
+                      <span>{evaluating ? t("permissions.evaluatingBtn") : t("permissions.evaluateBtn")}</span>
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+
+              {/* Results Panel */}
+              <Card className="bg-card/80 flex flex-col justify-between">
+                <CardHeader className="p-6 pb-4">
+                  <div className="flex items-center gap-2">
+                    <GitGraph className="h-4 w-4 text-purple-400" />
+                    <CardTitle className="text-sm font-semibold">{t("permissions.resultTitle")}</CardTitle>
                   </div>
+                  <CardDescription className="text-xs">
+                    Live Zanzibar traversal graph & CEL ABAC execution trace.
+                  </CardDescription>
+                </CardHeader>
 
-                  <div className="space-y-2">
-                    <Label>{t("permissions.reasonLabel")}</Label>
-                    <CodeBlock code={result.reason} language="text" title="DECISION ENGINE" />
-                  </div>
+                <CardContent className="p-6 pt-0 space-y-4 flex-1">
+                  {result ? (
+                    <div className="space-y-4">
+                      {/* Result Hero Banner */}
+                      <div
+                        className={`flex items-center gap-4 rounded-xl border p-4 transition-colors ${
+                          result.allowed
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                            : "border-rose-500/30 bg-rose-500/10 text-rose-400"
+                        }`}
+                      >
+                        {result.allowed ? (
+                          <CheckCircle2 className="h-8 w-8 text-emerald-400 flex-shrink-0" />
+                        ) : (
+                          <XCircle className="h-8 w-8 text-rose-400 flex-shrink-0" />
+                        )}
+                        <div>
+                          <div className="text-lg font-bold tracking-tight">
+                            {result.allowed ? t("permissions.allowed") : t("permissions.denied")}
+                          </div>
+                          <div className="text-xs text-muted-foreground font-mono mt-0.5">
+                            {t("permissions.resolvedIn", { ms: result.latencyMs })}
+                          </div>
+                        </div>
+                      </div>
 
-                  <div className="space-y-2">
-                    <Label>{t("permissions.pathLabel")}</Label>
-                    <CodeBlock code={result.path} language="text" title="ZANZIBAR RESOLUTION GRAPH" />
-                  </div>
-                </div>
-              ) : (
-                <div className="flex h-48 items-center justify-center text-xs text-muted-foreground">
-                  Run a simulation to evaluate the ReBAC authorization tree.
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </CloudSection>
+                      <div className="space-y-2">
+                        <Label>{t("permissions.reasonLabel")}</Label>
+                        <CodeBlock code={result.reason} language="text" title="DECISION ENGINE" />
+                      </div>
 
-      {/* Active Relation Tuples Table */}
-      <CloudSection
-        title="Zanzibar Relation Facts & State"
-        description="Direct relation tuples and subject bindings evaluated across the graph"
-        icon={Database}
-        badge={`${tuples.length} Tuples`}
-        badgeVariant="purple"
-      >
-        <Card className="bg-card/80">
-          <CardHeader className="p-6 pb-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Database className="h-4 w-4 text-purple-400" />
-                  <span>{t("permissions.tuplesTitle")}</span>
-                  <Badge variant="secondary" className="font-mono text-[10px]">
-                    {tuples.length}
-                  </Badge>
-                </CardTitle>
-                <CardDescription className="text-xs">{t("permissions.tuplesDesc")}</CardDescription>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => refetchTuples()}
-                  disabled={isFetchingTuples || isLoadingTuples}
-                  className="h-8 gap-1 text-xs"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${isFetchingTuples ? "animate-spin" : ""}`} />
-                  <span>{t("common.refresh")}</span>
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => setIsBuilderOpen(true)}
-                  className="h-8 gap-1 text-xs bg-purple-600 hover:bg-purple-700 text-white"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>Add Tuple</span>
-                </Button>
-              </div>
+                      <div className="space-y-2">
+                        <Label>{t("permissions.pathLabel")}</Label>
+                        <CodeBlock code={result.path} language="text" title="ZANZIBAR RESOLUTION GRAPH" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex h-48 items-center justify-center text-xs text-muted-foreground">
+                      Run a simulation to evaluate the ReBAC authorization tree.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
-          </CardHeader>
+          </CloudSection>
+        </TabsContent>
 
-          <CardContent className="p-6 pt-0">
-            {isTuplesError && tuplesError?.kind === "engine-unreachable" ? (
-              <NotConnectedState engineName="Nexus" onRetry={refetchTuples} />
-            ) : isTuplesError ? (
-              <ErrorState error={tuplesError} onRetry={refetchTuples} />
+        {/* Tab 2: Relation Tuples Table */}
+        <TabsContent value="tuples" className="space-y-4 focus-visible:outline-none">
+          <CloudSection
+            title="Zanzibar Relation Facts & State"
+            description="Direct relation tuples and subject bindings evaluated across the graph"
+            icon={Database}
+            badge={`${tuples.length} Tuples`}
+            badgeVariant="purple"
+          >
+            <Card className="bg-card/80">
+              <CardHeader className="p-6 pb-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Database className="h-4 w-4 text-purple-400" />
+                      <span>{t("permissions.tuplesTitle")}</span>
+                      <Badge variant="secondary" className="font-mono text-[10px]">
+                        {tuples.length}
+                      </Badge>
+                    </CardTitle>
+                    <CardDescription className="text-xs">{t("permissions.tuplesDesc")}</CardDescription>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => refetchTuples()}
+                      disabled={isFetchingTuples || isLoadingTuples}
+                      className="h-8 gap-1 text-xs"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isFetchingTuples ? "animate-spin" : ""}`} />
+                      <span>{t("common.refresh")}</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => setIsBuilderOpen(true)}
+                      className="h-8 gap-1 text-xs bg-purple-600 hover:bg-purple-700 text-white"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Add Tuple</span>
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-6 pt-0">
+                {isTuplesError && tuplesError?.kind === "engine-unreachable" ? (
+                  <NotConnectedState engineName="Nexus" onRetry={refetchTuples} />
+                ) : isTuplesError ? (
+                  <ErrorState error={tuplesError} onRetry={refetchTuples} />
+                ) : (
+                  <DataTable
+                    columns={columns}
+                    data={tuples}
+                    isLoading={isLoadingTuples || isFetchingTuples}
+                    manualPagination={true}
+                    pageIndex={cursorHistory.length}
+                    pageSize={pageSize}
+                    defaultPageSize={pageSize}
+                    onPageSizeChange={handlePageSizeChange}
+                    onNextPage={handleNextPage}
+                    onPreviousPage={handlePrevPage}
+                    canNextPage={!!tuplesRaw?.has_more}
+                    canPreviousPage={cursorHistory.length > 0}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </CloudSection>
+        </TabsContent>
+
+        {/* Tab 3: Schema Editor */}
+        <TabsContent value="schema" className="space-y-4 focus-visible:outline-none">
+          <CloudSection
+            title="Zanzibar Authorization Schema"
+            description="Declarative Zanzibar DSL definitions defining namespaces, relations, and usersets"
+            icon={FileCode}
+            badge="Zanzibar DSL"
+            badgeVariant="purple"
+          >
+            {isLoadingSchema ? (
+              <div className="flex h-96 items-center justify-center rounded-lg border bg-card/50">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
             ) : (
-              <DataTable
-                columns={columns}
-                data={tuples}
-                isLoading={isLoadingTuples || isFetchingTuples}
-                manualPagination={true}
-                pageIndex={cursorHistory.length}
-                pageSize={pageSize}
-                defaultPageSize={pageSize}
-                onPageSizeChange={handlePageSizeChange}
-                onNextPage={handleNextPage}
-                onPreviousPage={handlePrevPage}
-                canNextPage={!!tuplesRaw?.has_more}
-                canPreviousPage={cursorHistory.length > 0}
+              <SchemaEditor
+                schema={schema || ""}
+                onSave={async (newSchema) => {
+                  await saveSchema(newSchema);
+                  toast.success("Schema validated and updated successfully.");
+                }}
               />
             )}
-          </CardContent>
-        </Card>
-      </CloudSection>
+          </CloudSection>
+        </TabsContent>
+
+        {/* Tab 4: Relationship Graph */}
+        <TabsContent value="graph" className="space-y-4 focus-visible:outline-none">
+          <CloudSection
+            title="Relationship Graph Topology"
+            description="Visual neighborhood exploration of Zanzibar object-relation-subject trees"
+            icon={GitGraph}
+            badge="Topology View"
+            badgeVariant="purple"
+          >
+            <RelationshipGraph />
+          </CloudSection>
+        </TabsContent>
+
+        {/* Tab 5: CEL Caveats */}
+        <TabsContent value="caveats" className="space-y-4 focus-visible:outline-none">
+          <CloudSection
+            title="CEL Caveats Registry"
+            description="Google Common Expression Language (CEL) runtime conditions attached to relation tuples"
+            icon={ShieldAlert}
+            badge="Google CEL"
+            badgeVariant="purple"
+          >
+            <CaveatRegistry />
+          </CloudSection>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
