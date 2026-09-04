@@ -97,7 +97,7 @@ export function ServiceHeader({
         </div>
 
         {actions && (
-          <div className="flex flex-wrap items-center gap-2 pt-1 lg:pt-0">
+          <div className="flex items-center gap-2 pt-1 lg:pt-0 shrink-0">
             {actions}
           </div>
         )}

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Users, Plus, UserCheck, Search, RefreshCw, UploadCloud, Download, FileCode, Shield } from "lucide-react";
+import { Users, Plus, UserCheck, Search, RefreshCw, UploadCloud, Download, FileCode, Shield, BookOpen } from "lucide-react";
 import { ServiceHeader } from "@/components/layout/service-header";
 import { CloudSection } from "@/components/layout/cloud-section";
 
@@ -9,6 +9,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { fetchAndParse } from "@/lib/api/schema";
 import { paginatedIdentityListSchema, type Identity, type PaginatedIdentities } from "@/lib/api/schemas/identity";
@@ -20,7 +21,8 @@ import { DataTable } from "@/components/ui/data-table";
 import { getColumns, IdentityItem } from "./columns";
 import { IdentitySheet } from "./identity-sheet";
 import { IdentityBuilderSheet } from "./identity-builder-sheet";
-import { SchemaDialog } from "./schema-dialog";
+import { SchemaStudio } from "./schema-studio";
+import { TraitsGuide } from "./traits-guide";
 import { BulkActionBar } from "./bulk-action-bar";
 import { BulkImportDialog } from "./bulk-import-dialog";
 import { toast } from "sonner";
@@ -52,7 +54,6 @@ export default function IdentitiesPage() {
   const [selectedIdentity, setSelectedIdentity] = React.useState<IdentityItem | null>(null);
   const [isBuilderOpen, setIsBuilderOpen] = React.useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = React.useState(false);
-  const [isSchemaDialogOpen, setIsSchemaDialogOpen] = React.useState(false);
 
   React.useEffect(() => {
     const handler = setTimeout(() => {
@@ -162,11 +163,6 @@ export default function IdentitiesPage() {
         onSuccess={() => refetch()}
       />
 
-      <SchemaDialog
-        isOpen={isSchemaDialogOpen}
-        onOpenChange={setIsSchemaDialogOpen}
-      />
-
       {/* Cloud Service Header & Telemetry HUD */}
       <ServiceHeader
         serviceName="Ego Identity Engine"
@@ -203,21 +199,13 @@ export default function IdentitiesPage() {
           },
         ]}
         actions={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsSchemaDialogOpen(true)}
-              className="h-8 gap-1.5 text-xs"
-            >
-              <FileCode className="h-3.5 w-3.5 text-cyan-400" />
-              <span>Schemas</span>
-            </Button>
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={handleExportCsv}
-              className="h-8 gap-1.5 text-xs"
+              className="h-8 gap-1.5 text-xs shrink-0"
+              title="Export identities as CSV"
             >
               <Download className="h-3.5 w-3.5" />
               <span>Export CSV</span>
@@ -226,105 +214,155 @@ export default function IdentitiesPage() {
               variant="outline"
               size="sm"
               onClick={() => setIsBulkImportOpen(true)}
-              className="h-8 gap-1.5 text-xs"
+              className="h-8 gap-1.5 text-xs shrink-0"
+              title="Bulk import CSV or JSON identities"
             >
               <UploadCloud className="h-3.5 w-3.5" />
               <span>Bulk Import</span>
             </Button>
             <Button
               variant="outline"
-              size="sm"
+              size="icon-sm"
               onClick={() => refetch()}
               disabled={isFetching}
-              className="h-8 gap-1.5 text-xs"
+              className="h-8 w-8 shrink-0"
+              title={t("common.refresh")}
+              aria-label={t("common.refresh")}
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
-              <span>{t("common.refresh")}</span>
             </Button>
             <Button
               size="sm"
               onClick={() => setIsBuilderOpen(true)}
-              className="h-8 gap-1.5 text-xs bg-cyan-600 hover:bg-cyan-700 text-white font-medium shadow-sm"
+              className="h-8 gap-1.5 text-xs bg-cyan-600 hover:bg-cyan-700 text-white font-medium shadow-xs shrink-0"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>{t("identities.createButton") || "Create Identity"}</span>
             </Button>
-          </>
+          </div>
         }
       />
 
-      {/* Identities Directory Section */}
-      <CloudSection
-        title="Identity Directory & Trait Profiles"
-        description="Cryptographically authenticated subjects and managed SPIFFE identities"
-        icon={Users}
-        badge={`${identities.length} Identities`}
-        badgeVariant="cyan"
-      >
-        <Card className="bg-card/80">
-          <CardHeader className="p-6 pb-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Users className="h-4 w-4 text-blue-400" />
-                  <span>{t("identities.tableTitle")}</span>
-                </CardTitle>
-                <CardDescription className="text-xs">{t("identities.tableDesc")}</CardDescription>
-              </div>
+      {/* Studio Navigation Tabs */}
+      <Tabs defaultValue="directory" className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border pb-3">
+          <TabsList className="bg-muted/40 p-1">
+            <TabsTrigger value="directory" className="gap-2 text-xs font-medium">
+              <Users className="h-3.5 w-3.5 text-cyan-400" />
+              <span>Identities Directory</span>
+            </TabsTrigger>
+            <TabsTrigger value="schemas" className="gap-2 text-xs font-medium">
+              <FileCode className="h-3.5 w-3.5 text-blue-400" />
+              <span>Schema Studio & Builder</span>
+            </TabsTrigger>
+            <TabsTrigger value="guide" className="gap-2 text-xs font-medium">
+              <BookOpen className="h-3.5 w-3.5 text-purple-400" />
+              <span>Traits Architecture Guide</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-              {/* Filter Search */}
-              <div className="flex items-center gap-2 w-full sm:w-72">
-                <div className="relative w-full">
-                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    id="searchQuery"
-                    placeholder={t("identities.searchPlaceholder")}
-                    value={searchQueryInput}
-                    onChange={(e) => setSearchQueryInput(e.target.value)}
-                    className="pl-8 h-8 text-xs bg-muted/30"
-                  />
+        {/* Tab 1: Identities Directory Section */}
+        <TabsContent value="directory" className="space-y-4 focus-visible:outline-none">
+          <CloudSection
+            title="Identity Directory & Trait Profiles"
+            description="Cryptographically authenticated subjects and managed SPIFFE identities"
+            icon={Users}
+            badge={`${identities.length} Identities`}
+            badgeVariant="cyan"
+          >
+            <Card className="bg-card/80">
+              <CardHeader className="p-6 pb-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Users className="h-4 w-4 text-blue-400" />
+                      <span>{t("identities.tableTitle")}</span>
+                    </CardTitle>
+                    <CardDescription className="text-xs">{t("identities.tableDesc")}</CardDescription>
+                  </div>
+
+                  {/* Filter Search */}
+                  <div className="flex items-center gap-2 w-full sm:w-72">
+                    <div className="relative w-full">
+                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input
+                        id="searchQuery"
+                        placeholder={t("identities.searchPlaceholder")}
+                        value={searchQueryInput}
+                        onChange={(e) => setSearchQueryInput(e.target.value)}
+                        className="pl-8 h-8 text-xs bg-muted/30"
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </CardHeader>
+              </CardHeader>
 
-          <CardContent className="p-6 pt-0">
-            {isError && error?.kind === "engine-unreachable" ? (
-              <NotConnectedState engineName="Ego" onRetry={refetch} />
-            ) : isError ? (
-              <ErrorState error={error} onRetry={refetch} />
-            ) : (
-              <DataTable 
-                columns={columns} 
-                data={identities} 
-                isLoading={isLoading || isFetching}
-                manualPagination={true}
-                pageIndex={cursorHistory.length}
-                pageSize={pageSize}
-                defaultPageSize={pageSize}
-                onPageSizeChange={handlePageSizeChange}
-                onNextPage={handleNextPage}
-                onPreviousPage={handlePreviousPage}
-                canNextPage={!!identitiesRaw?.has_more}
-                canPreviousPage={cursorHistory.length > 0}
-                renderToolbar={(table) => {
-                  const selectedCount = Object.keys(table.getState().rowSelection).length;
-                  return (
-                    <BulkActionBar 
-                      selectedCount={selectedCount} 
-                      onSuspend={() => {
-                        toast.success(`Suspended ${selectedCount} identities`);
-                        table.resetRowSelection();
-                      }}
-                      onClearSelection={() => table.resetRowSelection()}
-                    />
-                  );
-                }}
-              />
-            )}
-          </CardContent>
-        </Card>
-      </CloudSection>
+              <CardContent className="p-6 pt-0">
+                {isError && error?.kind === "engine-unreachable" ? (
+                  <NotConnectedState engineName="Ego" onRetry={refetch} />
+                ) : isError ? (
+                  <ErrorState error={error} onRetry={refetch} />
+                ) : (
+                  <DataTable 
+                    columns={columns} 
+                    data={identities} 
+                    isLoading={isLoading || isFetching}
+                    manualPagination={true}
+                    pageIndex={cursorHistory.length}
+                    pageSize={pageSize}
+                    defaultPageSize={pageSize}
+                    onPageSizeChange={handlePageSizeChange}
+                    onNextPage={handleNextPage}
+                    onPreviousPage={handlePreviousPage}
+                    canNextPage={!!identitiesRaw?.has_more}
+                    canPreviousPage={cursorHistory.length > 0}
+                    renderToolbar={(table) => {
+                      const selectedCount = Object.keys(table.getState().rowSelection).length;
+                      return (
+                        <BulkActionBar 
+                          selectedCount={selectedCount} 
+                          onSuspend={() => {
+                            toast.success(`Suspended ${selectedCount} identities`);
+                            table.resetRowSelection();
+                          }}
+                          onClearSelection={() => table.resetRowSelection()}
+                        />
+                      );
+                    }}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </CloudSection>
+        </TabsContent>
+
+        {/* Tab 2: Schema Studio & Builder */}
+        <TabsContent value="schemas" className="space-y-4 focus-visible:outline-none">
+          <CloudSection
+            title="Identity Schema Studio & Trait Architect"
+            description="Author, validate Draft-07 JSON schemas, define credential identifiers, and preview interactive forms"
+            icon={FileCode}
+            badge="Ory Kratos Trait Model"
+            badgeVariant="cyan"
+          >
+            <SchemaStudio onSchemaCreated={() => refetch()} />
+          </CloudSection>
+        </TabsContent>
+
+        {/* Tab 3: Traits Architecture Guide */}
+        <TabsContent value="guide" className="space-y-4 focus-visible:outline-none">
+          <CloudSection
+            title="Traits & Declarative Identity Architecture"
+            description="Comprehensive guide on dynamic trait models, credential mapping, and API integration"
+            icon={BookOpen}
+            badge="Documentation"
+            badgeVariant="purple"
+          >
+            <TraitsGuide />
+          </CloudSection>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

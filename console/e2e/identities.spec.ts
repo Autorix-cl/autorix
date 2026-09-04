@@ -62,5 +62,42 @@ test.describe("Ego Identities Studio (Ory Kratos Trait Model)", () => {
     // Verify rows per page selector is visible with default 10
     await expect(page.getByText("Rows per page")).toBeVisible();
   });
+
+  test("navigates to Schema Studio & Builder and loads preset templates", async ({ page }) => {
+    // Click Schema Studio & Builder tab
+    await page.getByRole("tab", { name: /Schema Studio & Builder/i }).click();
+
+    // Verify catalog and editor elements
+    await expect(page.getByText(/Ego Identity Schemas Catalog/i)).toBeVisible();
+    await expect(page.getByText(/Interactive Form Preview/i)).toBeVisible();
+
+    // Click B2B preset button
+    await page.getByRole("button", { name: /^B2B$/i }).click();
+    await expect(page.getByLabel(/Schema Identifier/i)).toHaveValue("b2b_partner");
+
+    // Verify live form preview updated with B2B fields
+    await expect(page.getByLabel(/Organization Name/i)).toBeVisible();
+
+    // Capture screenshot of Schema Studio
+    await page.screenshot({
+      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-identities-schema-studio.png",
+    });
+  });
+
+  test("navigates to Traits Architecture Guide tab", async ({ page }) => {
+    // Click Traits Architecture Guide tab
+    await page.getByRole("tab", { name: /Traits Architecture Guide/i }).click();
+
+    // Verify guide contents
+    await expect(page.getByText(/Ego Traits & JSON Schema Architecture Guide/i)).toBeVisible();
+    await expect(page.getByText(/Zero-Migration Extensibility/i)).toBeVisible();
+    await expect(page.getByText(/Anatomy of an Identity Schema/i)).toBeVisible();
+    await expect(page.getByText(/API Quickstart/i)).toBeVisible();
+
+    // Capture screenshot of Traits Guide
+    await page.screenshot({
+      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-identities-traits-guide.png",
+    });
+  });
 });
 

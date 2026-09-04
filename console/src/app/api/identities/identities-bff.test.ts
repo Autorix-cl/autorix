@@ -244,4 +244,84 @@ describe("Ego Identities BFF Routes", () => {
       expect(data.failed).toBe(0);
     });
   });
+
+  describe("GET, POST /api/identities/schemas & GET, PATCH, DELETE /api/identities/schemas/[id]", () => {
+    it("proxies GET /api/identities/schemas", async () => {
+      const { GET } = await import("./schemas/route");
+      vi.mocked(proxyRequest).mockResolvedValue(NextResponse.json([{ id: "default", name: "User Identity" }]));
+
+      const res = await GET();
+      expect(proxyRequest).toHaveBeenCalledWith("ego", "/admin/schemas", expect.anything());
+      expect(res.status).toBe(200);
+    });
+
+    it("proxies POST /api/identities/schemas", async () => {
+      const { POST } = await import("./schemas/route");
+      vi.mocked(proxyRequest).mockResolvedValue(NextResponse.json({ id: "partner_v1" }, { status: 201 }));
+
+      const req = new NextRequest("http://localhost/api/identities/schemas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "partner_v1",
+          name: "Partner Schema",
+          schema: { type: "object" },
+        }),
+      });
+      const res = await POST(req);
+      expect(proxyRequest).toHaveBeenCalledWith(
+        "ego",
+        "/admin/schemas",
+        expect.anything(),
+        expect.objectContaining({ method: "POST" })
+      );
+      expect(res.status).toBe(201);
+    });
+
+    it("proxies GET /api/identities/schemas/[id]", async () => {
+      const { GET } = await import("./schemas/[id]/route");
+      vi.mocked(proxyRequest).mockResolvedValue(NextResponse.json({ id: "partner_v1" }));
+
+      const req = new NextRequest("http://localhost/api/identities/schemas/partner_v1");
+      const res = await GET(req, { params: Promise.resolve({ id: "partner_v1" }) });
+      expect(proxyRequest).toHaveBeenCalledWith("ego", "/admin/schemas/partner_v1", expect.anything());
+      expect(res.status).toBe(200);
+    });
+
+    it("proxies PATCH /api/identities/schemas/[id]", async () => {
+      const { PATCH } = await import("./schemas/[id]/route");
+      vi.mocked(proxyRequest).mockResolvedValue(NextResponse.json({ id: "partner_v1", name: "Updated" }));
+
+      const req = new NextRequest("http://localhost/api/identities/schemas/partner_v1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Updated" }),
+      });
+      const res = await PATCH(req, { params: Promise.resolve({ id: "partner_v1" }) });
+      expect(proxyRequest).toHaveBeenCalledWith(
+        "ego",
+        "/admin/schemas/partner_v1",
+        expect.anything(),
+        expect.objectContaining({ method: "PATCH" })
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("proxies DELETE /api/identities/schemas/[id]", async () => {
+      const { DELETE } = await import("./schemas/[id]/route");
+      vi.mocked(proxyRequest).mockResolvedValue(new NextResponse(null, { status: 204 }));
+
+      const req = new NextRequest("http://localhost/api/identities/schemas/partner_v1", {
+        method: "DELETE",
+      });
+      const res = await DELETE(req, { params: Promise.resolve({ id: "partner_v1" }) });
+      expect(proxyRequest).toHaveBeenCalledWith(
+        "ego",
+        "/admin/schemas/partner_v1",
+        expect.anything(),
+        expect.objectContaining({ method: "DELETE" })
+      );
+      expect(res.status).toBe(204);
+    });
+  });
 });
