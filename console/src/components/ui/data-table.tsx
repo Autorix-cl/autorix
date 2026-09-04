@@ -31,7 +31,8 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Loader2, SlidersHorizontal } from "lucide-react";
+import { Loader2, SlidersHorizontal, Rows, FolderOpen } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -45,6 +46,8 @@ interface DataTableProps<TData, TValue> {
   isLoading?: boolean;
   searchKey?: string;
   renderToolbar?: (table: TanStackTable<TData>) => React.ReactNode;
+  emptyState?: React.ReactNode;
+  defaultDensity?: "comfortable" | "compact";
 }
 
 export function DataTable<TData, TValue>({
@@ -59,7 +62,10 @@ export function DataTable<TData, TValue>({
   isLoading,
   searchKey,
   renderToolbar,
+  emptyState,
+  defaultDensity = "comfortable",
 }: DataTableProps<TData, TValue>) {
+  const [density, setDensity] = React.useState<"comfortable" | "compact">(defaultDensity);
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
@@ -103,12 +109,22 @@ export function DataTable<TData, TValue>({
         )}
         <div className="flex items-center gap-2">
           {renderToolbar && renderToolbar(table)}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setDensity(density === "comfortable" ? "compact" : "comfortable")}
+            className="flex items-center gap-1.5 text-xs h-9"
+            title={`Toggle table density (current: ${density})`}
+          >
+            <Rows className="h-3.5 w-3.5" />
+            <span className="capitalize hidden sm:inline">{density}</span>
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
                 size="sm"
-                className="ml-auto flex items-center gap-1.5 text-xs"
+                className="ml-auto flex items-center gap-1.5 text-xs h-9"
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 Columns
@@ -141,7 +157,14 @@ export function DataTable<TData, TValue>({
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id}>
+                    <TableHead
+                      key={header.id}
+                      className={cn(
+                        density === "compact"
+                          ? "h-8 px-3 text-[10px]"
+                          : "h-10 px-4 text-[11px]"
+                      )}
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -159,7 +182,7 @@ export function DataTable<TData, TValue>({
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
-                  className="h-24 text-center"
+                  className="h-28 text-center"
                 >
                   <div className="flex items-center justify-center">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -171,9 +194,15 @@ export function DataTable<TData, TValue>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
+                  className={cn(density === "compact" ? "h-9" : "")}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      className={cn(
+                        density === "compact" ? "py-1.5 px-3 text-xs" : "p-4"
+                      )}
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()
@@ -186,9 +215,29 @@ export function DataTable<TData, TValue>({
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
-                  className="h-24 text-center"
+                  className="h-32 text-center"
                 >
-                  No results.
+                  {emptyState ? (
+                    emptyState
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-6 text-center">
+                      <FolderOpen className="h-8 w-8 text-muted-foreground/40 mb-2" />
+                      <p className="text-sm font-medium text-foreground">No results.</p>
+                      <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                        No records match your active query or no data has been registered yet.
+                      </p>
+                      {Boolean(searchKey && table.getColumn(searchKey)?.getFilterValue()) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => table.getColumn(searchKey!)?.setFilterValue("")}
+                          className="mt-3 text-xs h-7 text-cyan-400 hover:text-cyan-300"
+                        >
+                          Clear filter
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </TableCell>
               </TableRow>
             )}

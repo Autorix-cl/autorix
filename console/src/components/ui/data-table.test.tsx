@@ -41,4 +41,24 @@ describe("DataTable", () => {
     expect(screen.getByText("Alice")).toBeInTheDocument();
     expect(screen.queryByText("Bob")).not.toBeInTheDocument();
   });
+
+  it("renders custom emptyState when provided", () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={[]}
+        emptyState={<div data-testid="custom-empty">Custom SRE Empty State</div>}
+      />
+    );
+    expect(screen.getByTestId("custom-empty")).toBeInTheDocument();
+  });
+
+  it("toggles table density between comfortable and compact", () => {
+    render(<DataTable columns={columns} data={data} />);
+    const densityBtn = screen.getByTitle(/toggle table density/i);
+    expect(densityBtn).toHaveTextContent(/comfortable/i);
+
+    fireEvent.click(densityBtn);
+    expect(densityBtn).toHaveTextContent(/compact/i);
+  });
 });
