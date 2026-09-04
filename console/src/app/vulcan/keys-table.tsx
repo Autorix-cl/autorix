@@ -18,6 +18,7 @@ import { MoreHorizontal, Trash2, RotateCw, Activity, AlertCircle } from "lucide-
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { KeyRotateDialog } from "./key-rotate-dialog";
+import { CopyableIdentifier } from "@/components/ui/masked-secret";
 
 interface KeyRecord {
   id: string;
@@ -102,7 +103,12 @@ export function KeysTable() {
     {
       accessorKey: "prefix",
       header: "Key Prefix",
-      cell: ({ row }) => <code className="bg-muted px-2 py-1 rounded text-xs font-mono">{row.getValue("prefix")}</code>,
+      cell: ({ row }) => (
+        <CopyableIdentifier
+          value={row.getValue("prefix")}
+          label="Key Prefix"
+        />
+      ),
     },
     {
       accessorKey: "scopes",

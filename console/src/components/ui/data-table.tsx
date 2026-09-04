@@ -25,7 +25,13 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Loader2, SlidersHorizontal } from "lucide-react";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -82,8 +88,8 @@ export function DataTable<TData, TValue>({
 
   return (
     <div>
-      {searchKey && (
-        <div className="flex items-center py-4">
+      <div className="flex items-center justify-between gap-2 py-4">
+        {searchKey ? (
           <Input
             placeholder="Search..."
             value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
@@ -92,9 +98,42 @@ export function DataTable<TData, TValue>({
             }
             className="max-w-sm"
           />
+        ) : (
+          <div />
+        )}
+        <div className="flex items-center gap-2">
+          {renderToolbar && renderToolbar(table)}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto flex items-center gap-1.5 text-xs"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                Columns
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {table
+                .getAllColumns()
+                .filter((column) => column.getCanHide())
+                .map((column) => {
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={column.id}
+                      className="capitalize text-xs"
+                      checked={column.getIsVisible()}
+                      onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                    >
+                      {column.id}
+                    </DropdownMenuCheckboxItem>
+                  );
+                })}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-      )}
-      {renderToolbar && renderToolbar(table)}
+      </div>
       <div className="rounded-md border">
         <Table>
           <TableHeader>

@@ -8,10 +8,14 @@ export function EmptyState({
   title,
   description,
   action,
+  docsUrl,
+  docsLabel,
 }: {
   title?: string;
   description?: string;
   action?: ReactNode;
+  docsUrl?: string;
+  docsLabel?: string;
 }) {
   const { t } = useTranslation();
   return (
@@ -19,7 +23,17 @@ export function EmptyState({
       <Inbox className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
       <h3 className="text-sm font-medium">{title ?? t("state.emptyTitle")}</h3>
       <p className="max-w-sm text-sm text-muted-foreground">{description ?? t("state.emptyDescription")}</p>
-      {action ? <div className="mt-3">{action}</div> : null}
+      {action ? <div className="mt-3 flex items-center justify-center gap-2">{action}</div> : null}
+      {docsUrl ? (
+        <a
+          href={docsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1 text-xs text-primary hover:underline inline-flex items-center gap-1"
+        >
+          {docsLabel ?? "View Documentation →"}
+        </a>
+      ) : null}
     </div>
   );
 }

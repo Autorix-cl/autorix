@@ -8,6 +8,7 @@ import { AuditTimeline, AuditEvent } from "./audit-timeline";
 import { MfaPanel } from "./mfa-panel";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { Button } from "@/components/ui/button";
+import { CopyableIdentifier } from "@/components/ui/masked-secret";
 import { ShieldAlert, UserX, Loader2, KeyRound, Save, Link2, UserCheck } from "lucide-react";
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -264,10 +265,48 @@ export function IdentitySheet({ identity, isOpen, onOpenChange, onIdentityUpdate
                   </Button>
                 </div>
                 {recoveryLink && (
-                  <div className="mt-2 p-2 bg-muted/40 rounded border font-mono text-xs break-all text-emerald-400 select-all">
-                    {recoveryLink}
+                  <div className="mt-2 p-2 bg-muted/40 rounded border font-mono text-xs text-emerald-400 select-all">
+                    <CopyableIdentifier
+                      value={recoveryLink}
+                      label="Recovery Link"
+                      truncateLength={64}
+                      className="w-full justify-between"
+                    />
                   </div>
                 )}
+              </div>
+
+              {/* FIDO2 / WebAuthn Passkeys Diagnostics */}
+              <div className="rounded-md border p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="h-4 w-4 text-cyan-400" />
+                    <div>
+                      <h4 className="text-sm font-medium">FIDO2 / WebAuthn Passkeys</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Hardware authenticators, TouchID / FaceID, and physical security keys.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                    W3C WebAuthn L3
+                  </span>
+                </div>
+
+                <div className="rounded bg-muted/30 p-3 text-xs space-y-2 font-mono">
+                  <div className="flex justify-between items-center text-muted-foreground">
+                    <span>Supported Algorithms:</span>
+                    <span className="text-foreground">ES256, RS256, EdDSA (-7, -257, -8)</span>
+                  </div>
+                  <div className="flex justify-between items-center text-muted-foreground">
+                    <span>Attestation Verification:</span>
+                    <span className="text-emerald-400 font-semibold">Direct & Enterprise CA (Ego Engine)</span>
+                  </div>
+                  <div className="flex justify-between items-center text-muted-foreground">
+                    <span>Replay Counter Guard:</span>
+                    <span className="text-emerald-400 font-semibold">Monotonic Increment Enforced</span>
+                  </div>
+                </div>
               </div>
 
               {/* Active Sessions */}
