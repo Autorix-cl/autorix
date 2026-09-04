@@ -162,6 +162,7 @@ export const translations = {
       colRelation: "Relation",
       colSubject: "Subject ID",
       colCaveat: "CEL Caveat",
+      newTupleButton: "Add Tuple",
     },
     oauth2: {
       title: "Autorix Janus: OAuth2 & JWKS Studio",
@@ -486,6 +487,7 @@ export const translations = {
       colRelation: "Relación",
       colSubject: "ID de Sujeto",
       colCaveat: "Advertencia CEL",
+      newTupleButton: "Agregar Tupla",
     },
     oauth2: {
       title: "Autorix Janus: Estudio OAuth2 y JWKS",
