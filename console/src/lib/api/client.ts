@@ -47,6 +47,51 @@ function extractMessage(body: unknown, rawText: string, status: number): string 
   return `request failed with status ${status}`;
 }
 
+let isRedirecting = false;
+let redirectHandler: ((targetUrl: string) => void) | null = null;
+
+export function setRedirectHandler(handler: ((targetUrl: string) => void) | null): void {
+  redirectHandler = handler;
+}
+
+export function redirectToLogin(fromPath?: string): void {
+  if (typeof window === "undefined" || isRedirecting) return;
+
+  const pathname = fromPath || window.location.pathname;
+  if (
+    pathname === "/login" ||
+    pathname.startsWith("/login/") ||
+    pathname === "/setup" ||
+    pathname.startsWith("/setup/") ||
+    pathname === "/session-expired"
+  ) {
+    return;
+  }
+
+  isRedirecting = true;
+  const from = encodeURIComponent(pathname + (window.location.search || ""));
+  const target = `/login?from=${from}`;
+
+  if (redirectHandler) {
+    redirectHandler(target);
+    return;
+  }
+
+  // Guard against JSDOM / Vitest unit tests where navigation is unsupported
+  if (process.env.NODE_ENV === "test") return;
+
+  try {
+    window.location.href = target;
+  } catch {
+    // Non-browser or JSDOM runtime fallback
+  }
+}
+
+export function resetRedirectFlag(): void {
+  isRedirecting = false;
+  redirectHandler = null;
+}
+
 function getCsrfToken(): string | null {
   if (typeof document === "undefined") return null;
   const match = document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]*)/);
@@ -104,6 +149,16 @@ export async function fetchJSON<T>(url: string, options: FetchJSONOptions = {}):
   }
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      const isPublicAuthRoute =
+        url.includes("/api/auth/login") ||
+        url.includes("/api/auth/status") ||
+        url.includes("/api/auth/setup");
+      if (!isPublicAuthRoute) {
+        redirectToLogin();
+      }
+    }
+
     return {
       ok: false,
       error: {

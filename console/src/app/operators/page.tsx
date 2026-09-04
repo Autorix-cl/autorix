@@ -1,29 +1,27 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
-import { ShieldAlert, KeyRound, UserCheck, RefreshCw, AlertCircle, Lock, UserPlus, Users, Shield, Activity } from "lucide-react";
+import { ShieldAlert, KeyRound, UserCheck, RefreshCw, Lock, UserPlus, Users, Shield, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { ServiceHeader } from "@/components/layout/service-header";
 import { CloudSection } from "@/components/layout/cloud-section";
+import { ErrorState } from "@/components/state/error-state";
+import { useApiQuery } from "@/lib/query/use-api-query";
+import { fetchAndParse } from "@/lib/api/schema";
+import { operatorsListSchema } from "@/lib/api/schemas/operator";
 import { OperatorBuilderSheet } from "./operator-builder-sheet";
-import type { OperatorDTO } from "@/lib/api/schemas/operator";
 
 export default function OperatorsPage() {
   const [isBuilderOpen, setIsBuilderOpen] = React.useState(false);
-  const { data: operators, isLoading, error, refetch } = useQuery<OperatorDTO[]>({
-    queryKey: ["operators"],
-    queryFn: async () => {
-      const res = await fetch("/api/operators");
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to load operators");
-      }
-      return res.json();
-    },
-  });
+  const {
+    data: operators,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useApiQuery(["operators"], () => fetchAndParse("/api/operators", operatorsListSchema));
 
   return (
     <div className="space-y-6">
@@ -152,10 +150,9 @@ export default function OperatorsPage() {
             <div className="py-12 text-center text-xs text-muted-foreground font-mono">
               Loading operators from control plane registry...
             </div>
-          ) : error ? (
-            <div className="p-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-              <span>{(error as Error).message}</span>
+          ) : isError ? (
+            <div className="py-6">
+              <ErrorState error={error} onRetry={refetch} />
             </div>
           ) : !operators || operators.length === 0 ? (
             <div className="py-12 text-center text-xs text-muted-foreground">

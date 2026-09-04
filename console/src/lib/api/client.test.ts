@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { fetchJSON } from "./client";
+import { fetchJSON, setRedirectHandler, resetRedirectFlag } from "./client";
 
 function jsonResponse(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}) {
   return new Response(JSON.stringify(body), {
@@ -10,6 +10,7 @@ function jsonResponse(body: unknown, init: { status?: number; headers?: Record<s
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  resetRedirectFlag();
 });
 
 describe("fetchJSON", () => {
@@ -135,5 +136,28 @@ describe("fetchJSON", () => {
     if (!result.ok) {
       expect(result.error.kind).toBe("unknown");
     }
+  });
+
+  it("triggers redirectToLogin on 401 for protected API endpoints", async () => {
+    const redirectSpy = vi.fn();
+    setRedirectHandler(redirectSpy);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: "unauthorized" }, { status: 401 })));
+
+    const result = await fetchJSON("/api/operators");
+
+    expect(result.ok).toBe(false);
+    expect(redirectSpy).toHaveBeenCalledTimes(1);
+    expect(redirectSpy).toHaveBeenCalledWith(expect.stringContaining("/login?from="));
+  });
+
+  it("does NOT trigger redirectToLogin on 401 for public auth endpoints (e.g. invalid credentials)", async () => {
+    const redirectSpy = vi.fn();
+    setRedirectHandler(redirectSpy);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: "invalid password" }, { status: 401 })));
+
+    const result = await fetchJSON("/api/auth/login");
+
+    expect(result.ok).toBe(false);
+    expect(redirectSpy).not.toHaveBeenCalled();
   });
 });

@@ -7,7 +7,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import type { z } from "zod";
 import { getServiceUrl, BACKEND_URLS } from "../api-config";
-import { getCurrentOperator } from "../auth/session";
+import { getCurrentOperator, SESSION_COOKIE_NAME } from "../auth/session";
 import { hasPermission } from "../auth/types";
 import { telemetryStore } from "../server/telemetry-store";
 
@@ -50,10 +50,12 @@ export async function proxyRequest<T>(
   if (options?.requiredPermission) {
     const operator = await getCurrentOperator();
     if (!operator) {
-      return NextResponse.json(
+      const res = NextResponse.json(
         { error: "unauthorized: authentication required" },
         { status: 401, headers },
       );
+      res.cookies.delete(SESSION_COOKIE_NAME);
+      return res;
     }
 
     if (!hasPermission(operator.role, options.requiredPermission)) {

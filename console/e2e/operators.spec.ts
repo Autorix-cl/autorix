@@ -36,4 +36,16 @@ test.describe("Argus Operator RBAC & Directory", () => {
     // Expect success toast or newly created operator to be visible
     await expect(page.locator("main").getByText(`auditor-${timestamp}@autorix.io`)).toBeVisible({ timeout: 10000 });
   });
+
+  test("redirects unauthenticated session to login page", async ({ page, context }) => {
+    // Clear all cookies to simulate expired/lost session
+    await context.clearCookies();
+
+    // Attempting to navigate to operators page
+    await page.goto("/operators");
+
+    // Must be redirected to /login with ?from=/operators
+    await page.waitForURL(/\/login\?from=%2Foperators/);
+    await expect(page.getByRole("heading", { name: /autorix console/i })).toBeVisible();
+  });
 });
