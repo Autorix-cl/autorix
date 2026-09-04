@@ -1,13 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Users, Plus, UserCheck, Search, RefreshCw, UploadCloud, Download, FileCode } from "lucide-react";
+import { Users, Plus, UserCheck, Search, RefreshCw, UploadCloud, Download, FileCode, Shield } from "lucide-react";
+import { ServiceHeader } from "@/components/layout/service-header";
 
 import { useTranslation } from "@/lib/i18n";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { fetchAndParse } from "@/lib/api/schema";
 import { paginatedIdentityListSchema, type Identity, type PaginatedIdentities } from "@/lib/api/schemas/identity";
@@ -159,67 +159,91 @@ export default function IdentitiesPage() {
         onOpenChange={setIsSchemaDialogOpen}
       />
 
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("identities.title")}</h1>
-            <Badge variant="cyan" className="gap-1.5 py-0.5 px-2.5 text-[11px] font-mono whitespace-nowrap shrink-0">
-              <UserCheck className="h-3 w-3 text-cyan-400" />
-              <span>{t("identities.statusBadge")}</span>
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">{t("identities.subtitle")}</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsSchemaDialogOpen(true)}
-            className="h-8 gap-1.5 text-xs"
-          >
-            <FileCode className="h-3.5 w-3.5 text-cyan-400" />
-            <span>Schemas</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportCsv}
-            className="h-8 gap-1.5 text-xs"
-          >
-            <Download className="h-3.5 w-3.5" />
-            <span>Export CSV</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsBulkImportOpen(true)}
-            className="h-8 gap-1.5 text-xs"
-          >
-            <UploadCloud className="h-3.5 w-3.5" />
-            <span>Bulk Import</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="h-8 gap-1.5 text-xs"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
-            <span>{t("common.refresh")}</span>
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => setIsBuilderOpen(true)}
-            className="h-8 gap-1.5 text-xs bg-cyan-600 hover:bg-cyan-700 text-white font-medium shadow-sm"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>{t("identities.inviteButton")}</span>
-          </Button>
-        </div>
-      </div>
+      {/* Cloud Service Header & Telemetry HUD */}
+      <ServiceHeader
+        serviceName="Ego Identity Engine"
+        title={t("identities.title")}
+        description={t("identities.subtitle")}
+        icon={Users}
+        iconColor="text-cyan-400"
+        statusText={t("identities.statusBadge")}
+        statusVariant="cyan"
+        metrics={[
+          {
+            label: "Total Identities",
+            value: identities.length,
+            hint: "Registered subjects",
+            icon: Users,
+          },
+          {
+            label: "Active Accounts",
+            value: identities.filter((i) => i.state === "active").length,
+            hint: "Fully verified",
+            icon: UserCheck,
+          },
+          {
+            label: "Identity Schema",
+            value: "Draft-07",
+            hint: "Ory Trait Model",
+            icon: FileCode,
+          },
+          {
+            label: "Engine Gateway",
+            value: "Port 4433",
+            hint: "mTLS SPIFFE Mesh",
+            icon: Shield,
+          },
+        ]}
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsSchemaDialogOpen(true)}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <FileCode className="h-3.5 w-3.5 text-cyan-400" />
+              <span>Schemas</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCsv}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Export CSV</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsBulkImportOpen(true)}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <UploadCloud className="h-3.5 w-3.5" />
+              <span>Bulk Import</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+              <span>{t("common.refresh")}</span>
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setIsBuilderOpen(true)}
+              className="h-8 gap-1.5 text-xs bg-cyan-600 hover:bg-cyan-700 text-white font-medium shadow-sm"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>{t("identities.inviteButton")}</span>
+            </Button>
+          </>
+        }
+      />
 
       {/* Identities Directory Table */}
       <Card className="bg-card/80">

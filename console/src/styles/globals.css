@@ -126,5 +126,27 @@
 }
 
 .subtle-mesh-bg {
-  background-image: radial-gradient(circle at 50% 0%, hsl(var(--primary) / 0.06) 0%, transparent 60%);
+  background-color: hsl(var(--background));
+  background-image: 
+    radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    radial-gradient(ellipse 80% 50% at 50% -10%, hsl(var(--primary) / 0.12), transparent 70%);
+  background-size: 24px 24px, 100% 100%;
+}
+
+/* Modern Cloud Console Surfaces & Telemetry HUD */
+.cloud-surface {
+  background: linear-gradient(180deg, hsl(var(--card) / 0.95) 0%, hsl(var(--card) / 0.65) 100%);
+  backdrop-filter: blur(12px);
+  border: 1px solid hsl(var(--border) / 0.7);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+}
+
+.cloud-hud-item {
+  background: hsl(var(--muted) / 0.25);
+  border: 1px solid hsl(var(--border) / 0.5);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cloud-hud-item:hover {
+  background: hsl(var(--muted) / 0.4);
+  border-color: hsl(var(--border) / 0.8);
 }
