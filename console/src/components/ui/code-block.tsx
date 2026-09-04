@@ -10,6 +10,7 @@ interface CodeBlockProps extends React.HTMLAttributes<HTMLDivElement> {
   language?: string;
   title?: string;
   showLineNumbers?: boolean;
+  maxHeight?: string;
 }
 
 export function CodeBlock({
@@ -17,6 +18,7 @@ export function CodeBlock({
   language = "json",
   title,
   showLineNumbers = false,
+  maxHeight,
   className,
   ...props
 }: CodeBlockProps) {
@@ -60,7 +62,12 @@ export function CodeBlock({
       </div>
 
       {/* Code content */}
-      <div className="overflow-x-auto p-3 text-slate-200">
+      <div
+        className={cn(
+          "overflow-x-auto p-3 text-slate-200",
+          maxHeight === "none" ? "" : cn("overflow-y-auto", maxHeight || "max-h-[440px]"),
+        )}
+      >
         {showLineNumbers ? (
           <table className="w-full border-collapse">
             <tbody>

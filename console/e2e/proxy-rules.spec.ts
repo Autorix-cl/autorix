@@ -18,12 +18,13 @@ test.describe("Aegis Zero-Trust Proxy Studio (Ory Oathkeeper PEP)", () => {
     await page.goto("/proxy-rules");
     await page.waitForLoadState("networkidle");
 
+    // Switch to Traffic Simulator tab
+    await page.getByRole("tab", { name: /Simulator/i }).click();
+
     const pathInput = page.locator("input[value*='/api/v1'], input[placeholder*='api/v1']").first();
     const testBtn = page.getByRole("button", { name: /Simulate Match/i });
 
-    if (await pathInput.isVisible()) {
-      await pathInput.fill(rule.match_path.replace("/<.*>", "/item-123"));
-    }
+    await pathInput.fill(rule.match_path.replace("/<.*>", "/item-123"));
     await testBtn.click();
 
     // Verify 3 pipeline stages are displayed: Authenticator, Authorizer, Mutator
@@ -34,6 +35,9 @@ test.describe("Aegis Zero-Trust Proxy Studio (Ory Oathkeeper PEP)", () => {
   });
 
   test("zero-trust default deny: returns no-match banner on unmapped URI", async ({ page }) => {
+    // Switch to Traffic Simulator tab
+    await page.getByRole("tab", { name: /Simulator/i }).click();
+
     const pathInput = page.locator("input[value*='/api/v1'], input[placeholder*='api/v1']").first();
     const testBtn = page.getByRole("button", { name: /Simulate Match/i });
 
@@ -42,5 +46,33 @@ test.describe("Aegis Zero-Trust Proxy Studio (Ory Oathkeeper PEP)", () => {
 
     // Verify Default Deny banner
     await expect(page.getByText(/No rule matched this path/i).first()).toBeVisible({ timeout: 5000 });
+  });
+
+  test("switches between studio tabs and renders scrollable declarative manifest", async ({ page }) => {
+    // Check initial tab is Routing Pipeline
+    await expect(page.getByText(/Active Proxy Rules & Order/i)).toBeVisible();
+
+    // Capture screenshot of Rules Pipeline
+    await page.screenshot({
+      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-aegis-rules.png",
+    });
+
+    // Switch to Traffic Simulator tab
+    await page.getByRole("tab", { name: /Simulator/i }).click();
+    await expect(page.getByRole("heading", { name: "Pipeline Request Matcher" })).toBeVisible();
+
+    // Capture screenshot of Simulator tab
+    await page.screenshot({
+      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-aegis-simulator.png",
+    });
+
+    // Switch to Declarative Manifest tab
+    await page.getByRole("tab", { name: /Declarative Rules Configuration|Manifest/i }).click();
+    await expect(page.getByText("GET /rules (Aegis admin API, live)")).toBeVisible();
+
+    // Capture screenshot of Declarative Manifest tab
+    await page.screenshot({
+      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-aegis-manifest.png",
+    });
   });
 });

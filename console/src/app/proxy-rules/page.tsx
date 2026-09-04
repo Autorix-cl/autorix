@@ -15,7 +15,10 @@ import {
   ArrowRight,
   Activity,
   Filter,
+  Search,
+  Download,
 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ServiceHeader } from "@/components/layout/service-header";
 import { CloudSection } from "@/components/layout/cloud-section";
 import { useTranslation } from "@/lib/i18n";
@@ -102,6 +105,9 @@ export default function ProxyRulesPage() {
     return map;
   }, [shadowWarnings]);
 
+  const [activeTab, setActiveTab] = React.useState<"rules" | "simulator" | "manifest">("rules");
+  const [searchFilter, setSearchFilter] = React.useState("");
+
   const [testPath, setTestPath] = React.useState("/api/v1/documents/financial_report_2026");
   const [testMethod, setTestMethod] = React.useState("GET");
   const [matchedRule, setMatchedRule] = React.useState<RuleItem | null>(null);
@@ -183,6 +189,42 @@ export default function ProxyRulesPage() {
     }
   };
 
+  const filteredRules = React.useMemo(() => {
+    if (!searchFilter.trim()) return apiRules;
+    const q = searchFilter.toLowerCase();
+    return apiRules.filter(
+      (r) =>
+        r.id.toLowerCase().includes(q) ||
+        r.match.url.toLowerCase().includes(q) ||
+        r.match.methods.some((m) => m.toLowerCase().includes(q)) ||
+        r.upstream.url.toLowerCase().includes(q) ||
+        r.authenticators.some((a) => a.handler.toLowerCase().includes(q)) ||
+        (r.authorizer?.handler || "").toLowerCase().includes(q) ||
+        r.mutators.some((m) => m.handler.toLowerCase().includes(q))
+    );
+  }, [apiRules, searchFilter]);
+
+  const handleQuickSimulate = (rule: ApiRule) => {
+    const sampleMethod = rule.match.methods[0] || "GET";
+    const samplePath = rule.match.url.replace(/<.*>/g, "item-123");
+    setTestMethod(sampleMethod);
+    setTestPath(samplePath);
+    setActiveTab("simulator");
+    testMatch.mutate({ method: sampleMethod, path: samplePath });
+  };
+
+  const handleExportJson = () => {
+    const blob = new Blob([rulesJSON], { type: "application/json;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `autorix_aegis_rules_${Date.now()}.json`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Manifest exported successfully");
+  };
+
   const testing = testMatch.isPending;
   const rulesJSON = JSON.stringify(apiRules, null, 2);
 
@@ -251,342 +293,439 @@ export default function ProxyRulesPage() {
         }
       />
 
-      {/* Simulator Section */}
-      <CloudSection
-        title="Pipeline Request Matcher"
-        description="Simulate HTTP requests through the Zero-Trust authentication and mutation stages"
-        icon={Play}
-        badge="Traffic Simulator"
-        badgeVariant="success"
+      {/* Studio Navigation Tabs */}
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as "rules" | "simulator" | "manifest")}
+        className="space-y-4"
       >
-        <Card className="bg-card/80">
-          <CardHeader className="p-6 pb-4">
-            <div className="flex items-center gap-2">
-              <Play className="h-4 w-4 text-emerald-400" />
-              <CardTitle className="text-sm font-semibold">{t("proxyRules.simulatorTitle")}</CardTitle>
-            </div>
-            <CardDescription className="text-xs">{t("proxyRules.simulatorDesc")}</CardDescription>
-          </CardHeader>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border pb-3">
+          <TabsList className="bg-muted/40 p-1">
+            <TabsTrigger value="rules" className="gap-2 text-xs font-medium">
+              <Shield className="h-3.5 w-3.5 text-emerald-400" />
+              <span>Routing Pipeline</span>
+              <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px] font-mono">
+                {apiRules.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="simulator" className="gap-2 text-xs font-medium">
+              <Play className="h-3.5 w-3.5 text-blue-400" />
+              <span>{t("proxyRules.simulatorTitle")}</span>
+            </TabsTrigger>
+            <TabsTrigger value="manifest" className="gap-2 text-xs font-medium">
+              <FileCode className="h-3.5 w-3.5 text-purple-400" />
+              <span>{t("proxyRules.yamlTitle")}</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-          <CardContent className="p-6 pt-0 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-              <div className="md:col-span-3 space-y-1.5">
-                <Label>{t("proxyRules.methodLabel")}</Label>
-                <Select value={testMethod} onValueChange={setTestMethod}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select method" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="GET">GET</SelectItem>
-                    <SelectItem value="POST">POST</SelectItem>
-                    <SelectItem value="PUT">PUT</SelectItem>
-                    <SelectItem value="DELETE">DELETE</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="md:col-span-6 space-y-1.5">
-                <Label>{t("proxyRules.pathLabel")}</Label>
-                <Input
-                  value={testPath}
-                  onChange={(e) => setTestPath(e.target.value)}
-                  placeholder="/api/v1/resource"
-                  className="font-mono text-xs"
-                />
-              </div>
-
-              <div className="md:col-span-3">
-                <Button
-                  type="button"
-                  variant="success"
-                  onClick={handleTestMatch}
-                  disabled={testing}
-                  className="w-full gap-2"
-                >
-                  <Play className="h-4 w-4" />
-                  <span>{testing ? t("proxyRules.testingBtn") : t("proxyRules.simulateBtn")}</span>
-                </Button>
-              </div>
-            </div>
-
-            {/* Matched Rule Result Visualization */}
-            {matchedRule ? (
-              <div className="rounded-xl border border-border/80 bg-muted/20 p-4 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border/50 pb-3">
-                  <Badge variant="success" className="gap-1.5 py-0.5 font-mono text-xs">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    <span>{t("proxyRules.matchedBadge", { id: matchedRule.id })}</span>
-                  </Badge>
-                  <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
-                    <Server className="h-3.5 w-3.5 text-blue-400" />
-                    <span>
-                      {t("proxyRules.upstreamLabel")}: <strong className="text-foreground">{matchedRule.upstream}</strong>
-                    </span>
-                  </div>
+        {/* Tab 1: Rules Pipeline */}
+        <TabsContent value="rules" className="space-y-4 focus-visible:outline-none">
+          <CloudSection
+            title="Zero-Trust Policy Enforcement Pipeline"
+            description="Ordered reverse proxy routing rules with first-match priority"
+            icon={Shield}
+            badge={`${apiRules.length} Rules`}
+            badgeVariant="success"
+            actions={
+              <div className="flex items-center gap-2">
+                <div className="relative w-48 sm:w-64">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Filter rules by path, method..."
+                    value={searchFilter}
+                    onChange={(e) => setSearchFilter(e.target.value)}
+                    className="h-8 pl-8 text-xs bg-muted/20"
+                  />
                 </div>
-
-                {/* 3 Core Pipeline Stages */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="rounded-lg border border-border/60 bg-card p-3 space-y-1.5">
-                    <div className="text-[10px] font-bold uppercase text-blue-400">{t("proxyRules.step1")}</div>
-                    <div className="text-xs font-semibold text-foreground font-mono">{matchedRule.authenticator}</div>
-                    <div className="text-[11px] text-muted-foreground">
-                      Verifies cryptographic claims & token validity
-                    </div>
+              </div>
+            }
+          >
+            <Card className="bg-card/80">
+              <CardHeader className="p-6 pb-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-primary" />
+                    <CardTitle className="text-sm font-semibold">Active Proxy Rules &amp; Order</CardTitle>
                   </div>
-
-                  <div className="rounded-lg border border-border/60 bg-card p-3 space-y-1.5">
-                    <div className="text-[10px] font-bold uppercase text-purple-400">{t("proxyRules.step2")}</div>
-                    <div className="text-xs font-semibold text-foreground font-mono">{matchedRule.authorizer}</div>
-                    <div className="text-[11px] text-muted-foreground">
-                      Zero-latency Zanzibar relation & CEL condition
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-border/60 bg-card p-3 space-y-1.5">
-                    <div className="text-[10px] font-bold uppercase text-emerald-400">{t("proxyRules.step3")}</div>
-                    <div className="text-xs font-semibold text-foreground font-mono">{matchedRule.mutator}</div>
-                    <div className="text-[11px] text-muted-foreground">
-                      Injects verified identity claims into upstream headers
-                    </div>
-                  </div>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {filteredRules.length} of {apiRules.length} {apiRules.length === 1 ? "rule" : "rules"}
+                  </span>
                 </div>
+                <CardDescription className="text-xs">
+                  Evaluation is first-match wins. Reorder rules using controls to prevent shadowing.
+                </CardDescription>
+              </CardHeader>
 
-                {/* Step-by-Step Execution Trace */}
-                {pipelineTrace && pipelineTrace.steps && pipelineTrace.steps.length > 0 && (
-                  <div className="border-t border-border/60 pt-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
-                        <Layers className="w-3.5 h-3.5 text-primary" />
-                        Dry-Run Execution Trace
-                      </span>
-                      <Badge
-                        variant={pipelineTrace.final_verdict === "allow" ? "success" : "destructive"}
-                        className="text-[10px] uppercase tracking-wider font-mono font-bold"
-                      >
-                        Verdict: {pipelineTrace.final_verdict}
-                      </Badge>
-                    </div>
+              <CardContent className="p-6 pt-0">
+                {loadingRules ? (
+                  <LoadingState label="Loading rules from Aegis…" />
+                ) : rulesError ? (
+                  <ErrorState error={rulesErrorObj} onRetry={refetchRules} />
+                ) : apiRules.length === 0 ? (
+                  <EmptyState
+                    title="No Rules Configured"
+                    description="Use the 'New Proxy Rule' wizard to register your first routing rule."
+                  />
+                ) : filteredRules.length === 0 ? (
+                  <div className="py-8 text-center space-y-2">
+                    <p className="text-xs text-muted-foreground">No rules matching &ldquo;{searchFilter}&rdquo;</p>
+                    <Button variant="ghost" size="sm" onClick={() => setSearchFilter("")} className="h-7 text-xs">
+                      Clear filter
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="border rounded-md divide-y overflow-hidden">
+                    {filteredRules.map((rule, idx) => {
+                      const isShadowed = shadowMap.has(rule.id);
+                      const shadowReason = shadowMap.get(rule.id);
 
-                    <div className="space-y-1.5">
-                      {pipelineTrace.steps.map((step, idx) => (
+                      return (
                         <div
-                          key={idx}
-                          className="text-xs font-mono p-2 rounded bg-background/80 border border-border/40 flex items-center justify-between"
+                          key={rule.id}
+                          className={`p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors ${
+                            isShadowed ? "bg-amber-500/5 hover:bg-amber-500/10" : "hover:bg-muted/30"
+                          }`}
                         >
-                          <div className="flex items-center gap-2">
-                            <span className="text-muted-foreground">{idx + 1}.</span>
-                            <span className="font-semibold uppercase text-[11px] text-primary">
-                              {step.stage}
-                            </span>
-                            {step.handler && (
-                              <span className="text-muted-foreground">({step.handler})</span>
-                            )}
-                            {step.details && (
-                              <span className="text-xs text-foreground/80">{step.details}</span>
-                            )}
-                            {step.target_url && (
-                              <span className="text-xs text-blue-400 flex items-center gap-1">
-                                <ArrowRight className="w-3 h-3" />
-                                {step.target_url}
+                          <div className="flex items-start gap-3">
+                            {/* Priority Controls */}
+                            <div className="flex flex-col items-center gap-1 pr-2 border-r">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6"
+                                disabled={idx === 0 || reorderMutation.isPending || !!searchFilter}
+                                onClick={() => moveRule(idx, "up")}
+                                title={searchFilter ? "Clear filter to reorder" : "Move Up"}
+                              >
+                                <ArrowUp className="h-3 w-3" />
+                              </Button>
+                              <span className="text-[10px] font-mono font-bold text-muted-foreground">
+                                {idx + 1}
                               </span>
-                            )}
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6"
+                                disabled={idx === filteredRules.length - 1 || reorderMutation.isPending || !!searchFilter}
+                                onClick={() => moveRule(idx, "down")}
+                                title={searchFilter ? "Clear filter to reorder" : "Move Down"}
+                              >
+                                <ArrowDown className="h-3 w-3" />
+                              </Button>
+                            </div>
+
+                            {/* Match Criteria */}
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <div className="flex gap-1">
+                                  {rule.match.methods.map((m) => (
+                                    <Badge key={m} variant="secondary" className="font-mono text-[10px] px-1.5 py-0">
+                                      {m}
+                                    </Badge>
+                                  ))}
+                                </div>
+                                <span className="font-mono text-xs font-semibold text-foreground">
+                                  {rule.match.url}
+                                </span>
+                                {isShadowed && (
+                                  <Badge
+                                    variant="warning"
+                                    className="gap-1 text-[10px] py-0 px-1.5 border-amber-500/30 text-amber-400 bg-amber-500/10"
+                                    title={shadowReason}
+                                  >
+                                    <AlertTriangle className="h-2.5 w-2.5" />
+                                    Shadowed
+                                  </Badge>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
+                                <span className="truncate max-w-[200px] md:max-w-none">
+                                  To: <strong className="text-foreground">{rule.upstream.url}</strong>
+                                </span>
+                                <span>•</span>
+                                <span className="text-[11px]">ID: {rule.id}</span>
+                              </div>
+
+                              {isShadowed && (
+                                <p className="text-[11px] text-amber-400 font-medium">
+                                  ⚠ {shadowReason}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                          <Badge
-                            variant={step.status === "success" ? "secondary" : "destructive"}
-                            className="text-[10px]"
-                          >
-                            {step.status}
-                          </Badge>
+
+                          {/* Pipeline Flow Badges & Actions */}
+                          <div className="flex items-center gap-3">
+                            <div className="hidden lg:flex items-center gap-1.5 font-mono text-[11px]">
+                              <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded">
+                                {rule.authenticators.map((a) => a.handler).join(", ") || "none"}
+                              </span>
+                              <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                              <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded">
+                                {rule.authorizer?.handler || "none"}
+                              </span>
+                              <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                              <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded">
+                                {rule.mutators.map((m) => m.handler).join(", ") || "none"}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                                onClick={() => handleQuickSimulate(rule)}
+                                title="Simulate this rule in test bench"
+                              >
+                                <Play className="h-4 w-4" />
+                              </Button>
+
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-rose-400 hover:text-rose-500 hover:bg-rose-500/10"
+                                disabled={deleteMutation.isPending}
+                                onClick={() => handleDelete(rule.id)}
+                                title="Delete rule"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })}
                   </div>
                 )}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-400 font-medium">
-                {t("proxyRules.noMatch")}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </CloudSection>
+              </CardContent>
+            </Card>
+          </CloudSection>
+        </TabsContent>
 
-      {/* Ordered Rules Management Table (P6-S5-T2, T7) */}
-      <CloudSection
-        title="Zero-Trust Policy Enforcement Pipeline"
-        description="Ordered reverse proxy routing rules with first-match priority"
-        icon={Shield}
-        badge={`${apiRules.length} Rules`}
-        badgeVariant="success"
-      >
-        <Card className="bg-card/80">
-          <CardHeader className="p-6 pb-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-primary" />
-                <CardTitle className="text-sm font-semibold">Active Proxy Rules & Order</CardTitle>
-              </div>
-              <span className="text-xs text-muted-foreground font-mono">
-                {apiRules.length} {apiRules.length === 1 ? "rule configured" : "rules configured"}
-              </span>
-            </div>
-            <CardDescription className="text-xs">
-              Evaluation is first-match wins. Reorder rules using controls to prevent shadowing.
-            </CardDescription>
-          </CardHeader>
+        {/* Tab 2: Traffic Simulator */}
+        <TabsContent value="simulator" className="space-y-4 focus-visible:outline-none">
+          <CloudSection
+            title="Pipeline Request Matcher"
+            description="Simulate HTTP requests through the Zero-Trust authentication and mutation stages"
+            icon={Play}
+            badge="Traffic Simulator"
+            badgeVariant="success"
+          >
+            <Card className="bg-card/80">
+              <CardHeader className="p-6 pb-4">
+                <div className="flex items-center gap-2">
+                  <Play className="h-4 w-4 text-emerald-400" />
+                  <CardTitle className="text-sm font-semibold">{t("proxyRules.simulatorTitle")}</CardTitle>
+                </div>
+                <CardDescription className="text-xs">{t("proxyRules.simulatorDesc")}</CardDescription>
+              </CardHeader>
 
-          <CardContent className="p-6 pt-0">
-            {loadingRules ? (
-              <LoadingState label="Loading rules from Aegis…" />
-            ) : rulesError ? (
-              <ErrorState error={rulesErrorObj} onRetry={refetchRules} />
-            ) : apiRules.length === 0 ? (
-              <EmptyState title="No Rules Configured" description="Use the 'New Proxy Rule' wizard to register your first routing rule." />
-            ) : (
-              <div className="border rounded-md divide-y overflow-hidden">
-                {apiRules.map((rule, idx) => {
-                  const isShadowed = shadowMap.has(rule.id);
-                  const shadowReason = shadowMap.get(rule.id);
+              <CardContent className="p-6 pt-0 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                  <div className="md:col-span-3 space-y-1.5">
+                    <Label>{t("proxyRules.methodLabel")}</Label>
+                    <Select value={testMethod} onValueChange={setTestMethod}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="GET">GET</SelectItem>
+                        <SelectItem value="POST">POST</SelectItem>
+                        <SelectItem value="PUT">PUT</SelectItem>
+                        <SelectItem value="DELETE">DELETE</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                  return (
-                    <div
-                      key={rule.id}
-                      className={`p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors ${
-                        isShadowed ? "bg-amber-500/5 hover:bg-amber-500/10" : "hover:bg-muted/30"
-                      }`}
+                  <div className="md:col-span-6 space-y-1.5">
+                    <Label>{t("proxyRules.pathLabel")}</Label>
+                    <Input
+                      value={testPath}
+                      onChange={(e) => setTestPath(e.target.value)}
+                      placeholder="/api/v1/resource"
+                      className="font-mono text-xs"
+                    />
+                  </div>
+
+                  <div className="md:col-span-3">
+                    <Button
+                      type="button"
+                      variant="success"
+                      onClick={handleTestMatch}
+                      disabled={testing}
+                      className="w-full gap-2"
                     >
-                      <div className="flex items-start gap-3">
-                        {/* Priority Controls */}
-                        <div className="flex flex-col items-center gap-1 pr-2 border-r">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-6 w-6"
-                            disabled={idx === 0 || reorderMutation.isPending}
-                            onClick={() => moveRule(idx, "up")}
-                            title="Move Up"
-                          >
-                            <ArrowUp className="h-3 w-3" />
-                          </Button>
-                          <span className="text-[10px] font-mono font-bold text-muted-foreground">
-                            {idx + 1}
-                          </span>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-6 w-6"
-                            disabled={idx === apiRules.length - 1 || reorderMutation.isPending}
-                            onClick={() => moveRule(idx, "down")}
-                            title="Move Down"
-                          >
-                            <ArrowDown className="h-3 w-3" />
-                          </Button>
-                        </div>
+                      <Play className="h-4 w-4" />
+                      <span>{testing ? t("proxyRules.testingBtn") : t("proxyRules.simulateBtn")}</span>
+                    </Button>
+                  </div>
+                </div>
 
-                        {/* Match Criteria */}
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <div className="flex gap-1">
-                              {rule.match.methods.map((m) => (
-                                <Badge key={m} variant="secondary" className="font-mono text-[10px] px-1.5 py-0">
-                                  {m}
-                                </Badge>
-                              ))}
-                            </div>
-                            <span className="font-mono text-xs font-semibold text-foreground">
-                              {rule.match.url}
-                            </span>
-                            {isShadowed && (
-                              <Badge variant="warning" className="gap-1 text-[10px] py-0 px-1.5 border-amber-500/30 text-amber-400 bg-amber-500/10" title={shadowReason}>
-                                <AlertTriangle className="h-2.5 w-2.5" />
-                                Shadowed
-                              </Badge>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
-                            <span className="truncate max-w-[200px] md:max-w-none">
-                              To: <strong className="text-foreground">{rule.upstream.url}</strong>
-                            </span>
-                            <span>•</span>
-                            <span className="text-[11px]">ID: {rule.id}</span>
-                          </div>
-
-                          {isShadowed && (
-                            <p className="text-[11px] text-amber-400 font-medium">
-                              ⚠ {shadowReason}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Pipeline Flow Badges & Actions */}
-                      <div className="flex items-center gap-3">
-                        <div className="hidden lg:flex items-center gap-1.5 font-mono text-[11px]">
-                          <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded">
-                            {rule.authenticators.map((a) => a.handler).join(", ") || "none"}
-                          </span>
-                          <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                          <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded">
-                            {rule.authorizer?.handler || "none"}
-                          </span>
-                          <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                          <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded">
-                            {rule.mutators.map((m) => m.handler).join(", ") || "none"}
-                          </span>
-                        </div>
-
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 text-rose-400 hover:text-rose-500 hover:bg-rose-500/10"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => handleDelete(rule.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                {/* Matched Rule Result Visualization */}
+                {matchedRule ? (
+                  <div className="rounded-xl border border-border/80 bg-muted/20 p-4 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border/50 pb-3">
+                      <Badge variant="success" className="gap-1.5 py-0.5 font-mono text-xs">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        <span>{t("proxyRules.matchedBadge", { id: matchedRule.id })}</span>
+                      </Badge>
+                      <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+                        <Server className="h-3.5 w-3.5 text-blue-400" />
+                        <span>
+                          {t("proxyRules.upstreamLabel")}: <strong className="text-foreground">{matchedRule.upstream}</strong>
+                        </span>
                       </div>
                     </div>
-                  );
-                })}
+
+                    {/* 3 Core Pipeline Stages */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="rounded-lg border border-border/60 bg-card p-3 space-y-1.5">
+                        <div className="text-[10px] font-bold uppercase text-blue-400">{t("proxyRules.step1")}</div>
+                        <div className="text-xs font-semibold text-foreground font-mono">{matchedRule.authenticator}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          Verifies cryptographic claims &amp; token validity
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-border/60 bg-card p-3 space-y-1.5">
+                        <div className="text-[10px] font-bold uppercase text-purple-400">{t("proxyRules.step2")}</div>
+                        <div className="text-xs font-semibold text-foreground font-mono">{matchedRule.authorizer}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          Zero-latency Zanzibar relation &amp; CEL condition
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-border/60 bg-card p-3 space-y-1.5">
+                        <div className="text-[10px] font-bold uppercase text-emerald-400">{t("proxyRules.step3")}</div>
+                        <div className="text-xs font-semibold text-foreground font-mono">{matchedRule.mutator}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          Injects verified identity claims into upstream headers
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Step-by-Step Execution Trace */}
+                    {pipelineTrace && pipelineTrace.steps && pipelineTrace.steps.length > 0 && (
+                      <div className="border-t border-border/60 pt-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
+                            <Layers className="w-3.5 h-3.5 text-primary" />
+                            Dry-Run Execution Trace
+                          </span>
+                          <Badge
+                            variant={pipelineTrace.final_verdict === "allow" ? "success" : "destructive"}
+                            className="text-[10px] uppercase tracking-wider font-mono font-bold"
+                          >
+                            Verdict: {pipelineTrace.final_verdict}
+                          </Badge>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          {pipelineTrace.steps.map((step, idx) => (
+                            <div
+                              key={idx}
+                              className="text-xs font-mono p-2 rounded bg-background/80 border border-border/40 flex items-center justify-between"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-muted-foreground">{idx + 1}.</span>
+                                <span className="font-semibold uppercase text-[11px] text-primary">
+                                  {step.stage}
+                                </span>
+                                {step.handler && (
+                                  <span className="text-muted-foreground">({step.handler})</span>
+                                )}
+                                {step.details && (
+                                  <span className="text-xs text-foreground/80">{step.details}</span>
+                                )}
+                                {step.target_url && (
+                                  <span className="text-xs text-blue-400 flex items-center gap-1">
+                                    <ArrowRight className="w-3 h-3" />
+                                    {step.target_url}
+                                  </span>
+                                )}
+                              </div>
+                              <Badge
+                                variant={step.status === "success" ? "secondary" : "destructive"}
+                                className="text-[10px]"
+                              >
+                                {step.status}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-400 font-medium">
+                    {t("proxyRules.noMatch")}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </CloudSection>
+        </TabsContent>
+
+        {/* Tab 3: Declarative Manifest */}
+        <TabsContent value="manifest" className="space-y-4 focus-visible:outline-none">
+          <CloudSection
+            title="Declarative Rule Manifest"
+            description="Real-time serialized proxy configuration and active routing topology"
+            icon={FileCode}
+            badge="JSON Manifest"
+            badgeVariant="cyan"
+            actions={
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportJson}
+                  className="h-8 gap-1.5 text-xs"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Export JSON</span>
+                </Button>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </CloudSection>
+            }
+          >
+            <Card className="bg-card/80">
+              <CardHeader className="p-6 pb-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileCode className="h-4 w-4 text-blue-400" />
+                    <CardTitle className="text-sm font-semibold">{t("proxyRules.yamlTitle")}</CardTitle>
+                  </div>
+                  <span className="text-xs font-mono text-muted-foreground">
+                    {apiRules.length} rules configured • {new Blob([rulesJSON]).size} bytes
+                  </span>
+                </div>
+                <CardDescription className="text-xs">{t("proxyRules.yamlDesc")}</CardDescription>
+              </CardHeader>
 
-      {/* Declarative Rules Live JSON Viewer */}
-      <CloudSection
-        title="Declarative Rule Manifest"
-        description="Real-time serialized proxy configuration and active routing topology"
-        icon={FileCode}
-        badge="JSON Manifest"
-        badgeVariant="cyan"
-      >
-        <Card className="bg-card/80">
-          <CardHeader className="p-6 pb-4">
-            <div className="flex items-center gap-2">
-              <FileCode className="h-4 w-4 text-blue-400" />
-              <CardTitle className="text-sm font-semibold">{t("proxyRules.yamlTitle")}</CardTitle>
-            </div>
-            <CardDescription className="text-xs">{t("proxyRules.yamlDesc")}</CardDescription>
-          </CardHeader>
-
-          <CardContent className="p-6 pt-0">
-            {loadingRules ? (
-              <LoadingState label="Loading rules from Aegis…" />
-            ) : rulesError ? (
-              <ErrorState error={rulesErrorObj} onRetry={refetchRules} />
-            ) : apiRules.length === 0 ? (
-              <EmptyState title={t("proxyRules.yamlTitle")} description="No proxy rules registered in Aegis yet." />
-            ) : (
-              <CodeBlock code={rulesJSON} language="json" title="GET /rules (Aegis admin API, live)" showLineNumbers />
-            )}
-          </CardContent>
-        </Card>
-      </CloudSection>
+              <CardContent className="p-6 pt-0">
+                {loadingRules ? (
+                  <LoadingState label="Loading rules from Aegis…" />
+                ) : rulesError ? (
+                  <ErrorState error={rulesErrorObj} onRetry={refetchRules} />
+                ) : apiRules.length === 0 ? (
+                  <EmptyState title={t("proxyRules.yamlTitle")} description="No proxy rules registered in Aegis yet." />
+                ) : (
+                  <CodeBlock
+                    code={rulesJSON}
+                    language="json"
+                    title="GET /rules (Aegis admin API, live)"
+                    showLineNumbers
+                    maxHeight="max-h-[460px]"
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </CloudSection>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
