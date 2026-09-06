@@ -169,6 +169,7 @@ export function NotificationCenter() {
                   type="button"
                   onClick={(e) => clearNotification(n.id, e)}
                   className="text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100 cursor-pointer"
+                  aria-label="Dismiss notification"
                 >
                   <X className="h-3 w-3" />
                 </button>
