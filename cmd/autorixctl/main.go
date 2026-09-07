@@ -12,7 +12,8 @@ import (
 	"time"
 )
 
-const version = "1.0.0"
+// version is stamped by the release workflow with -ldflags -X main.version.
+var version = "dev"
 
 type Config struct {
 	ArgusURL string
