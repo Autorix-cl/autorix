@@ -20,21 +20,11 @@ func (p *PipelineProxy) Catalogue() core.HandlerCatalogue {
 		var schema map[string]interface{}
 		switch name {
 		case "jwt":
-			desc = "Validates JSON Web Tokens using asymmetric public keys or remote JWKS"
+			desc = "Validates RS256 access tokens using the operator-configured RSA public key or trusted JWKS, issuer, audience, and required expiration"
 			schema = map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"jwks_url": map[string]interface{}{
-						"type":        "string",
-						"description": "JWKS endpoint URL for key rotation",
-					},
-					"allowed_algorithms": map[string]interface{}{
-						"type": "array",
-						"items": map[string]interface{}{
-							"type": "string",
-						},
-					},
-				},
+				"type":                 "object",
+				"additionalProperties": false,
+				"description":          "Trust is configured at startup with JWT_JWKS_URL (or JWT_PUBLIC_KEY_FILE), JWT_ISSUER, and JWT_AUDIENCE; per-rule overrides are not supported",
 			}
 		case "anonymous":
 			desc = "Provides an anonymous identity session for public endpoints"
@@ -297,9 +287,9 @@ func (p *PipelineProxy) DryRun(r *http.Request) (*core.PipelineTrace, error) {
 	targetURL, err := BuildUpstreamURL(r.URL, matchedRule.Match.URL, matchedRule.Upstream)
 	if err != nil {
 		trace.Steps = append(trace.Steps, core.PipelineTraceStep{
-			Stage:   "upstream",
-			Status:  "failure",
-			Error:   fmt.Sprintf("Invalid upstream URL: %v", err),
+			Stage:  "upstream",
+			Status: "failure",
+			Error:  fmt.Sprintf("Invalid upstream URL: %v", err),
 		})
 		trace.FinalVerdict = "error"
 		trace.Error = fmt.Sprintf("Invalid upstream URL: %v", err)

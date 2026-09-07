@@ -235,7 +235,7 @@ func TestPipelineProxy_DryRun(t *testing.T) {
 func TestPipelineProxy_Catalogue(t *testing.T) {
 	proxyHandler := NewPipelineProxy(
 		nil,
-		[]core.Authenticator{&authenticator.AnonymousAuthenticator{}, authenticator.NewJWTAuthenticator(nil), &authenticator.NoopAuthenticator{}},
+		[]core.Authenticator{&authenticator.AnonymousAuthenticator{}, &authenticator.JWTAuthenticator{}, &authenticator.NoopAuthenticator{}},
 		[]core.Authorizer{&authorizer.AllowAuthorizer{}, &authorizer.DenyAuthorizer{}, authorizer.NewNexusAuthorizer()},
 		[]core.Mutator{mutator.NewHeaderMutator(), &mutator.NoopMutator{}},
 	)

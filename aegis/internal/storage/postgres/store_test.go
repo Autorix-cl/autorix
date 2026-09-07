@@ -3,7 +3,11 @@ package postgres_test
 import (
 	"context"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/autorix/aegis/internal/core"
 	"github.com/autorix/aegis/internal/storage/postgres"
@@ -17,7 +21,12 @@ func newTestStore(t *testing.T) *postgres.PostgresStore {
 	if err != nil {
 		t.Fatalf("failed to create postgres store: %v", err)
 	}
+	t.Cleanup(store.Close)
 	return store
+}
+
+func testRule(id, path string) core.Rule {
+	return core.Rule{ID: id, Description: id, Match: core.MatchConfig{URL: path, Methods: []string{"GET"}}, Upstream: core.UpstreamConfig{URL: "http://backend.internal"}}
 }
 
 func TestPostgresStore_CRUDAndMatching(t *testing.T) {
@@ -199,4 +208,160 @@ func TestPostgresStore_ImportExport(t *testing.T) {
 	if exported[0].ID != "imp-1" || exported[1].ID != "imp-2" {
 		t.Fatalf("unexpected exported rules: %+v", exported)
 	}
+}
+
+func TestPostgresStore_BootstrapSeedsOnceAcrossConcurrentStartsAndRestart(t *testing.T) {
+	pool := pgtest.StartPostgres(t, "../../../migrations")
+	ctx := context.Background()
+	seedPath := writeBootstrapRules(t, `
+- id: "seed-health"
+  description: "bootstrap health"
+  match:
+    url: "/health"
+    methods: ["GET"]
+  authenticators: []
+  authorizer: {}
+  mutators: []
+  upstream:
+    url: "http://health.internal"
+- id: "seed-api"
+  description: "bootstrap api"
+  match:
+    url: "/api/<.*>"
+    methods: ["GET"]
+  authenticators: []
+  authorizer: {}
+  mutators: []
+  upstream:
+    url: "http://api.internal"
+`)
+
+	const replicas = 4
+	stores := make(chan *postgres.PostgresStore, replicas)
+	errs := make(chan error, replicas)
+	var wg sync.WaitGroup
+	for range replicas {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			store, err := postgres.NewPostgresStoreWithBootstrap(ctx, pool, seedPath)
+			if err == nil {
+				stores <- store
+			}
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	close(stores)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent bootstrap: %v", err)
+		}
+	}
+
+	var count, versions int
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM rules").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM rule_versions").Scan(&versions); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 || versions != 1 {
+		t.Fatalf("rules=%d versions=%d, want exactly 2 seeded rules and one snapshot", count, versions)
+	}
+
+	var initialized []*postgres.PostgresStore
+	for store := range stores {
+		initialized = append(initialized, store)
+	}
+	if len(initialized) == 0 {
+		t.Fatal("no store initialized")
+	}
+	first := initialized[0]
+	t.Cleanup(first.Close)
+	for _, store := range initialized[1:] {
+		store.Close()
+	}
+	managed, err := first.Get("seed-health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed.Description = "operator managed"
+	if _, err := first.Update(managed.ID, managed); err != nil {
+		t.Fatal(err)
+	}
+
+	replacementPath := writeBootstrapRules(t, `
+- id: "replacement"
+  description: "must not replace operator rules"
+  match:
+    url: "/replacement"
+    methods: ["GET"]
+  authenticators: []
+  authorizer: {}
+  mutators: []
+  upstream:
+    url: "http://replacement.internal"
+`)
+	restarted, err := postgres.NewPostgresStoreWithBootstrap(ctx, pool, replacementPath)
+	if err != nil {
+		t.Fatalf("restart bootstrap: %v", err)
+	}
+	t.Cleanup(restarted.Close)
+	got, err := restarted.Get("seed-health")
+	if err != nil || got.Description != "operator managed" {
+		t.Fatalf("existing rules changed on restart: rule=%+v err=%v", got, err)
+	}
+	if _, err := restarted.Get("replacement"); err == nil {
+		t.Fatal("restart imported replacement bootstrap rules over existing database rules")
+	}
+}
+
+func TestPostgresStore_PropagatesRuleChangesAndStopsOnClose(t *testing.T) {
+	pool := pgtest.StartPostgres(t, "../../../migrations")
+	ctx := context.Background()
+	writer, err := postgres.NewPostgresStore(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(writer.Close)
+	reader, err := postgres.NewPostgresStore(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(reader.Close)
+	if _, err := writer.Create(testRule("replica-visible", "/replica")); err != nil {
+		t.Fatalf("writer create: %v", err)
+	}
+	waitForRule(t, reader, "replica-visible")
+	reader.Close()
+	if _, err := writer.Create(testRule("after-close", "/after-close")); err != nil {
+		t.Fatalf("writer create after close: %v", err)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if _, err := reader.Get("after-close"); err == nil {
+		t.Fatal("closed store reloaded from postgres notification")
+	}
+}
+
+func waitForRule(t *testing.T, store *postgres.PostgresStore, id string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := store.Get(id); err == nil {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for propagated rule %q", id)
+}
+
+func writeBootstrapRules(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "rules.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write bootstrap rules: %v", err)
+	}
+	return path
 }

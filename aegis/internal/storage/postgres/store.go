@@ -7,14 +7,17 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/autorix/aegis/internal/core"
 	"github.com/autorix/aegis/internal/rule"
 	"github.com/autorix/platform/paging"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"gopkg.in/yaml.v3"
 )
 
 // PostgresStore implements rule.Store backed by PostgreSQL with an in-memory cache and hot-reload.
@@ -23,7 +26,13 @@ type PostgresStore struct {
 	mu      sync.RWMutex
 	rules   []core.Rule
 	matcher *rule.Matcher
+
+	listenerCancel context.CancelFunc
+	listenerDone   chan struct{}
+	listenerOnce   sync.Once
 }
+
+const rulesChangeChannel = "aegis_rules_changed"
 
 // NewPostgresStore initializes a PostgresStore, loads existing rules from DB into memory, and compiles the Matcher.
 func NewPostgresStore(ctx context.Context, pool *pgxpool.Pool) (*PostgresStore, error) {
@@ -31,7 +40,192 @@ func NewPostgresStore(ctx context.Context, pool *pgxpool.Pool) (*PostgresStore, 
 	if err := s.reloadLocked(ctx); err != nil {
 		return nil, fmt.Errorf("failed to initialize rules cache from postgres: %w", err)
 	}
+	s.startRuleChangeListener()
 	return s, nil
+}
+
+const rulesBootstrapAdvisoryLock int64 = 0x414547495352554c // "AEGISRUL"
+
+// NewPostgresStoreWithBootstrap initializes the database-backed rule store and,
+// when the rules table is empty, seeds it exactly once from the operator-supplied
+// YAML file. Existing database rules are never imported over or otherwise
+// changed. The advisory lock makes startup safe when multiple replicas begin at
+// the same time.
+func NewPostgresStoreWithBootstrap(ctx context.Context, pool *pgxpool.Pool, rulesPath string) (*PostgresStore, error) {
+	seedRules, err := loadBootstrapRules(rulesPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := bootstrapRules(ctx, pool, seedRules); err != nil {
+		return nil, err
+	}
+	return NewPostgresStore(ctx, pool)
+}
+
+func loadBootstrapRules(rulesPath string) ([]core.Rule, error) {
+	if strings.TrimSpace(rulesPath) == "" {
+		return nil, errors.New("rules bootstrap path is required for postgres storage")
+	}
+	data, err := os.ReadFile(rulesPath) // #nosec G304 -- operator-supplied startup configuration
+	if err != nil {
+		return nil, fmt.Errorf("read bootstrap rules file %s: %w", rulesPath, err)
+	}
+	var rules []core.Rule
+	if err := yaml.Unmarshal(data, &rules); err != nil {
+		return nil, fmt.Errorf("parse bootstrap rules YAML: %w", err)
+	}
+	if len(rules) == 0 {
+		return nil, errors.New("bootstrap rules file must contain at least one rule")
+	}
+	if _, err := rule.NewMatcher(rules); err != nil {
+		return nil, fmt.Errorf("validate bootstrap rules: %w", err)
+	}
+	return rules, nil
+}
+
+func bootstrapRules(ctx context.Context, pool *pgxpool.Pool, rules []core.Rule) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin rules bootstrap: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", rulesBootstrapAdvisoryLock); err != nil {
+		return fmt.Errorf("lock rules bootstrap: %w", err)
+	}
+	var hasRules bool
+	if err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM rules)").Scan(&hasRules); err != nil {
+		return fmt.Errorf("check existing rules: %w", err)
+	}
+	if hasRules {
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit skipped rules bootstrap: %w", err)
+		}
+		return nil
+	}
+
+	for index, r := range rules {
+		if r.ID == "" {
+			return fmt.Errorf("bootstrap rule at index %d has no id", index)
+		}
+		// YAML file order is the evaluation order. Zero is the conventional
+		// unspecified order value, so normalize it to its file position.
+		if r.OrderIdx == 0 {
+			r.OrderIdx = index
+		}
+		if err := insertRuleTx(ctx, tx, r); err != nil {
+			return fmt.Errorf("insert bootstrap rule %s: %w", r.ID, err)
+		}
+	}
+	if err := recordVersionSnapshotTx(ctx, tx, "Bootstrapped default rules"); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit rules bootstrap: %w", err)
+	}
+	return nil
+}
+
+func insertRuleTx(ctx context.Context, tx pgx.Tx, r core.Rule) error {
+	matchJSON, err := json.Marshal(r.Match)
+	if err != nil {
+		return fmt.Errorf("marshal match: %w", err)
+	}
+	authsJSON, err := json.Marshal(r.Authenticators)
+	if err != nil {
+		return fmt.Errorf("marshal authenticators: %w", err)
+	}
+	authzJSON, err := json.Marshal(r.Authorizer)
+	if err != nil {
+		return fmt.Errorf("marshal authorizer: %w", err)
+	}
+	mutsJSON, err := json.Marshal(r.Mutators)
+	if err != nil {
+		return fmt.Errorf("marshal mutators: %w", err)
+	}
+	upstreamJSON, err := json.Marshal(r.Upstream)
+	if err != nil {
+		return fmt.Errorf("marshal upstream: %w", err)
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO rules (id, description, order_idx, match, authenticators, authorizer, mutators, upstream, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+	`, r.ID, r.Description, r.OrderIdx, matchJSON, authsJSON, authzJSON, mutsJSON, upstreamJSON)
+	return err
+}
+
+// Close stops the background listener and waits for its database connection to
+// be released. It is safe to call more than once.
+func (s *PostgresStore) Close() {
+	s.listenerOnce.Do(func() {})
+	if s.listenerCancel != nil {
+		s.listenerCancel()
+	}
+	if s.listenerDone != nil {
+		<-s.listenerDone
+	}
+}
+
+func (s *PostgresStore) startRuleChangeListener() {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.listenerCancel = cancel
+	s.listenerDone = make(chan struct{})
+	go func() {
+		defer close(s.listenerDone)
+		s.listenForRuleChanges(ctx)
+	}()
+}
+
+// listenForRuleChanges owns a dedicated pooled connection because PostgreSQL
+// LISTEN state is session-scoped. On every reconnect it reloads the cache,
+// closing the gap for notifications that may have been missed while the
+// database connection was unavailable.
+func (s *PostgresStore) listenForRuleChanges(ctx context.Context) {
+	backoff := 50 * time.Millisecond
+	for ctx.Err() == nil {
+		err := s.listenForRuleChangesOnce(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		_ = err // reconnecting is the resilient path; callers keep serving cached rules.
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		if backoff < time.Second {
+			backoff *= 2
+		}
+	}
+}
+
+func (s *PostgresStore) listenForRuleChangesOnce(ctx context.Context) error {
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire rules listener connection: %w", err)
+	}
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, "LISTEN "+rulesChangeChannel); err != nil {
+		return fmt.Errorf("listen for rules changes: %w", err)
+	}
+	if err := s.Reload(ctx); err != nil {
+		return fmt.Errorf("reload rules after listener reconnect: %w", err)
+	}
+	for {
+		notification, err := conn.Conn().WaitForNotification(ctx)
+		if err != nil {
+			return fmt.Errorf("wait for rules notification: %w", err)
+		}
+		if notification.Channel != rulesChangeChannel {
+			continue
+		}
+		if err := s.Reload(ctx); err != nil {
+			return fmt.Errorf("reload rules after notification: %w", err)
+		}
+	}
 }
 
 // Pool exposes the underlying connection pool for health checks and diagnostics.
@@ -179,6 +373,9 @@ func (s *PostgresStore) Create(r core.Rule) (core.Rule, error) {
 	if err := s.recordVersionSnapshotTx(ctx, tx, fmt.Sprintf("Created rule %s", r.ID)); err != nil {
 		return core.Rule{}, err
 	}
+	if err := notifyRulesChangedTx(ctx, tx); err != nil {
+		return core.Rule{}, err
+	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return core.Rule{}, fmt.Errorf("commit tx: %w", err)
@@ -241,6 +438,9 @@ func (s *PostgresStore) Update(id string, r core.Rule) (core.Rule, error) {
 	if err := s.recordVersionSnapshotTx(ctx, tx, fmt.Sprintf("Updated rule %s", id)); err != nil {
 		return core.Rule{}, err
 	}
+	if err := notifyRulesChangedTx(ctx, tx); err != nil {
+		return core.Rule{}, err
+	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return core.Rule{}, fmt.Errorf("commit tx: %w", err)
@@ -277,6 +477,9 @@ func (s *PostgresStore) Delete(id string) error {
 	if err := s.recordVersionSnapshotTx(ctx, tx, fmt.Sprintf("Deleted rule %s", id)); err != nil {
 		return err
 	}
+	if err := notifyRulesChangedTx(ctx, tx); err != nil {
+		return err
+	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
@@ -306,6 +509,9 @@ func (s *PostgresStore) Reorder(ids []string) error {
 	}
 
 	if err := s.recordVersionSnapshotTx(ctx, tx, "Reordered rules"); err != nil {
+		return err
+	}
+	if err := notifyRulesChangedTx(ctx, tx); err != nil {
 		return err
 	}
 
@@ -368,6 +574,9 @@ func (s *PostgresStore) Rollback(version int) error {
 	}
 
 	if err := s.recordVersionSnapshotTx(ctx, tx, fmt.Sprintf("Rollback to version %d", version)); err != nil {
+		return err
+	}
+	if err := notifyRulesChangedTx(ctx, tx); err != nil {
 		return err
 	}
 
@@ -444,6 +653,9 @@ func (s *PostgresStore) Import(rules []core.Rule) error {
 	if err := s.recordVersionSnapshotTx(ctx, tx, "Imported rules"); err != nil {
 		return err
 	}
+	if err := notifyRulesChangedTx(ctx, tx); err != nil {
+		return err
+	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
@@ -512,7 +724,18 @@ func (s *PostgresStore) reloadLocked(ctx context.Context) error {
 	return nil
 }
 
+func notifyRulesChangedTx(ctx context.Context, tx pgx.Tx) error {
+	if _, err := tx.Exec(ctx, "SELECT pg_notify($1, '')", rulesChangeChannel); err != nil {
+		return fmt.Errorf("notify rules change: %w", err)
+	}
+	return nil
+}
+
 func (s *PostgresStore) recordVersionSnapshotTx(ctx context.Context, tx pgx.Tx, description string) error {
+	return recordVersionSnapshotTx(ctx, tx, description)
+}
+
+func recordVersionSnapshotTx(ctx context.Context, tx pgx.Tx, description string) error {
 	rows, err := tx.Query(ctx, `
 		SELECT id, description, order_idx, match, authenticators, authorizer, mutators, upstream
 		FROM rules
