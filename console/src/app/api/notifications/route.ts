@@ -126,7 +126,7 @@ export async function GET() {
   } catch (err: unknown) {
     return NextResponse.json(
       { notifications: [], error: err instanceof Error ? err.message : "Failed to fetch notifications" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
