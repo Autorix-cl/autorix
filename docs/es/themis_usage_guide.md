@@ -86,7 +86,7 @@ Themis se ejecuta en el puerto HTTP `4488` y gRPC `50052`.
 
 ### 2.2 Gestión de Políticas (`POST /policies`)
 
-Crea o actualiza una política CEL con orden de prioridad:
+La siguiente solicitud crea o actualiza una política CEL con orden de prioridad:
 
 ```json
 {

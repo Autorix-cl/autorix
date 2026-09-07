@@ -2,7 +2,7 @@
 
 Docker Compose es solo para **desarrollo y evaluación local**. Usa puertos
 locales, credenciales de desarrollo, HTTP entre servicios y `sslmode=disable`.
-No lo expongas a Internet ni lo trates como un despliegue productivo.
+No debe exponerse a Internet ni tratarse como un despliegue productivo.
 
 ## Iniciar el stack
 
@@ -15,13 +15,13 @@ docker compose --profile core up -d --build
 docker compose --profile core ps
 ```
 
-Ejecutá el generador antes del comando Compose en cada instalación local
-nueva. Crea secretos de desarrollo sin seguimiento; no incluyas su salida en
-control de versiones.
+El generador debe ejecutarse antes del comando Compose en cada instalación
+local nueva. Crea secretos de desarrollo no versionados; su salida no debe
+incluirse en el control de versiones.
 
-Cuando los servicios estén saludables, abrí Console en
-`http://localhost:3000`. Obtené el token único de
-bootstrap de Argus desde los logs y completá el flujo de instalación:
+Cuando los servicios estén saludables, Console estará disponible en
+`http://localhost:3000`. Obtenga el token único de bootstrap de Argus desde los
+logs y complete el flujo de instalación:
 
 ```bash
 docker logs autorix-argus | grep -i 'bootstrap token'
@@ -37,5 +37,5 @@ curl -fsS http://localhost:4400/health/ready
 ```
 
 La administración de Janus (`:4445`) y Aegis (`:4456`) no está publicada por
-Compose. Usá Console o un acceso local autenticado; no agregues puertos de host
-para esos listeners.
+Compose. Utilice Console o un acceso local autenticado; no agregue puertos de
+host para esos listeners.

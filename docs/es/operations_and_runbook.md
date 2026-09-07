@@ -13,7 +13,7 @@ Cuando Argus arranca por primera vez en un entorno no inicializado, genera un to
 docker logs autorix-argus | grep "BOOTSTRAP TOKEN"
 ```
 
-Ingresa a `http://localhost:3000/setup` o ejecuta:
+Acceda a `http://localhost:3000/setup` o ejecute:
 
 ```bash
 curl -X POST http://localhost:4400/v1/auth/bootstrap \
