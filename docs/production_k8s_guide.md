@@ -9,11 +9,15 @@ Deploy the suite using the official Helm chart and pre-configured production val
 ```bash
 kubectl create namespace autorix
 
-kubectl create secret generic autorix-secrets \
+kubectl create secret generic autorix-db-credentials \
   --namespace autorix \
-  --from-literal=postgres-password="ProductionPostgresPassword#2026" \
-  --from-literal=master-encryption-key="32-byte-hex-encoded-master-key-here" \
-  --from-literal=jwt-signing-key="-----BEGIN RSA PRIVATE KEY-----\n..."
+  --from-literal=argus-database-url='postgres://.../autorix_argus?sslmode=verify-full' \
+  --from-literal=ego-database-url='postgres://.../autorix_ego?sslmode=verify-full' \
+  --from-literal=hermes-database-url='postgres://.../autorix_hermes?sslmode=verify-full' \
+  --from-literal=janus-database-url='postgres://.../autorix_janus?sslmode=verify-full' \
+  --from-literal=nexus-database-url='postgres://.../autorix_nexus?sslmode=verify-full' \
+  --from-literal=themis-database-url='postgres://.../autorix_themis?sslmode=verify-full' \
+  --from-literal=vulcan-database-url='postgres://.../autorix_vulcan?sslmode=verify-full'
 
 helm upgrade --install autorix deploy/helm/autorix \
   --namespace autorix \
@@ -21,6 +25,10 @@ helm upgrade --install autorix deploy/helm/autorix \
   --set global.domain="autorix.enterprise.io" \
   --set global.postgresql.host="postgres-ha.database.svc.cluster.local"
 ```
+
+The secret named by `global.postgresql.existingSecret` must contain all seven
+keys above. Each value is the complete service-specific `DATABASE_URL`; choose
+the TLS mode and credentials required by the managed PostgreSQL deployment.
 
 ## Details
 

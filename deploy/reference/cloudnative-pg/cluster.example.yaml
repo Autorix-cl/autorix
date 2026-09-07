@@ -1,0 +1,33 @@
+# Reference only. Validate against the installed CloudNativePG CRD version
+# before applying. The object-store endpoint and bucket are deliberately
+# non-routable placeholders, not deployment defaults.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: autorix-postgres
+  namespace: autorix
+  labels:
+    app.kubernetes.io/part-of: autorix
+spec:
+  instances: 3
+  primaryUpdateStrategy: supervised
+  storage:
+    size: 100Gi
+    storageClass: REPLACE_WITH_ENCRYPTED_STORAGE_CLASS
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: s3://REPLACE_WITH_DEDICATED_BUCKET/autorix-postgres/
+      endpointURL: https://object-storage.example.invalid
+      s3Credentials:
+        accessKeyId:
+          name: cnpg-object-store-credentials
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: cnpg-object-store-credentials
+          key: ACCESS_SECRET_KEY
+      wal:
+        compression: gzip
+        encryption: AES256
+  monitoring:
+    enablePodMonitor: true

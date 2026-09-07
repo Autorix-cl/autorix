@@ -1,0 +1,14 @@
+# A base backup every six hours limits recovery work. WAL archival carries the
+# 15-minute RPO target; verify it with restore drills rather than assuming it.
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: autorix-postgres-six-hourly
+  namespace: autorix
+  labels:
+    app.kubernetes.io/part-of: autorix
+spec:
+  schedule: "0 0 */6 * * *"
+  backupOwnerReference: self
+  cluster:
+    name: autorix-postgres

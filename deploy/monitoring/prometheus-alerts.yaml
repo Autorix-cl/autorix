@@ -79,3 +79,63 @@ spec:
             summary: "Autorix engine {{ $labels.container }} is restarting"
             description: "Pod is crash looping."
 
+
+    # Availability SLO burn-rate alerts. They rely only on the shared HTTP RED
+    # metric emitted by platform/metrics: 5xx responses are failures while 4xx
+    # responses remain expected client/authentication outcomes.
+    - name: autorix.slo
+      rules:
+        - alert: AutorixAvailabilityErrorBudgetFastBurn
+          expr: |
+            (
+              (
+                sum by (engine) (rate(autorix_http_requests_total{engine=~"aegis|ego|janus",status=~"5.."}[5m]))
+                /
+                sum by (engine) (rate(autorix_http_requests_total{engine=~"aegis|ego|janus"}[5m]))
+              ) > (14.4 * 0.001)
+            )
+            and on (engine)
+            (
+              (
+                sum by (engine) (rate(autorix_http_requests_total{engine=~"aegis|ego|janus",status=~"5.."}[1h]))
+                /
+                sum by (engine) (rate(autorix_http_requests_total{engine=~"aegis|ego|janus"}[1h]))
+              ) > (14.4 * 0.001)
+            )
+            and on (engine)
+            (sum by (engine) (rate(autorix_http_requests_total{engine=~"aegis|ego|janus"}[5m])) > 0)
+          for: 2m
+          labels:
+            severity: page
+            slo: availability
+            objective: "99.9"
+          annotations:
+            summary: "Autorix {{ $labels.engine }} is burning its availability error budget rapidly"
+            description: "5xx rate exceeds the 14.4x burn threshold for both 5m and 1h windows. Investigate the service and its dependencies."
+        - alert: AutorixAvailabilityErrorBudgetSlowBurn
+          expr: |
+            (
+              (
+                sum by (engine) (rate(autorix_http_requests_total{engine=~"aegis|ego|janus",status=~"5.."}[30m]))
+                /
+                sum by (engine) (rate(autorix_http_requests_total{engine=~"aegis|ego|janus"}[30m]))
+              ) > (6 * 0.001)
+            )
+            and on (engine)
+            (
+              (
+                sum by (engine) (rate(autorix_http_requests_total{engine=~"aegis|ego|janus",status=~"5.."}[6h]))
+                /
+                sum by (engine) (rate(autorix_http_requests_total{engine=~"aegis|ego|janus"}[6h]))
+              ) > (6 * 0.001)
+            )
+            and on (engine)
+            (sum by (engine) (rate(autorix_http_requests_total{engine=~"aegis|ego|janus"}[30m])) > 0)
+          for: 15m
+          labels:
+            severity: ticket
+            slo: availability
+            objective: "99.9"
+          annotations:
+            summary: "Autorix {{ $labels.engine }} is burning its availability error budget"
+            description: "5xx rate exceeds the 6x burn threshold for both 30m and 6h windows. Investigate before the monthly SLO is at risk."
