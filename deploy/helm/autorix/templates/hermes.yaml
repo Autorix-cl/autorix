@@ -18,14 +18,20 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "4477"
         prometheus.io/path: "/metrics"
+        {{- include "autorix.transportSecurityAnnotations" . | nindent 8 }}
       labels:
         app.kubernetes.io/name: {{ include "autorix.name" . }}
         app.kubernetes.io/component: hermes
     spec:
+      securityContext:
+        {{- include "autorix.podSecurityContext" . | nindent 8 }}
+      {{- include "autorix.workloadAvailability" (dict "root" . "component" "hermes") | nindent 6 }}
       containers:
         - name: hermes
-          image: "{{ .Values.hermes.image.repository }}:{{ .Values.hermes.image.tag }}"
+          image: {{ include "autorix.image" (dict "root" . "image" .Values.hermes.image) | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- include "autorix.containerSecurityContext" (dict "root" . "override" .Values.hermes.containerSecurityContext) | nindent 12 }}
           ports:
             - name: http
               containerPort: 4477
@@ -36,7 +42,10 @@ spec:
             - name: BASE_URL
               value: "https://sso.{{ .Values.global.domain }}"
             - name: DATABASE_URL
-              value: "postgres://{{ .Values.global.postgresql.user }}:password@{{ .Values.global.postgresql.host }}:{{ .Values.global.postgresql.port }}/autorix_hermes?sslmode=disable"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "global.postgresql.existingSecret is required" .Values.global.postgresql.existingSecret }}
+                  key: {{ required "global.postgresql.databaseURLKeys.hermes is required" .Values.global.postgresql.databaseURLKeys.hermes }}
           readinessProbe:
             httpGet:
               path: /health/ready

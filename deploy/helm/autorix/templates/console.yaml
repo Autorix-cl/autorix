@@ -14,19 +14,36 @@ spec:
       app.kubernetes.io/component: console
   template:
     metadata:
+      {{- if ne (default "none" .Values.global.transportSecurity.provider) "none" }}
+      annotations:
+        {{- include "autorix.transportSecurityAnnotations" . | nindent 8 }}
+      {{- end }}
       labels:
         app.kubernetes.io/name: {{ include "autorix.name" . }}
         app.kubernetes.io/component: console
     spec:
+      securityContext:
+        {{- include "autorix.podSecurityContext" . | nindent 8 }}
+      {{- include "autorix.workloadAvailability" (dict "root" . "component" "console") | nindent 6 }}
       containers:
         - name: console
-          image: "{{ .Values.console.image.repository }}:{{ .Values.console.image.tag }}"
+          image: {{ include "autorix.image" (dict "root" . "image" .Values.console.image) | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- include "autorix.containerSecurityContext" (dict "root" . "override" .Values.console.containerSecurityContext) | nindent 12 }}
           ports:
             - name: http
               containerPort: 3000
               protocol: TCP
           env:
+            - name: ARGUS_INTERNAL_URL
+              value: "http://{{ include "autorix.fullname" . }}-argus:4400"
+            - name: AEGIS_INTERNAL_URL
+              value: "http://{{ include "autorix.fullname" . }}-aegis:4456"
+            - name: JANUS_INTERNAL_URL
+              value: "http://{{ include "autorix.fullname" . }}-janus:4444"
+            - name: JANUS_ADMIN_INTERNAL_URL
+              value: "http://{{ include "autorix.fullname" . }}-janus-admin:4445"
             - name: PORT
               value: "3000"
           readinessProbe:

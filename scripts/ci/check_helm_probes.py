@@ -34,7 +34,7 @@ SHARED_CONTRACT_ROUTES = {"/health/alive", "/health/ready", "/info"}
 
 def render_chart() -> list[dict]:
     proc = subprocess.run(
-        ["helm", "template", str(CHART_DIR)],
+        ["helm", "template", str(CHART_DIR), "-f", str(CHART_DIR / "values-ci.yaml")],
         capture_output=True,
         text=True,
         check=False,

@@ -1,0 +1,16 @@
+{{- if and (eq (default "none" .Values.global.transportSecurity.provider) "istio") .Values.global.transportSecurity.istio.peerAuthentication.enabled }}
+# This policy is deliberately opt-in: STRICT mTLS will reject plaintext callers
+# that have not joined the mesh. It is scoped only to Autorix workloads.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: {{ include "autorix.fullname" . }}-strict-mtls
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "autorix.name" . }}
+  mtls:
+    mode: STRICT
+{{- end }}

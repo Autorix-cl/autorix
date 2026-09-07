@@ -18,14 +18,20 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "4433"
         prometheus.io/path: "/metrics"
+        {{- include "autorix.transportSecurityAnnotations" . | nindent 8 }}
       labels:
         app.kubernetes.io/name: {{ include "autorix.name" . }}
         app.kubernetes.io/component: ego
     spec:
+      securityContext:
+        {{- include "autorix.podSecurityContext" . | nindent 8 }}
+      {{- include "autorix.workloadAvailability" (dict "root" . "component" "ego") | nindent 6 }}
       containers:
         - name: ego
-          image: "{{ .Values.ego.image.repository }}:{{ .Values.ego.image.tag }}"
+          image: {{ include "autorix.image" (dict "root" . "image" .Values.ego.image) | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- include "autorix.containerSecurityContext" (dict "root" . "override" .Values.ego.containerSecurityContext) | nindent 12 }}
           ports:
             - name: http
               containerPort: 4433
@@ -34,7 +40,10 @@ spec:
             - name: PORT
               value: "4433"
             - name: DATABASE_URL
-              value: "postgres://{{ .Values.global.postgresql.user }}:password@{{ .Values.global.postgresql.host }}:{{ .Values.global.postgresql.port }}/autorix_ego?sslmode=disable"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "global.postgresql.existingSecret is required" .Values.global.postgresql.existingSecret }}
+                  key: {{ required "global.postgresql.databaseURLKeys.ego is required" .Values.global.postgresql.databaseURLKeys.ego }}
           resources:
             {{- toYaml .Values.ego.resources | nindent 12 }}
           readinessProbe:

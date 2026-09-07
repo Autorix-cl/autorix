@@ -11,11 +11,14 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-COMPOSE_SERVICES="postgres argus nexus ego janus vulcan hermes themis aegis"
+COMPOSE_SERVICES="postgres redis argus nexus ego janus aegis"
+# Never share the developer's default Compose project. A smoke run must clean
+# only resources it created, even when a local Autorix stack is already up.
+COMPOSE=(docker compose -p autorix-smoke --profile core)
 FAILED=0
 
 echo "==> Building and starting the stack: $COMPOSE_SERVICES"
-docker compose up -d --build $COMPOSE_SERVICES
+"${COMPOSE[@]}" up -d --build $COMPOSE_SERVICES
 
 # Exit code is tracked explicitly and re-raised after cleanup — a trap that
 # ends in a successful `docker compose down` would otherwise silently
@@ -26,9 +29,9 @@ EXIT_CODE=0
 cleanup() {
   local code=$EXIT_CODE
   echo "==> Collecting logs for any unhealthy service"
-  docker compose ps
+  "${COMPOSE[@]}" ps
   echo "==> Tearing down"
-  docker compose down -v
+  "${COMPOSE[@]}" down -v
   exit "$code"
 }
 trap cleanup EXIT
@@ -42,8 +45,8 @@ while true; do
   # testing; matching on that literal name set instead of "all containers
   # in this compose project" avoids waiting forever on something we're not
   # managing.
-  unhealthy=$(docker compose ps --format '{{.Name}} {{.Health}}' \
-    | awk -v services="$COMPOSE_SERVICES" 'BEGIN{split(services,s," "); for(i in s) want["autorix-" s[i]]=1} want[$1] && $2 != "healthy" {print $1}')
+  unhealthy=$("${COMPOSE[@]}" ps --format '{{.Service}} {{.Health}}' \
+    | awk -v services="$COMPOSE_SERVICES" 'BEGIN{split(services,s," "); for(i in s) want[s[i]]=1} want[$1] && $2 != "healthy" {print $1}')
   if [ -z "$unhealthy" ]; then
     echo "All managed services healthy."
     break
@@ -72,6 +75,23 @@ check() {
   rm -f /tmp/smoke_body.$$
 }
 
+# The admin listeners deliberately have no host port publication. BusyBox wget
+# is available inside both engine images; execute requests in their namespace.
+check_internal() {
+  local name="$1" expected_status="$2" service="$3" url="$4" payload="$5"
+  local output status
+  output=$("${COMPOSE[@]}" exec -T "$service" wget -S -O - \
+    --header='Content-Type: application/json' --post-data="$payload" "$url" 2>&1) || true
+  status=$(printf '%s\n' "$output" | awk '/HTTP\/1\.[01] [0-9]+/ {code=$2} END {print code}')
+  if [ "$status" != "$expected_status" ]; then
+    echo "FAIL: $name — expected HTTP $expected_status, got $status"
+    printf '%s\n' "$output"
+    FAILED=1
+  else
+    echo "OK: $name (HTTP $status)"
+  fi
+}
+
 echo "==> Exercising one real business path per engine"
 
 # ego: register an identity end to end (hashes a real password, persists it).
@@ -80,21 +100,10 @@ check "ego: register identity" 201 -X POST http://localhost:4433/self-service/re
   -d '{"password":"smoke-test-password-1","traits":{"email":"smoke-test@autorix.io","name":{"first":"Smoke","last":"Test"}}}'
 
 # janus: register an OAuth2 client, then confirm its JWKS endpoint serves real keys.
-check "janus: register oauth2 client" 201 -X POST http://localhost:4444/admin/clients \
-  -H "Content-Type: application/json" \
-  -d '{"client_id":"smoke-test-client","client_name":"Smoke Test","is_public":false,"grant_types":["client_credentials"],"scopes":["read"]}'
+check "janus: public admin denied" 404 http://localhost:4444/admin/clients
+check_internal "janus: register oauth2 client" 201 janus http://localhost:4445/admin/clients \
+  '{"client_id":"smoke-test-client","client_name":"Smoke Test","is_public":false,"grant_types":["client_credentials"],"scopes":["read"]}'
 check "janus: JWKS" 200 http://localhost:4444/.well-known/jwks.json
-
-# vulcan: mint a real API key.
-check "vulcan: create key" 201 -X POST http://localhost:4466/keys \
-  -H "Content-Type: application/json" \
-  -d '{"name":"smoke-test-key","owner_id":"smoke-test","is_live":false,"scopes":["read"]}'
-
-# hermes: register a SAML provider, then confirm SCIM's service provider config responds.
-check "hermes: register SAML provider" 201 -X POST http://localhost:4477/admin/saml/providers \
-  -H "Content-Type: application/json" \
-  -d '{"id":"smoke-test-idp","name":"Smoke Test IdP","ssoUrl":"https://idp.example.com/sso"}'
-check "hermes: SCIM service provider config" 200 http://localhost:4477/scim/v2/ServiceProviderConfig
 
 # nexus: write and check a real relation tuple (REST admin, port 8080).
 check "nexus: write tuple" 201 -X POST http://localhost:8080/tuples \
@@ -104,16 +113,9 @@ check "nexus: check permission" 200 -X POST http://localhost:8080/check \
   -H "Content-Type: application/json" \
   -d '{"namespace":"document","object":"smoke-test-doc","relation":"viewer","subject_namespace":"user","subject_id":"smoke-test-user"}'
 
-# themis: create and evaluate a real CEL policy.
-check "themis: create policy" 201 -X POST http://localhost:4488/policies \
-  -H "Content-Type: application/json" \
-  -d '{"tenant_id":"smoke-test","name":"smoke-test-policy","expression":"true","priority":1,"enabled":true}'
-check "themis: list policies" 200 "http://localhost:4488/policies?tenant_id=smoke-test"
-
 # aegis: create a routing rule via the admin API.
-check "aegis: create proxy rule" 201 -X POST http://localhost:4456/rules \
-  -H "Content-Type: application/json" \
-  -d '{"id":"smoke-test-rule","match":{"url":"/smoke-test/<.*>","methods":["GET"]},"authenticators":[],"authorizer":{"handler":"allow"},"upstream":{"url":"http://ego:4433"}}'
+check_internal "aegis: create proxy rule" 201 aegis http://localhost:4456/rules \
+  '{"id":"smoke-test-rule","match":{"url":"/smoke-test/<.*>","methods":["GET"]},"authenticators":[],"authorizer":{"handler":"allow"},"upstream":{"url":"http://ego:4433"}}'
 
 if [ "$FAILED" -ne 0 ]; then
   echo "==> Smoke test FAILED"

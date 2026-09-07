@@ -1,13 +1,16 @@
+# The required local path is `docker compose --profile core up`; optional
+# observability and documentation live in the `extended` profile.
 services:
   postgres:
     image: postgres:16-alpine
     container_name: autorix-postgres
+    profiles: ["core"]
     environment:
       POSTGRES_USER: autorix
-      POSTGRES_PASSWORD: autorix_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run ./scripts/generate-local-secrets.sh first}
       POSTGRES_DB: postgres
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-databases.sh:/docker-entrypoint-initdb.d/00-init.sh:ro
@@ -30,14 +33,15 @@ services:
       context: .
       dockerfile: argus/Dockerfile
     container_name: autorix-argus
+    profiles: ["core"]
     restart: unless-stopped
     ports:
-      - "50053:50053"
-      - "4400:4400"
+      - "127.0.0.1:50053:50053"
+      - "127.0.0.1:4400:4400"
     environment:
       PORT: "50053"
       HTTP_PORT: "4400"
-      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_argus?sslmode=disable"
+      DATABASE_URL: "postgres://autorix:${POSTGRES_PASSWORD}@postgres:5432/autorix_argus?sslmode=disable"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4400/health/ready"]
       interval: 10s
@@ -53,14 +57,15 @@ services:
       context: .
       dockerfile: nexus/Dockerfile
     container_name: autorix-nexus
+    profiles: ["core"]
     restart: unless-stopped
     ports:
-      - "50051:50051"
-      - "8080:8080"
+      - "127.0.0.1:50051:50051"
+      - "127.0.0.1:8080:8080"
     environment:
       PORT: "50051"
       HTTP_PORT: "8080"
-      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_nexus?sslmode=disable"
+      DATABASE_URL: "postgres://autorix:${POSTGRES_PASSWORD}@postgres:5432/autorix_nexus?sslmode=disable"
       REDIS_URL: "redis://redis:6379"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health/ready"]
@@ -81,12 +86,13 @@ services:
       context: .
       dockerfile: ego/Dockerfile
     container_name: autorix-ego
+    profiles: ["core"]
     restart: unless-stopped
     ports:
-      - "4433:4433"
+      - "127.0.0.1:4433:4433"
     environment:
       PORT: "4433"
-      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_ego?sslmode=disable"
+      DATABASE_URL: "postgres://autorix:${POSTGRES_PASSWORD}@postgres:5432/autorix_ego?sslmode=disable"
       # Local compose serves ego over plain HTTP; a Secure cookie would
       # never be sent back by the browser. Production deployments (behind
       # TLS) must leave this unset so it defaults to true.
@@ -108,13 +114,17 @@ services:
       context: .
       dockerfile: janus/Dockerfile
     container_name: autorix-janus
+    profiles: ["core"]
     restart: unless-stopped
     ports:
-      - "4444:4444"
+      - "127.0.0.1:4444:4444"
     environment:
       PORT: "4444"
+      ADMIN_HOST: "0.0.0.0"
+      ADMIN_PORT: "4445"
       ISSUER_URL: "http://localhost:4444"
-      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_janus?sslmode=disable"
+      CORS_ALLOWED_ORIGINS: "http://localhost:3000"
+      DATABASE_URL: "postgres://autorix:${POSTGRES_PASSWORD}@postgres:5432/autorix_janus?sslmode=disable"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4444/health/ready"]
       interval: 10s
@@ -132,12 +142,13 @@ services:
       context: .
       dockerfile: vulcan/Dockerfile
     container_name: autorix-vulcan
+    profiles: ["extended"]
     restart: unless-stopped
     ports:
-      - "4466:4466"
+      - "127.0.0.1:4466:4466"
     environment:
       PORT: "4466"
-      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_vulcan?sslmode=disable"
+      DATABASE_URL: "postgres://autorix:${POSTGRES_PASSWORD}@postgres:5432/autorix_vulcan?sslmode=disable"
       REDIS_URL: "redis://redis:6379"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4466/health/ready"]
@@ -158,13 +169,14 @@ services:
       context: .
       dockerfile: hermes/Dockerfile
     container_name: autorix-hermes
+    profiles: ["extended"]
     restart: unless-stopped
     ports:
-      - "4477:4477"
+      - "127.0.0.1:4477:4477"
     environment:
       PORT: "4477"
       BASE_URL: "http://localhost:4477"
-      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_hermes?sslmode=disable"
+      DATABASE_URL: "postgres://autorix:${POSTGRES_PASSWORD}@postgres:5432/autorix_hermes?sslmode=disable"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4477/health/ready"]
       interval: 10s
@@ -182,14 +194,15 @@ services:
       context: .
       dockerfile: themis/Dockerfile
     container_name: autorix-themis
+    profiles: ["extended"]
     restart: unless-stopped
     ports:
-      - "50052:50052"
-      - "4488:4488"
+      - "127.0.0.1:50052:50052"
+      - "127.0.0.1:4488:4488"
     environment:
       PORT: "50052"
       HTTP_PORT: "4488"
-      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_themis?sslmode=disable"
+      DATABASE_URL: "postgres://autorix:${POSTGRES_PASSWORD}@postgres:5432/autorix_themis?sslmode=disable"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4488/health/ready"]
       interval: 10s
@@ -207,14 +220,19 @@ services:
       context: .
       dockerfile: aegis/Dockerfile
     container_name: autorix-aegis
+    profiles: ["core"]
     restart: unless-stopped
     ports:
-      - "4455:4455"
-      - "4456:4456"
+      - "127.0.0.1:4455:4455"
     environment:
       PORT: "4455"
       ADMIN_PORT: "4456"
-      DATABASE_URL: "postgres://autorix:autorix_password@postgres:5432/autorix_aegis?sslmode=disable"
+      JWT_JWKS_URL: "http://janus:4444/.well-known/jwks.json"
+      JWT_ISSUER: "http://localhost:4444"
+      JWT_AUDIENCE: "http://localhost:4444"
+      # Development only: production JWKS requires HTTPS.
+      JWT_ALLOW_INSECURE_JWKS: "true"
+      DATABASE_URL: "postgres://autorix:${POSTGRES_PASSWORD}@postgres:5432/autorix_aegis?sslmode=disable"
       RULES_PATH: "/app/rules/default.rules.yaml"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4456/health/ready"]
@@ -237,9 +255,10 @@ services:
       context: ./console
       dockerfile: Dockerfile
     container_name: autorix-console
+    profiles: ["core"]
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       NEXT_PUBLIC_ARGUS_URL: "http://localhost:4400"
       NEXT_PUBLIC_NEXUS_URL: "http://localhost:8080"
@@ -253,6 +272,7 @@ services:
       NEXUS_INTERNAL_URL: "http://nexus:8080"
       EGO_INTERNAL_URL: "http://ego:4433"
       JANUS_INTERNAL_URL: "http://janus:4444"
+      JANUS_ADMIN_INTERNAL_URL: "http://janus:4445"
       AEGIS_INTERNAL_URL: "http://aegis:4456"
       VULCAN_INTERNAL_URL: "http://vulcan:4466"
       HERMES_INTERNAL_URL: "http://hermes:4477"
@@ -268,19 +288,14 @@ services:
         condition: service_healthy
       janus:
         condition: service_healthy
-      vulcan:
-        condition: service_healthy
-      hermes:
-        condition: service_healthy
-      themis:
-        condition: service_healthy
 
   prometheus:
     image: prom/prometheus:v2.50.1
     container_name: autorix-prometheus
     restart: unless-stopped
+    profiles: ["extended"]
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
@@ -310,8 +325,9 @@ services:
       dockerfile: docs/Dockerfile
     container_name: autorix-docs
     restart: unless-stopped
+    profiles: ["extended"]
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:80"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/"]
       interval: 10s
@@ -322,10 +338,11 @@ services:
   redis:
     image: redis:7-alpine
     container_name: autorix-redis
+    profiles: ["core"]
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s

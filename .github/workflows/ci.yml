@@ -141,21 +141,23 @@ jobs:
           cd console
           npx playwright install --with-deps chromium
 
-      - name: Bring up the full stack
-        run: docker compose up -d --build
+      - name: Bring up the core stack
+        run: |
+          ./scripts/generate-local-secrets.sh
+          docker compose --profile core up -d --build
 
       - name: Wait for every service to be healthy
         run: |
           deadline=$((SECONDS + 180))
           while true; do
-            unhealthy=$(docker compose ps --format '{{.Name}} {{.Health}}' | awk '$1 != "autorix-console" && $2 != "healthy" {print $1}')
+            unhealthy=$(docker compose --profile core ps --format '{{.Name}} {{.Health}}' | awk '$1 != "autorix-console" && $2 != "healthy" {print $1}')
             if [ -z "$unhealthy" ]; then
               echo "All services healthy."
               break
             fi
             if [ $SECONDS -ge $deadline ]; then
               echo "Timed out waiting for: $unhealthy"
-              docker compose logs
+              docker compose --profile core logs
               exit 1
             fi
             sleep 3
@@ -178,7 +180,7 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose down -v
+        run: docker compose --profile core down -v
 
   coverage-ratchet-go:
     name: Coverage ratchet — Go modules (P1-S5-T6)
@@ -227,7 +229,7 @@ jobs:
         run: python3 scripts/ci/check_coverage_console.py
 
   check-helm-probe-drift:
-    name: Helm probes match registered routes (P1-S1-T8)
+    name: Deployment health and security boundaries
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -244,8 +246,16 @@ jobs:
       - name: Install PyYAML
         run: pip install pyyaml
 
+      - name: Enforce immutable production image contract
+        run: python3 scripts/ci/check_image_digests.py
+
       - name: Check probe drift
         run: python3 scripts/ci/check_helm_probes.py
+
+      - name: Check authentication deployment boundaries
+        run: |
+          python3 -m unittest discover -s scripts/ci -p 'test_security_boundaries.py'
+          python3 scripts/ci/check_security_boundaries.py
 
   quality-console:
     name: Console quality gates (P1-S5-T2)

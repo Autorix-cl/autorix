@@ -18,14 +18,20 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "4400"
         prometheus.io/path: "/metrics"
+        {{- include "autorix.transportSecurityAnnotations" . | nindent 8 }}
       labels:
         app.kubernetes.io/name: {{ include "autorix.name" . }}
         app.kubernetes.io/component: argus
     spec:
+      securityContext:
+        {{- include "autorix.podSecurityContext" . | nindent 8 }}
+      {{- include "autorix.workloadAvailability" (dict "root" . "component" "argus") | nindent 6 }}
       containers:
         - name: argus
-          image: "{{ .Values.argus.image.repository }}:{{ .Values.argus.image.tag }}"
+          image: {{ include "autorix.image" (dict "root" . "image" .Values.argus.image) | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- include "autorix.containerSecurityContext" (dict "root" . "override" .Values.argus.containerSecurityContext) | nindent 12 }}
           ports:
             - name: grpc
               containerPort: 50053
@@ -39,7 +45,10 @@ spec:
             - name: HTTP_PORT
               value: "4400"
             - name: DATABASE_URL
-              value: "postgres://{{ .Values.global.postgresql.user }}:password@{{ .Values.global.postgresql.host }}:{{ .Values.global.postgresql.port }}/autorix_argus?sslmode=disable"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "global.postgresql.existingSecret is required" .Values.global.postgresql.existingSecret }}
+                  key: {{ required "global.postgresql.databaseURLKeys.argus is required" .Values.global.postgresql.databaseURLKeys.argus }}
             # HMAC key engines' registration clients sign heartbeats with
             # (P2-S3-T4). Not a local secret literal in values.yaml — always
             # sourced from a Secret, since it is the credential that lets

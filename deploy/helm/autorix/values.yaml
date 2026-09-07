@@ -2,18 +2,70 @@ global:
   environment: "production"
   domain: "autorix.local"
   imagePullPolicy: IfNotPresent
+  # Production releases must supply immutable OCI digests for every workload.
+  # The chart fails before rendering if a digest is absent or malformed.
+  imageDigests:
+    required: true
+  # Mesh injection is opt-in. Selecting a provider only adds the workload
+  # injection annotations; Istio strict mTLS additionally requires explicit
+  # peerAuthentication.enabled below. Linkerd transport mTLS is negotiated by
+  # its injected proxy and authorization policy is intentionally left to the
+  # platform because workload identities are cluster-specific.
+  transportSecurity:
+    provider: none # one of: none, istio, linkerd, spire
+    istio:
+      peerAuthentication:
+        enabled: false
+  securityContext:
+    pod:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    container:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+  availability:
+    # 30 seconds gives HTTP/gRPC servers a bounded drain window without
+    # delaying node remediation excessively.
+    terminationGracePeriodSeconds: 30
+    # Hostname is present on conforming Kubernetes nodes. ScheduleAnyway makes
+    # spreading a preference rather than making small/self-hosted clusters
+    # unschedulable when a node is unavailable.
+    topologySpread:
+      enabled: true
+      maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+    podAntiAffinity:
+      enabled: true
+      weight: 100
+      topologyKey: kubernetes.io/hostname
   postgresql:
     host: "postgres-postgresql.default.svc.cluster.local"
     port: 5432
-    user: "autorix"
     existingSecret: "autorix-db-credentials"
+    # The Secret must contain complete PostgreSQL URLs (including TLS mode),
+    # one key per engine. Never place database credentials in Helm values.
+    databaseURLKeys:
+      aegis: "aegis-database-url"
+      argus: "argus-database-url"
+      ego: "ego-database-url"
+      hermes: "hermes-database-url"
+      janus: "janus-database-url"
+      nexus: "nexus-database-url"
+      themis: "themis-database-url"
+      vulcan: "vulcan-database-url"
 
 nexus:
   enabled: true
   replicaCount: 3
   image:
     repository: "ghcr.io/autorix-cl/nexus"
-    tag: "latest"
+    tag: "v1.0.0"
+    digest: ""
   resources:
     requests:
       cpu: 100m
@@ -32,7 +84,8 @@ ego:
   replicaCount: 2
   image:
     repository: "ghcr.io/autorix-cl/ego"
-    tag: "latest"
+    tag: "v1.0.0"
+    digest: ""
   resources:
     requests:
       cpu: 100m
@@ -43,10 +96,16 @@ ego:
 
 janus:
   enabled: true
-  replicaCount: 2
+  # Persistent signing keys are shared through PostgreSQL. Keep this conservative
+  # until the production database, backup and rotation runbooks are validated.
+  replicaCount: 1
+  keyReloadInterval: 30s
+  corsAllowedOrigins:
+    - "https://console.{{ .Values.global.domain }}"
   image:
     repository: "ghcr.io/autorix-cl/janus"
-    tag: "latest"
+    tag: "v1.0.0"
+    digest: ""
   resources:
     requests:
       cpu: 100m
@@ -57,10 +116,13 @@ janus:
 
 aegis:
   enabled: true
+  # Rules are persisted in PostgreSQL. RULES_PATH is read only during an
+  # empty-database bootstrap, so Aegis can retain the hardened default root FS.
   replicaCount: 3
   image:
     repository: "ghcr.io/autorix-cl/aegis"
-    tag: "latest"
+    tag: "v1.0.0"
+    digest: ""
   resources:
     requests:
       cpu: 200m
@@ -79,21 +141,24 @@ vulcan:
   replicaCount: 2
   image:
     repository: "ghcr.io/autorix-cl/vulcan"
-    tag: "latest"
+    tag: "v1.0.0"
+    digest: ""
 
 hermes:
   enabled: true
   replicaCount: 2
   image:
     repository: "ghcr.io/autorix-cl/hermes"
-    tag: "latest"
+    tag: "v1.0.0"
+    digest: ""
 
 themis:
   enabled: true
   replicaCount: 3
   image:
     repository: "ghcr.io/autorix-cl/themis"
-    tag: "latest"
+    tag: "v1.0.0"
+    digest: ""
   resources:
     requests:
       cpu: 100m
@@ -112,7 +177,8 @@ argus:
   replicaCount: 2
   image:
     repository: "ghcr.io/autorix-cl/argus"
-    tag: "latest"
+    tag: "v1.0.0"
+    digest: ""
   resources:
     requests:
       cpu: 100m
@@ -138,7 +204,8 @@ console:
   replicaCount: 2
   image:
     repository: "ghcr.io/autorix-cl/console"
-    tag: "latest"
+    tag: "v1.0.0"
+    digest: ""
 
 ingress:
   enabled: true
@@ -154,3 +221,34 @@ monitoring:
     scrapeTimeout: "10s"
     labels: {}
 
+# Applies an ingress-default-deny policy to Autorix workloads, then explicitly
+# admits the ingress controller, in-namespace Autorix traffic, and monitoring.
+# Change selectors to match the platform's actual controller/Prometheus labels.
+networkPolicy:
+  enabled: true
+  ingressController:
+    namespaceSelector:
+      kubernetes.io/metadata.name: ingress-nginx
+    podSelector:
+      app.kubernetes.io/name: ingress-nginx
+  monitoring:
+    namespaceSelector: {}
+    podSelector:
+      app.kubernetes.io/name: prometheus
+  # Strict egress is opt-in because the chart cannot infer the operator's
+  # database, DNS, identity-provider, or audit-archive network ranges.
+  # When enabled, only in-suite traffic, configured DNS, and these explicit
+  # destinations remain reachable.
+  egress:
+    enabled: false
+    dns:
+      namespaceSelector:
+        kubernetes.io/metadata.name: kube-system
+      podSelector:
+        k8s-app: kube-dns
+    destinations: []
+    # Example:
+    # - cidr: "10.42.0.0/16"
+    #   ports:
+    #     - protocol: TCP
+    #       port: 5432

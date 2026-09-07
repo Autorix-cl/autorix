@@ -18,14 +18,20 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
+        {{- include "autorix.transportSecurityAnnotations" . | nindent 8 }}
       labels:
         app.kubernetes.io/name: {{ include "autorix.name" . }}
         app.kubernetes.io/component: nexus
     spec:
+      securityContext:
+        {{- include "autorix.podSecurityContext" . | nindent 8 }}
+      {{- include "autorix.workloadAvailability" (dict "root" . "component" "nexus") | nindent 6 }}
       containers:
         - name: nexus
-          image: "{{ .Values.nexus.image.repository }}:{{ .Values.nexus.image.tag }}"
+          image: {{ include "autorix.image" (dict "root" . "image" .Values.nexus.image) | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- include "autorix.containerSecurityContext" (dict "root" . "override" .Values.nexus.containerSecurityContext) | nindent 12 }}
           ports:
             - name: grpc
               containerPort: 50051
@@ -37,7 +43,10 @@ spec:
             - name: PORT
               value: "50051"
             - name: DATABASE_URL
-              value: "postgres://{{ .Values.global.postgresql.user }}:password@{{ .Values.global.postgresql.host }}:{{ .Values.global.postgresql.port }}/autorix_nexus?sslmode=disable"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "global.postgresql.existingSecret is required" .Values.global.postgresql.existingSecret }}
+                  key: {{ required "global.postgresql.databaseURLKeys.nexus is required" .Values.global.postgresql.databaseURLKeys.nexus }}
           resources:
             {{- toYaml .Values.nexus.resources | nindent 12 }}
           readinessProbe:

@@ -18,14 +18,20 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "4488"
         prometheus.io/path: "/metrics"
+        {{- include "autorix.transportSecurityAnnotations" . | nindent 8 }}
       labels:
         app.kubernetes.io/name: {{ include "autorix.name" . }}
         app.kubernetes.io/component: themis
     spec:
+      securityContext:
+        {{- include "autorix.podSecurityContext" . | nindent 8 }}
+      {{- include "autorix.workloadAvailability" (dict "root" . "component" "themis") | nindent 6 }}
       containers:
         - name: themis
-          image: "{{ .Values.themis.image.repository }}:{{ .Values.themis.image.tag }}"
+          image: {{ include "autorix.image" (dict "root" . "image" .Values.themis.image) | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- include "autorix.containerSecurityContext" (dict "root" . "override" .Values.themis.containerSecurityContext) | nindent 12 }}
           ports:
             - name: grpc
               containerPort: 50052
@@ -39,7 +45,10 @@ spec:
             - name: HTTP_PORT
               value: "4488"
             - name: DATABASE_URL
-              value: "postgres://{{ .Values.global.postgresql.user }}:password@{{ .Values.global.postgresql.host }}:{{ .Values.global.postgresql.port }}/autorix_themis?sslmode=disable"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "global.postgresql.existingSecret is required" .Values.global.postgresql.existingSecret }}
+                  key: {{ required "global.postgresql.databaseURLKeys.themis is required" .Values.global.postgresql.databaseURLKeys.themis }}
           resources:
             {{- toYaml .Values.themis.resources | nindent 12 }}
           readinessProbe:

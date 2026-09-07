@@ -1,0 +1,197 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $name := include "autorix.name" . }}
+{{- $appSelector := dict "app.kubernetes.io/name" $name }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "autorix.fullname" . }}-default-deny-ingress
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $appSelector | nindent 6 }}
+  policyTypes:
+    - Ingress
+---
+# Autorix services may communicate inside the trust zone. This blocks every
+# other namespace/pod by default, while service-level authorization continues
+# to enforce identity and permission checks.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "autorix.fullname" . }}-allow-internal
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $appSelector | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- toYaml $appSelector | nindent 14 }}
+---
+# Only the configured ingress-controller workload may reach public edge
+# services. Janus/Aegis administration is intentionally absent from this list.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "autorix.fullname" . }}-allow-edge-ingress
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [aegis, janus, console]
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.ingressController.namespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.ingressController.podSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 4444
+        - protocol: TCP
+          port: 4455
+---
+# Metrics are admitted only from the configured monitoring workload. Adjust
+# these selectors when Prometheus runs under different labels or a different
+# namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "autorix.fullname" . }}-allow-monitoring
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $appSelector | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.monitoring.namespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.monitoring.podSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 4400
+        - protocol: TCP
+          port: 4433
+        - protocol: TCP
+          port: 4444
+        - protocol: TCP
+          port: 4456
+        - protocol: TCP
+          port: 4466
+        - protocol: TCP
+          port: 4477
+        - protocol: TCP
+          port: 4488
+        - protocol: TCP
+          port: 8080
+{{- end }}
+{{- if .Values.networkPolicy.egress.enabled }}
+{{- $appSelector := dict "app.kubernetes.io/name" (include "autorix.name" .) }}
+---
+# Egress is an explicit operator-owned allowlist. Do not enable this profile
+# until destinations contains the database and any approved external services.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "autorix.fullname" . }}-default-deny-egress
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $appSelector | nindent 6 }}
+  policyTypes:
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "autorix.fullname" . }}-allow-internal-egress
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $appSelector | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- toYaml $appSelector | nindent 14 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "autorix.fullname" . }}-allow-dns-egress
+  labels:
+    {{- include "autorix.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $appSelector | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.egress.dns.namespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.egress.dns.podSelector | nindent 14 }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- range .Values.networkPolicy.egress.destinations }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "autorix.fullname" $ }}-allow-egress-{{ sha256sum .cidr | trunc 10 }}
+  labels:
+    {{- include "autorix.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $appSelector | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: {{ required "networkPolicy.egress.destinations[].cidr is required" .cidr | quote }}
+      {{- with .ports }}
+      ports:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }}

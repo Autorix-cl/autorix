@@ -18,14 +18,20 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "4466"
         prometheus.io/path: "/metrics"
+        {{- include "autorix.transportSecurityAnnotations" . | nindent 8 }}
       labels:
         app.kubernetes.io/name: {{ include "autorix.name" . }}
         app.kubernetes.io/component: vulcan
     spec:
+      securityContext:
+        {{- include "autorix.podSecurityContext" . | nindent 8 }}
+      {{- include "autorix.workloadAvailability" (dict "root" . "component" "vulcan") | nindent 6 }}
       containers:
         - name: vulcan
-          image: "{{ .Values.vulcan.image.repository }}:{{ .Values.vulcan.image.tag }}"
+          image: {{ include "autorix.image" (dict "root" . "image" .Values.vulcan.image) | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- include "autorix.containerSecurityContext" (dict "root" . "override" .Values.vulcan.containerSecurityContext) | nindent 12 }}
           ports:
             - name: http
               containerPort: 4466
@@ -34,7 +40,10 @@ spec:
             - name: PORT
               value: "4466"
             - name: DATABASE_URL
-              value: "postgres://{{ .Values.global.postgresql.user }}:password@{{ .Values.global.postgresql.host }}:{{ .Values.global.postgresql.port }}/autorix_vulcan?sslmode=disable"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "global.postgresql.existingSecret is required" .Values.global.postgresql.existingSecret }}
+                  key: {{ required "global.postgresql.databaseURLKeys.vulcan is required" .Values.global.postgresql.databaseURLKeys.vulcan }}
           readinessProbe:
             httpGet:
               path: /health/ready

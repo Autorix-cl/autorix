@@ -18,14 +18,20 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "4456"
         prometheus.io/path: "/metrics"
+        {{- include "autorix.transportSecurityAnnotations" . | nindent 8 }}
       labels:
         app.kubernetes.io/name: {{ include "autorix.name" . }}
         app.kubernetes.io/component: aegis
     spec:
+      securityContext:
+        {{- include "autorix.podSecurityContext" . | nindent 8 }}
+      {{- include "autorix.workloadAvailability" (dict "root" . "component" "aegis") | nindent 6 }}
       containers:
         - name: aegis
-          image: "{{ .Values.aegis.image.repository }}:{{ .Values.aegis.image.tag }}"
+          image: {{ include "autorix.image" (dict "root" . "image" .Values.aegis.image) | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- include "autorix.containerSecurityContext" (dict "root" . "override" .Values.aegis.containerSecurityContext) | nindent 12 }}
           ports:
             - name: http
               containerPort: 4455
@@ -38,8 +44,21 @@ spec:
               value: "4455"
             - name: ADMIN_PORT
               value: "4456"
+            - name: JWT_JWKS_URL
+              value: "https://auth.{{ .Values.global.domain }}/.well-known/jwks.json"
+            - name: JWT_ISSUER
+              value: "https://auth.{{ .Values.global.domain }}"
+            - name: JWT_AUDIENCE
+              value: "https://auth.{{ .Values.global.domain }}"
+            - name: JWT_ALLOW_INSECURE_JWKS
+              value: "false"
             - name: RULES_PATH
               value: "/app/rules/default.rules.yaml"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "global.postgresql.existingSecret is required" .Values.global.postgresql.existingSecret }}
+                  key: {{ required "global.postgresql.databaseURLKeys.aegis is required" .Values.global.postgresql.databaseURLKeys.aegis }}
           resources:
             {{- toYaml .Values.aegis.resources | nindent 12 }}
           readinessProbe:

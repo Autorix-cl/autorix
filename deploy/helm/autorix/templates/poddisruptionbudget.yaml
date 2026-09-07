@@ -1,0 +1,25 @@
+{{/*
+Allow at most one voluntary eviction at a time. A component with a single
+replica cannot safely claim high availability, so it intentionally does not
+receive a PDB from this template.
+*/}}
+{{- $components := list "nexus" "ego" "janus" "aegis" "vulcan" "hermes" "themis" "argus" "console" -}}
+{{- range $component := $components }}
+{{- $config := index $.Values $component -}}
+{{- if and $config.enabled (ge (int $config.replicaCount) 2) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "autorix.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "autorix.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "autorix.name" $ }}
+      app.kubernetes.io/component: {{ $component }}
+{{- end }}
+{{- end }}
