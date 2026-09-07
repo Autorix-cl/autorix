@@ -20,15 +20,27 @@ def main() -> None:
     for contract in (
         "tags:\n      - 'v*'",
         "PUBLISH_ENABLED:",
+        "validate-release:",
+        "Validate stable SemVer tag and release notes",
+        "git describe --exact-match --tags HEAD",
+        "needs: validate-release",
         "push: false",
         "ghcr.io/${{ github.repository_owner }}/autorix-",
         "REMOTE_IMAGE_DIGEST",
         "cosign sign --yes \"$REMOTE_IMAGE_DIGEST\"",
+        "cosign attest --yes --type spdxjson",
+        "fail-build: true",
+        "severity-cutoff: critical",
         "id-token: write",
         "SHA256SUMS",
         "gh release create",
         "upload-release-assets: false",
         "-X main.version=$RELEASE_TAG",
+        "docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435",
+        "docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83",
+        "docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567",
+        "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+        "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
     ):
         require(text, contract)
     assert "AUTORIX_REGISTRY_PASSWORD" not in text, "release path must not depend on invented registry secrets"

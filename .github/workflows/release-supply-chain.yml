@@ -20,10 +20,80 @@ permissions:
   contents: read
 
 jobs:
+  validate-release:
+    name: Validate immutable release input
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+      RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+    steps:
+      - name: Checkout selected immutable tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.RELEASE_REF }}
+          fetch-depth: 0
+
+      - name: Validate stable SemVer tag and release notes
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must be stable SemVer (vMAJOR.MINOR.PATCH): $RELEASE_TAG" >&2
+            exit 1
+          fi
+          test "$(git describe --exact-match --tags HEAD)" = "$RELEASE_TAG"
+          test -f CHANGELOG.md
+          grep -F "## [$RELEASE_TAG]" CHANGELOG.md
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.0.0
+        with:
+          go-version: '1.26.6'
+
+      - name: Run short Go test suite
+        run: |
+          for module in platform nexus ego janus aegis vulcan hermes themis argus sdk/go cmd/autorixctl; do
+            (cd "$module" && go test -race -short ./...)
+          done
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            console/package-lock.json
+            docs/package-lock.json
+
+      - name: Validate Console and documentation builds
+        run: |
+          (cd console && npm ci && npm test -- --run && npm run build)
+          (cd docs && npm ci && npm run build)
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install release validation dependencies
+        run: pip install pyyaml
+
+      - name: Validate self-hosted configuration contracts
+        run: |
+          # Extended services depend on the core profile, so validate their
+          # complete dependency closure rather than an invalid partial graph.
+          POSTGRES_PASSWORD=release-validation docker compose --profile core --profile extended --profile alerts config --quiet
+          python3 scripts/ci/check_release_workflow.py
+          python3 scripts/ci/check_prometheus_alerts.py
+          python3 scripts/ci/check_image_digests.py
+
   build-scan-images:
     name: Build, inventory, and scan ${{ matrix.service }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    needs: validate-release
     permissions:
       contents: read
       packages: write
@@ -66,14 +136,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.11.1
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
 
       # A tag publishes only after the same local image has been scanned below.
       # Manual runs remain local-only unless publish=true and release_tag are set.
       - name: Build local image
-        uses: docker/build-push-action@v6.18.0
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
@@ -99,14 +171,15 @@ jobs:
         uses: anchore/scan-action@v7.4.0
         with:
           image: ${{ env.LOCAL_IMAGE }}
-          fail-build: false
+          fail-build: true
+          severity-cutoff: critical
           output-format: json
           output-file: reports/${{ matrix.service }}.vulnerabilities.json
           grype-version: v0.110.0
 
       - name: Log in to GitHub Container Registry
         if: env.PUBLISH_ENABLED == 'true'
-        uses: docker/login-action@v3.4.0
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -137,9 +210,13 @@ jobs:
         if: env.PUBLISH_ENABLED == 'true'
         run: cosign sign --yes "$REMOTE_IMAGE_DIGEST"
 
+      - name: Attest SPDX SBOM to immutable image digest
+        if: env.PUBLISH_ENABLED == 'true'
+        run: cosign attest --yes --type spdxjson --predicate "reports/${{ matrix.service }}.spdx.json" "$REMOTE_IMAGE_DIGEST"
+
       - name: Upload image evidence
         if: always()
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-evidence-${{ matrix.service }}
           path: |
@@ -152,6 +229,7 @@ jobs:
     name: Build autorixctl ${{ matrix.goos }}-${{ matrix.goarch }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: validate-release
     strategy:
       fail-fast: false
       matrix:
@@ -176,6 +254,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
 
       - name: Set up Go
         uses: actions/setup-go@v6.0.0
@@ -195,7 +275,7 @@ jobs:
             -o "../../release-assets/autorixctl_${GOOS}_${GOARCH}${{ matrix.extension }}" .
 
       - name: Upload autorixctl binary
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: autorixctl-${{ matrix.goos }}-${{ matrix.goarch }}
           path: release-assets/
@@ -213,14 +293,14 @@ jobs:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     steps:
       - name: Download release evidence
-        uses: actions/download-artifact@v4.3.0
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: release-evidence-*
           path: release-inputs
           merge-multiple: true
 
       - name: Download autorixctl binaries
-        uses: actions/download-artifact@v4.3.0
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: autorixctl-*
           path: release-inputs
