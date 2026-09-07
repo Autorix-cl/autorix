@@ -3,7 +3,6 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: autorix-postgres
     profiles: ["core"]
     environment:
       POSTGRES_USER: autorix
@@ -32,7 +31,6 @@ services:
     build:
       context: .
       dockerfile: argus/Dockerfile
-    container_name: autorix-argus
     profiles: ["core"]
     restart: unless-stopped
     ports:
@@ -56,7 +54,6 @@ services:
     build:
       context: .
       dockerfile: nexus/Dockerfile
-    container_name: autorix-nexus
     profiles: ["core"]
     restart: unless-stopped
     ports:
@@ -85,7 +82,6 @@ services:
     build:
       context: .
       dockerfile: ego/Dockerfile
-    container_name: autorix-ego
     profiles: ["core"]
     restart: unless-stopped
     ports:
@@ -113,7 +109,6 @@ services:
     build:
       context: .
       dockerfile: janus/Dockerfile
-    container_name: autorix-janus
     profiles: ["core"]
     restart: unless-stopped
     ports:
@@ -141,7 +136,6 @@ services:
     build:
       context: .
       dockerfile: vulcan/Dockerfile
-    container_name: autorix-vulcan
     profiles: ["extended"]
     restart: unless-stopped
     ports:
@@ -168,7 +162,6 @@ services:
     build:
       context: .
       dockerfile: hermes/Dockerfile
-    container_name: autorix-hermes
     profiles: ["extended"]
     restart: unless-stopped
     ports:
@@ -193,7 +186,6 @@ services:
     build:
       context: .
       dockerfile: themis/Dockerfile
-    container_name: autorix-themis
     profiles: ["extended"]
     restart: unless-stopped
     ports:
@@ -219,7 +211,6 @@ services:
     build:
       context: .
       dockerfile: aegis/Dockerfile
-    container_name: autorix-aegis
     profiles: ["core"]
     restart: unless-stopped
     ports:
@@ -254,7 +245,6 @@ services:
     build:
       context: ./console
       dockerfile: Dockerfile
-    container_name: autorix-console
     profiles: ["core"]
     restart: unless-stopped
     ports:
@@ -291,7 +281,6 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.50.1
-    container_name: autorix-prometheus
     restart: unless-stopped
     profiles: ["extended"]
     ports:
@@ -325,7 +314,6 @@ services:
   # at their own receiver configuration before enabling this profile.
   alertmanager:
     image: prom/alertmanager:v0.28.1
-    container_name: autorix-alertmanager
     restart: unless-stopped
     profiles: ["alerts"]
     ports:
@@ -340,7 +328,6 @@ services:
     build:
       context: .
       dockerfile: docs/Dockerfile
-    container_name: autorix-docs
     restart: unless-stopped
     profiles: ["extended"]
     ports:
@@ -354,7 +341,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: autorix-redis
     profiles: ["core"]
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]

@@ -14,7 +14,7 @@ cd "$(dirname "$0")/../.."
 COMPOSE_SERVICES="postgres redis argus nexus ego janus aegis"
 # Never share the developer's default Compose project. A smoke run must clean
 # only resources it created, even when a local Autorix stack is already up.
-COMPOSE=(docker compose -p autorix-smoke --profile core)
+COMPOSE=(docker compose -p autorix-smoke -f docker-compose.yml -f scripts/ci/docker-compose.smoke.yaml --profile core)
 FAILED=0
 
 echo "==> Building and starting the stack: $COMPOSE_SERVICES"
@@ -59,29 +59,18 @@ while true; do
   sleep 3
 done
 
-check() {
-  local name="$1" expected_status="$2"
-  shift 2
-  local status
-  status=$(curl -s -o /tmp/smoke_body.$$ -w '%{http_code}' "$@") || status="curl_failed"
-  if [ "$status" != "$expected_status" ]; then
-    echo "FAIL: $name — expected HTTP $expected_status, got $status"
-    cat /tmp/smoke_body.$$ 2>/dev/null || true
-    echo
-    FAILED=1
-  else
-    echo "OK: $name (HTTP $status)"
-  fi
-  rm -f /tmp/smoke_body.$$
-}
-
-# The admin listeners deliberately have no host port publication. BusyBox wget
-# is available inside both engine images; execute requests in their namespace.
+# The smoke project publishes no host ports, so it can coexist with a local
+# developer stack. BusyBox wget is available inside engine images; execute
+# requests through the Compose network instead.
 check_internal() {
   local name="$1" expected_status="$2" service="$3" url="$4" payload="$5"
   local output status
-  output=$("${COMPOSE[@]}" exec -T "$service" wget -S -O - \
-    --header='Content-Type: application/json' --post-data="$payload" "$url" 2>&1) || true
+  if [ -n "$payload" ]; then
+    output=$("${COMPOSE[@]}" exec -T "$service" wget -S -O - \
+      --header='Content-Type: application/json' --post-data="$payload" "$url" 2>&1) || true
+  else
+    output=$("${COMPOSE[@]}" exec -T "$service" wget -S -O - "$url" 2>&1) || true
+  fi
   status=$(printf '%s\n' "$output" | awk '/HTTP\/1\.[01] [0-9]+/ {code=$2} END {print code}')
   if [ "$status" != "$expected_status" ]; then
     echo "FAIL: $name — expected HTTP $expected_status, got $status"
@@ -95,23 +84,20 @@ check_internal() {
 echo "==> Exercising one real business path per engine"
 
 # ego: register an identity end to end (hashes a real password, persists it).
-check "ego: register identity" 201 -X POST http://localhost:4433/self-service/registration \
-  -H "Content-Type: application/json" \
-  -d '{"password":"smoke-test-password-1","traits":{"email":"smoke-test@autorix.io","name":{"first":"Smoke","last":"Test"}}}'
+check_internal "ego: register identity" 201 ego http://ego:4433/self-service/registration \
+  '{"password":"smoke-test-password-1","traits":{"email":"smoke-test@autorix.io","name":{"first":"Smoke","last":"Test"}}}'
 
 # janus: register an OAuth2 client, then confirm its JWKS endpoint serves real keys.
-check "janus: public admin denied" 404 http://localhost:4444/admin/clients
+check_internal "janus: public admin denied" 404 janus http://127.0.0.1:4444/admin/clients ''
 check_internal "janus: register oauth2 client" 201 janus http://localhost:4445/admin/clients \
   '{"client_id":"smoke-test-client","client_name":"Smoke Test","is_public":false,"grant_types":["client_credentials"],"scopes":["read"]}'
-check "janus: JWKS" 200 http://localhost:4444/.well-known/jwks.json
+check_internal "janus: JWKS" 200 janus http://127.0.0.1:4444/.well-known/jwks.json ''
 
 # nexus: write and check a real relation tuple (REST admin, port 8080).
-check "nexus: write tuple" 201 -X POST http://localhost:8080/tuples \
-  -H "Content-Type: application/json" \
-  -d '{"tuples":[{"namespace":"document","object":"smoke-test-doc","relation":"viewer","subject_namespace":"user","subject_id":"smoke-test-user"}]}'
-check "nexus: check permission" 200 -X POST http://localhost:8080/check \
-  -H "Content-Type: application/json" \
-  -d '{"namespace":"document","object":"smoke-test-doc","relation":"viewer","subject_namespace":"user","subject_id":"smoke-test-user"}'
+check_internal "nexus: write tuple" 201 nexus http://nexus:8080/tuples \
+  '{"tuples":[{"namespace":"document","object":"smoke-test-doc","relation":"viewer","subject_namespace":"user","subject_id":"smoke-test-user"}]}'
+check_internal "nexus: check permission" 200 nexus http://nexus:8080/check \
+  '{"namespace":"document","object":"smoke-test-doc","relation":"viewer","subject_namespace":"user","subject_id":"smoke-test-user"}'
 
 # aegis: create a routing rule via the admin API.
 check_internal "aegis: create proxy rule" 201 aegis http://localhost:4456/rules \

@@ -34,8 +34,13 @@ class IngressTargetTests(unittest.TestCase):
 class ComposeSmokeIsolationTests(unittest.TestCase):
     def test_smoke_cleanup_uses_an_isolated_compose_project(self):
         script = (Path(__file__).resolve().parents[2] / "scripts/ci/smoke_test.sh").read_text()
-        self.assertIn("-p autorix-smoke --profile core", script)
+        self.assertIn("-p autorix-smoke -f docker-compose.yml -f scripts/ci/docker-compose.smoke.yaml --profile core", script)
         self.assertIn('"${COMPOSE[@]}" down -v', script)
+
+    def test_smoke_override_removes_shared_host_ports(self):
+        override = (Path(__file__).resolve().parents[2] / "scripts/ci/docker-compose.smoke.yaml").read_text()
+        for service in ("postgres", "redis", "argus", "nexus", "ego", "janus", "aegis"):
+            self.assertIn(f"  {service}:\n    ports: !reset []", override)
 
 
 class ComposeSecurityTests(unittest.TestCase):

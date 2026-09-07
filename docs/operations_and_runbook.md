@@ -19,7 +19,7 @@ If an operator is locked out (due to 5 failed attempts), you can unlock them dir
 
 1. Connect to the database:
    ```bash
-   docker exec -it autorix-postgres psql -U autorix -d autorix_argus
+   docker compose exec postgres psql -U autorix -d autorix_argus
    ```
 2. Reset the lockout timestamp for the specific email:
    ```sql
@@ -81,13 +81,13 @@ BACKUP_DIR="/var/backups/autorix/$(date +%Y-%m-%d_%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
 for DB in autorix_argus autorix_nexus autorix_ego autorix_janus autorix_vulcan autorix_hermes autorix_themis autorix_aegis; do
-  docker exec autorix-postgres pg_dump -U autorix -Fc "$DB" > "$BACKUP_DIR/$DB.dump"
+  docker compose exec -T postgres pg_dump -U autorix -Fc "$DB" > "$BACKUP_DIR/$DB.dump"
 done
 ```
 
 **To restore a single database:**
 ```bash
-docker exec -i autorix-postgres pg_restore -U autorix -d <DATABASE_NAME> --clean --if-exists < /path/to/dump
+docker compose exec -T postgres pg_restore -U autorix -d <DATABASE_NAME> --clean --if-exists < /path/to/dump
 ```
 
 ---
@@ -114,7 +114,7 @@ curl -s http://localhost:4400/v1/audit/export?format=csv -o audit-trail-$(date +
 - [ ] **Check routing rules**: `curl -s http://localhost:4456/v1/rules` to ensure Aegis is pointing to the right internal IP.
 
 ### Nexus ReBAC Latency Spikes
-- [ ] **Check tuple volume**: `docker exec autorix-postgres psql -U autorix -d autorix_nexus -c "SELECT count(*) FROM relation_tuples;"`
+- [ ] **Check tuple volume**: `docker compose exec -T postgres psql -U autorix -d autorix_nexus -c "SELECT count(*) FROM relation_tuples;"`
 - [ ] **Check database connections**: Review `postgres_pool_acquired_connections{engine="nexus"}` in Prometheus (`http://localhost:9090`).
 
 ---

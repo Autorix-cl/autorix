@@ -1,0 +1,17 @@
+# The CI smoke project must never claim the developer's loopback ports. Docker
+# Compose's !reset tag replaces the port lists inherited from the base file.
+services:
+  postgres:
+    ports: !reset []
+  redis:
+    ports: !reset []
+  argus:
+    ports: !reset []
+  nexus:
+    ports: !reset []
+  ego:
+    ports: !reset []
+  janus:
+    ports: !reset []
+  aegis:
+    ports: !reset []
