@@ -36,6 +36,7 @@ interface ClientApp {
   name: string;
   grantTypes: string[];
   scopes: string[];
+  allowedAudiences: string[];
   isPublic: boolean;
   raw: OAuth2Client;
   createdAt: string;
@@ -47,6 +48,7 @@ function toClientApp(c: OAuth2Client): ClientApp {
     name: c.client_name || c.client_id,
     grantTypes: c.grant_types?.length ? c.grant_types : ["client_credentials"],
     scopes: c.scopes?.length ? c.scopes : ["openid"],
+    allowedAudiences: c.allowed_audiences ?? [],
     isPublic: Boolean(c.is_public),
     raw: c,
     createdAt: c.created_at ? new Date(c.created_at).toLocaleString() : "Recently",
@@ -63,6 +65,7 @@ export default function OAuth2Page() {
   const [clientName, setClientName] = React.useState("");
   const [clientSecret, setClientSecret] = React.useState("");
   const [scopes, setScopes] = React.useState("openid profile email");
+  const [allowedAudiences, setAllowedAudiences] = React.useState("");
   const [clientType, setClientType] = React.useState("confidential");
   const [searchQuery, setSearchQuery] = React.useState("");
 
@@ -95,7 +98,7 @@ export default function OAuth2Page() {
   const clients: ClientApp[] = React.useMemo(() => (clientsRaw ?? []).map(toClientApp), [clientsRaw]);
 
   const createClient = useApiMutation(
-    (vars: { clientId: string; clientName: string; clientSecret: string; isPublic: boolean; scopes: string[] }) =>
+    (vars: { clientId: string; clientName: string; clientSecret: string; isPublic: boolean; scopes: string[]; allowedAudiences: string[] }) =>
       fetchAndParse("/api/oauth2/clients", oauth2ClientSchema, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -108,6 +111,7 @@ export default function OAuth2Page() {
         setClientId("");
         setClientName("");
         setClientSecret("");
+        setAllowedAudiences("");
       },
     },
   );
@@ -121,6 +125,7 @@ export default function OAuth2Page() {
       clientSecret,
       isPublic,
       scopes: scopes.trim().split(" ").filter(Boolean),
+      allowedAudiences: allowedAudiences.trim().split(/\s+/).filter(Boolean),
     });
   };
 
@@ -277,6 +282,20 @@ export default function OAuth2Page() {
                   <div className="space-y-1.5">
                     <Label htmlFor="scopes">{t("oauth2.scopesLabel")}</Label>
                     <Input id="scopes" value={scopes} onChange={(e) => setScopes(e.target.value)} />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="allowedAudiences">Allowed resource audiences</Label>
+                    <Input
+                      id="allowedAudiences"
+                      value={allowedAudiences}
+                      onChange={(e) => setAllowedAudiences(e.target.value)}
+                      placeholder="https://api.example https://reports.example"
+                      aria-describedby="allowedAudiencesHelp"
+                    />
+                    <p id="allowedAudiencesHelp" className="text-xs text-muted-foreground">
+                      Space-separated exact resource URLs allowed for issued access tokens.
+                    </p>
                   </div>
 
                   <Button type="submit" variant="amber" disabled={isSubmitting} className="w-full gap-2 mt-2">
@@ -452,4 +471,3 @@ export default function OAuth2Page() {
     </div>
   );
 }
-

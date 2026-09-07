@@ -15,6 +15,7 @@ export const oauth2ClientSchema = z.object({
   response_types: z.array(z.string()),
   redirect_uris: z.array(z.string()),
   scopes: z.array(z.string()),
+  allowed_audiences: z.array(z.string()).default([]),
   is_public: z.boolean(),
   previous_secret_expires_at: z.string().nullable().optional(),
   has_previous_secret: z.boolean().optional(),
@@ -120,4 +121,3 @@ export const jwksSchema = z.object({
   keys: z.array(jwkSchema),
 });
 export type JWKS = z.infer<typeof jwksSchema>;
-

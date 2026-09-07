@@ -20,11 +20,7 @@ describe("OAuth2 BFF Routes", () => {
       const req = new NextRequest("http://localhost/api/oauth2/clients/client-1");
       const res = await GET(req, { params: Promise.resolve({ id: "client-1" }) });
 
-      expect(proxyRequest).toHaveBeenCalledWith(
-        "janus",
-        "/admin/clients/client-1",
-        expect.anything()
-      );
+      expect(proxyRequest).toHaveBeenCalledWith("janus", "/admin/clients/client-1", expect.anything());
       expect(res.status).toBe(200);
     });
   });
@@ -45,7 +41,7 @@ describe("OAuth2 BFF Routes", () => {
         "janus",
         "/admin/clients/client-1",
         expect.anything(),
-        expect.objectContaining({ method: "PATCH" })
+        expect.objectContaining({ method: "PATCH" }),
       );
       expect(res.status).toBe(200);
     });
@@ -63,7 +59,7 @@ describe("OAuth2 BFF Routes", () => {
         "janus",
         "/admin/clients/client-1",
         expect.anything(),
-        expect.objectContaining({ method: "DELETE" })
+        expect.objectContaining({ method: "DELETE" }),
       );
       expect(res.status).toBe(200);
     });
@@ -85,7 +81,7 @@ describe("OAuth2 BFF Routes", () => {
         "janus",
         "/admin/clients/client-1/rotate-secret",
         expect.anything(),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(res.status).toBe(200);
     });
@@ -96,14 +92,9 @@ describe("OAuth2 BFF Routes", () => {
       const { GET } = await import("./scopes/route");
       vi.mocked(proxyRequest).mockResolvedValue(NextResponse.json([{ name: "openid" }]));
 
-      const req = new NextRequest("http://localhost/api/oauth2/scopes");
-      const res = await GET(req);
+      const res = await GET();
 
-      expect(proxyRequest).toHaveBeenCalledWith(
-        "janus",
-        "/admin/scopes",
-        expect.anything()
-      );
+      expect(proxyRequest).toHaveBeenCalledWith("janus", "/admin/scopes", expect.anything());
       expect(res.status).toBe(200);
     });
 
@@ -122,7 +113,7 @@ describe("OAuth2 BFF Routes", () => {
         "janus",
         "/admin/scopes",
         expect.anything(),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(res.status).toBe(200);
     });
@@ -140,7 +131,7 @@ describe("OAuth2 BFF Routes", () => {
         "janus",
         "/admin/scopes/custom:scope",
         expect.anything(),
-        expect.objectContaining({ method: "DELETE" })
+        expect.objectContaining({ method: "DELETE" }),
       );
       expect(res.status).toBe(200);
     });
@@ -162,7 +153,7 @@ describe("OAuth2 BFF Routes", () => {
         "janus",
         "/oauth2/introspect",
         expect.anything(),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(res.status).toBe(200);
     });
@@ -184,7 +175,7 @@ describe("OAuth2 BFF Routes", () => {
         "janus",
         "/oauth2/revoke",
         expect.anything(),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(res.status).toBe(200);
     });
@@ -195,14 +186,13 @@ describe("OAuth2 BFF Routes", () => {
       const { POST } = await import("./keys/rotate/route");
       vi.mocked(proxyRequest).mockResolvedValue(NextResponse.json({ status: "rotated", new_kid: "key-1" }));
 
-      const req = new NextRequest("http://localhost/api/oauth2/keys/rotate", { method: "POST" });
-      const res = await POST(req);
+      const res = await POST();
 
       expect(proxyRequest).toHaveBeenCalledWith(
         "janus",
         "/admin/keys/rotate",
         expect.anything(),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(res.status).toBe(200);
     });
@@ -216,11 +206,7 @@ describe("OAuth2 BFF Routes", () => {
       const req = new NextRequest("http://localhost/api/oauth2/grants");
       const res = await GET(req);
 
-      expect(proxyRequest).toHaveBeenCalledWith(
-        "janus",
-        "/admin/grants",
-        expect.anything()
-      );
+      expect(proxyRequest).toHaveBeenCalledWith("janus", "/admin/grants", expect.anything());
       expect(res.status).toBe(200);
     });
   });

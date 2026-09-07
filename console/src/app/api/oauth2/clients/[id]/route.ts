@@ -14,7 +14,18 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const { id } = await params;
-  const body = await req.text();
+  const input = await req.json();
+  const allowedAudiences = input.allowedAudiences ?? input.allowed_audiences;
+  const body = JSON.stringify({
+    ...input,
+    ...(allowedAudiences !== undefined
+      ? {
+          allowed_audiences: Array.isArray(allowedAudiences)
+            ? allowedAudiences
+            : String(allowedAudiences).split(/\s+/).filter(Boolean),
+        }
+      : {}),
+  });
   return proxyRequest("janus", `/admin/clients/${encodeURIComponent(id)}`, oauth2ClientSchema, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

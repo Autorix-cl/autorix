@@ -14,6 +14,9 @@ export async function POST(req: NextRequest) {
     client_secret: body.clientSecret || "",
     is_public: Boolean(body.isPublic),
     scopes: Array.isArray(body.scopes) ? body.scopes : (body.scopes || "").split(" ").filter(Boolean),
+    allowed_audiences: Array.isArray(body.allowedAudiences)
+      ? body.allowedAudiences
+      : (body.allowedAudiences || "").split(/\s+/).filter(Boolean),
     grant_types: body.isPublic ? ["authorization_code", "refresh_token"] : ["client_credentials"],
     redirect_uris: body.redirectUris || [],
     response_types: body.isPublic ? ["code"] : [],

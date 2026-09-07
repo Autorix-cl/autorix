@@ -73,11 +73,9 @@ export async function middleware(request: NextRequest) {
   if (isMutatingApi) {
     const csrfCookie = request.cookies.get(CSRF_COOKIE_NAME)?.value;
     const csrfHeader = request.headers.get("X-CSRF-Token");
-    const secFetchSite = request.headers.get("sec-fetch-site");
     const origin = request.headers.get("origin");
-    const host = request.headers.get("host");
 
-    const isSameOrigin = secFetchSite === "same-origin" || Boolean(origin && host && (origin.includes(host) || host.includes(origin)));
+    const isSameOrigin = isTrustedSameOrigin(origin, request.nextUrl.origin);
     const hasValidToken = Boolean(csrfCookie && csrfHeader && csrfCookie === csrfHeader);
 
     if (!isSameOrigin && !hasValidToken) {
@@ -91,6 +89,17 @@ export async function middleware(request: NextRequest) {
   const response = NextResponse.next();
   ensureCsrfCookie(request, response);
   return response;
+}
+
+// Origin is a URL, not a substring. A check such as origin.includes(host)
+// accepts attacker-controlled lookalikes (for example console.example.evil).
+function isTrustedSameOrigin(origin: string | null, expectedOrigin: string): boolean {
+  if (!origin) return false;
+  try {
+    return new URL(origin).origin === expectedOrigin;
+  } catch {
+    return false;
+  }
 }
 
 function ensureCsrfCookie(request: NextRequest, response: NextResponse) {

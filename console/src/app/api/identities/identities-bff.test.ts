@@ -39,14 +39,14 @@ describe("Ego Identities BFF Routes", () => {
         "ego",
         "/admin/identities/id-1",
         expect.anything(),
-        expect.objectContaining({ method: "PATCH" })
+        expect.objectContaining({ method: "PATCH" }),
       );
       expect(res.status).toBe(200);
     });
 
     it("proxies DELETE /api/identities/[id]", async () => {
       const { DELETE } = await import("./[id]/route");
-      vi.mocked(proxyRequest).mockResolvedValue(new Response(null, { status: 204 }));
+      vi.mocked(proxyRequest).mockResolvedValue(new NextResponse(null, { status: 204 }));
 
       const req = new NextRequest("http://localhost/api/identities/id-1", { method: "DELETE" });
       const res = await DELETE(req, { params: Promise.resolve({ id: "id-1" }) });
@@ -55,7 +55,7 @@ describe("Ego Identities BFF Routes", () => {
         "ego",
         "/admin/identities/id-1",
         expect.anything(),
-        expect.objectContaining({ method: "DELETE" })
+        expect.objectContaining({ method: "DELETE" }),
       );
       expect(res.status).toBe(204);
     });
@@ -75,7 +75,7 @@ describe("Ego Identities BFF Routes", () => {
 
     it("proxies DELETE identity sessions", async () => {
       const { DELETE } = await import("./[id]/sessions/route");
-      vi.mocked(proxyRequest).mockResolvedValue(new Response(null, { status: 204 }));
+      vi.mocked(proxyRequest).mockResolvedValue(new NextResponse(null, { status: 204 }));
 
       const req = new NextRequest("http://localhost/api/identities/id-1/sessions", { method: "DELETE" });
       const res = await DELETE(req, { params: Promise.resolve({ id: "id-1" }) });
@@ -84,7 +84,7 @@ describe("Ego Identities BFF Routes", () => {
         "ego",
         "/admin/identities/id-1/sessions",
         expect.anything(),
-        expect.objectContaining({ method: "DELETE" })
+        expect.objectContaining({ method: "DELETE" }),
       );
       expect(res.status).toBe(204);
     });
@@ -104,7 +104,7 @@ describe("Ego Identities BFF Routes", () => {
 
     it("proxies DELETE session by ID", async () => {
       const { DELETE } = await import("../sessions/[id]/route");
-      vi.mocked(proxyRequest).mockResolvedValue(new Response(null, { status: 204 }));
+      vi.mocked(proxyRequest).mockResolvedValue(new NextResponse(null, { status: 204 }));
 
       const req = new NextRequest("http://localhost/api/sessions/sess-1", { method: "DELETE" });
       const res = await DELETE(req, { params: Promise.resolve({ id: "sess-1" }) });
@@ -113,7 +113,7 @@ describe("Ego Identities BFF Routes", () => {
         "ego",
         "/admin/sessions/sess-1",
         expect.anything(),
-        expect.objectContaining({ method: "DELETE" })
+        expect.objectContaining({ method: "DELETE" }),
       );
       expect(res.status).toBe(204);
     });
@@ -134,7 +134,7 @@ describe("Ego Identities BFF Routes", () => {
     it("proxies POST reset password", async () => {
       const { POST } = await import("./[id]/credentials/reset-password/route");
       vi.mocked(proxyRequest).mockResolvedValue(
-        NextResponse.json({ status: "password_reset", temporary_password: "abc", force_rotation: true })
+        NextResponse.json({ status: "password_reset", temporary_password: "abc", force_rotation: true }),
       );
 
       const req = new NextRequest("http://localhost/api/identities/id-1/credentials/reset-password", {
@@ -148,7 +148,7 @@ describe("Ego Identities BFF Routes", () => {
         "ego",
         "/admin/identities/id-1/credentials/reset-password",
         expect.anything(),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(res.status).toBe(200);
     });
@@ -156,7 +156,7 @@ describe("Ego Identities BFF Routes", () => {
     it("proxies POST recovery link", async () => {
       const { POST } = await import("./[id]/recovery-link/route");
       vi.mocked(proxyRequest).mockResolvedValue(
-        NextResponse.json({ recovery_link: "/recovery?token=123", token: "123", expires_at: "2026-01-01" })
+        NextResponse.json({ recovery_link: "/recovery?token=123", token: "123", expires_at: "2026-01-01" }),
       );
 
       const req = new NextRequest("http://localhost/api/identities/id-1/recovery-link", {
@@ -170,7 +170,7 @@ describe("Ego Identities BFF Routes", () => {
         "ego",
         "/admin/identities/id-1/recovery-link",
         expect.anything(),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(res.status).toBe(200);
     });
@@ -184,14 +184,14 @@ describe("Ego Identities BFF Routes", () => {
       expect(proxyRequest).toHaveBeenCalledWith("ego", "/admin/identities/id-1/mfa", expect.anything());
       expect(getRes.status).toBe(200);
 
-      vi.mocked(proxyRequest).mockResolvedValue(new Response(null, { status: 204 }));
+      vi.mocked(proxyRequest).mockResolvedValue(new NextResponse(null, { status: 204 }));
       const delReq = new NextRequest("http://localhost/api/identities/id-1/mfa", { method: "DELETE" });
       const delRes = await DELETE(delReq, { params: Promise.resolve({ id: "id-1" }) });
       expect(proxyRequest).toHaveBeenCalledWith(
         "ego",
         "/admin/identities/id-1/mfa",
         expect.anything(),
-        expect.objectContaining({ method: "DELETE" })
+        expect.objectContaining({ method: "DELETE" }),
       );
       expect(delRes.status).toBe(204);
     });
@@ -225,7 +225,7 @@ describe("Ego Identities BFF Routes", () => {
     it("commits valid rows when dry_run is false", async () => {
       const { POST } = await import("./bulk-import/route");
       vi.mocked(proxyRequest).mockResolvedValue(
-        NextResponse.json({ identity: { id: "new-id" }, session: { id: "new-sess" } })
+        NextResponse.json({ identity: { id: "new-id" }, session: { id: "new-sess" } }),
       );
 
       const req = new NextRequest("http://localhost/api/identities/bulk-import", {
@@ -273,7 +273,7 @@ describe("Ego Identities BFF Routes", () => {
         "ego",
         "/admin/schemas",
         expect.anything(),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(res.status).toBe(201);
     });
@@ -302,7 +302,7 @@ describe("Ego Identities BFF Routes", () => {
         "ego",
         "/admin/schemas/partner_v1",
         expect.anything(),
-        expect.objectContaining({ method: "PATCH" })
+        expect.objectContaining({ method: "PATCH" }),
       );
       expect(res.status).toBe(200);
     });
@@ -319,7 +319,7 @@ describe("Ego Identities BFF Routes", () => {
         "ego",
         "/admin/schemas/partner_v1",
         expect.anything(),
-        expect.objectContaining({ method: "DELETE" })
+        expect.objectContaining({ method: "DELETE" }),
       );
       expect(res.status).toBe(204);
     });

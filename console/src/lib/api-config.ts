@@ -1,3 +1,6 @@
+// Server-side administrative destination; never expose it through NEXT_PUBLIC_* variables.
+export const JANUS_ADMIN_URL = process.env.JANUS_ADMIN_INTERNAL_URL || "http://janus:4445";
+
 export const BACKEND_URLS = {
   ego: process.env.EGO_INTERNAL_URL || "http://ego:4433",
   janus: process.env.JANUS_INTERNAL_URL || "http://janus:4444",

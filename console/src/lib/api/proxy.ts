@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import type { z } from "zod";
-import { getServiceUrl, BACKEND_URLS } from "../api-config";
+import { getServiceUrl, BACKEND_URLS, JANUS_ADMIN_URL } from "../api-config";
 import { getCurrentOperator, SESSION_COOKIE_NAME } from "../auth/session";
 import { hasPermission } from "../auth/types";
 import { telemetryStore } from "../server/telemetry-store";
@@ -47,22 +47,28 @@ export async function proxyRequest<T>(
   }
 
   // 2. Server-side RBAC Enforcement (P3-S4-T2)
-  if (options?.requiredPermission) {
+  // Private engine management must not become public through the console BFF.
+  // Route handlers cannot opt out by omitting requiredPermission.
+  const permissionDomain = service === "janus" ? "oauth2" : service === "aegis" ? "proxy-rules" : undefined;
+  const action = ["GET", "HEAD"].includes((options?.method || "GET").toUpperCase()) ? "read" : "write";
+  const baselinePermission = permissionDomain ? `${permissionDomain}:${action}` : undefined;
+  const requiredPermissions = [baselinePermission, options?.requiredPermission].filter(
+    (permission): permission is string => Boolean(permission),
+  );
+  if (requiredPermissions.length > 0) {
     const operator = await getCurrentOperator();
     if (!operator) {
-      const res = NextResponse.json(
-        { error: "unauthorized: authentication required" },
-        { status: 401, headers },
-      );
+      const res = NextResponse.json({ error: "unauthorized: authentication required" }, { status: 401, headers });
       res.cookies.delete(SESSION_COOKIE_NAME);
       return res;
     }
 
-    if (!hasPermission(operator.role, options.requiredPermission)) {
+    const requiredPermission = requiredPermissions.find((permission) => !hasPermission(operator.role, permission));
+    if (requiredPermission) {
       return NextResponse.json(
         {
-          error: `forbidden: operator role '${operator.role}' lacks required permission '${options.requiredPermission}'`,
-          required_permission: options.requiredPermission,
+          error: `forbidden: operator role '${operator.role}' lacks required permission '${requiredPermission}'`,
+          required_permission: requiredPermission,
           role: operator.role,
         },
         { status: 403, headers },
@@ -70,7 +76,9 @@ export async function proxyRequest<T>(
     }
   }
 
-  const url = `${getServiceUrl(service)}${path}`;
+  // Public OAuth endpoints stay on the public listener; management stays private.
+  const baseUrl = service === "janus" && path.startsWith("/admin/") ? JANUS_ADMIN_URL : getServiceUrl(service);
+  const url = `${baseUrl}${path}`;
 
   const startTime = performance.now();
   let res: Response;

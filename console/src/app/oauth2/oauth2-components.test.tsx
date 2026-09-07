@@ -146,6 +146,7 @@ describe("OAuth2 UI Components", () => {
         response_types: ["code"],
         redirect_uris: ["https://dash.example.com/cb"],
         scopes: ["openid"],
+        allowed_audiences: [],
         is_public: false,
         created_at: "2026-01-01T00:00:00Z",
         updated_at: "2026-01-01T00:00:00Z",
