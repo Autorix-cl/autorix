@@ -42,10 +42,12 @@ Janus complies with RFC 6749 (OAuth 2.0), RFC 7636 (PKCE), RFC 7517/7518 (JWKS),
 
 ### Cryptographic Key Management
 
-Janus signs JWT access tokens using asymmetric RSA 2048-bit key pairs. 
+Janus signs JWT access tokens using asymmetric RSA 2048-bit key pairs. Key material is persisted in PostgreSQL; startup atomically loads the shared key set, and rotation retains prior public keys for verification rollover.
 - **View Public JWKS:** `GET /.well-known/jwks.json`
 - **Rotate Keys:** `POST /admin/keys/rotate` (zero-downtime; keeps previous keys valid until expiration)
 - **Rotate Client Secrets:** `POST /admin/clients/{id}/rotate-secret` (configurable overlap period for continuous deployment)
+
+Access tokens carry `token_use: access_token`; ID tokens carry `token_use: id_token` and are issued only when `openid` was granted. Aegis requires the access-token marker, so an ID token cannot be replayed to an API.
 
 ### Decoupled Authorization Flow & Challenges
 
@@ -54,12 +56,21 @@ Janus delegates user authentication and consent to your own UI:
 2. **Accept Login:** UI calls `PUT /admin/oauth2/auth/requests/login/accept` with user context.
 3. **Accept Consent:** UI calls `PUT /admin/oauth2/auth/requests/consent/accept` with granted scopes.
 
-### REST API Reference (Port `4444`)
+### Public API Reference (Port `4444`)
 
 - **Token Issuance:** `POST /oauth2/token`
 - **Token Introspection:** `POST /oauth2/introspect`
 - **Token Revocation:** `POST /oauth2/revoke`
 - **OIDC Discovery:** `GET /.well-known/openid-configuration`
+
+`/oauth2/introspect` and `/oauth2/revoke` require authentication by a registered **confidential** client (HTTP Basic or form credentials). A client can only inspect or revoke its own tokens; unauthorized token ownership returns the RFC-compatible inactive/empty response.
+
+### Private Admin API Reference (Port `4445`)
+
+Never expose this listener publicly. Login and consent acceptance also use this
+listener from a trusted backend, not directly from the browser. See the
+[security migration guide](./security_boundary_migration.md).
+
 - **Admin Clients:** `POST /admin/clients`, `GET /admin/clients`, `GET /admin/clients/{id}`, `PATCH /admin/clients/{id}`, `DELETE /admin/clients/{id}`
 - **Admin Scopes:** `POST /admin/scopes`, `GET /admin/scopes`, `DELETE /admin/scopes/{name}`
 - **Admin Grants:** `GET /admin/grants`

@@ -155,6 +155,7 @@ func TestAdminClientsLifecycleAndSecretRotation(t *testing.T) {
 	repo := postgres.NewRepository(pool)
 	server := NewServer("http://localhost:4444", repo, km, engine, newTestHealthHandler(false))
 	router := server.Routes()
+	adminRouter := server.AdminRoutes()
 
 	// 1. POST /admin/clients - Create client
 	createBody := `{
@@ -163,12 +164,13 @@ func TestAdminClientsLifecycleAndSecretRotation(t *testing.T) {
 		"client_secret": "initial-secret-123",
 		"grant_types": ["client_credentials"],
 		"scopes": ["read", "write"],
+		"allowed_audiences": ["https://api.example"],
 		"is_public": false
 	}`
 	req := httptest.NewRequest("POST", "/admin/clients", strings.NewReader(createBody))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	adminRouter.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected 201 Created, got %d: %s", rec.Code, rec.Body.String())
@@ -177,7 +179,7 @@ func TestAdminClientsLifecycleAndSecretRotation(t *testing.T) {
 	// 2. GET /admin/clients/{id} - Get client
 	reqGet := httptest.NewRequest("GET", "/admin/clients/app-client-1", nil)
 	recGet := httptest.NewRecorder()
-	router.ServeHTTP(recGet, reqGet)
+	adminRouter.ServeHTTP(recGet, reqGet)
 
 	if recGet.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK from GET /admin/clients/{id}, got %d: %s", recGet.Code, recGet.Body.String())
@@ -191,7 +193,7 @@ func TestAdminClientsLifecycleAndSecretRotation(t *testing.T) {
 	}
 
 	// 3. Authenticate with initial secret via /oauth2/token
-	reqTok := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=client_credentials&client_id=app-client-1&client_secret=initial-secret-123"))
+	reqTok := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=client_credentials&client_id=app-client-1&client_secret=initial-secret-123&resource=https%3A%2F%2Fapi.example"))
 	reqTok.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	recTok := httptest.NewRecorder()
 	router.ServeHTTP(recTok, reqTok)
@@ -199,12 +201,48 @@ func TestAdminClientsLifecycleAndSecretRotation(t *testing.T) {
 	if recTok.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK from token endpoint with initial secret, got %d: %s", recTok.Code, recTok.Body.String())
 	}
+	var tokenBody core.TokenResponse
+	if err := json.Unmarshal(recTok.Body.Bytes(), &tokenBody); err != nil {
+		t.Fatal(err)
+	}
+	claims, err := km.VerifyJWT(tokenBody.AccessToken)
+	if err != nil || claims["iss"] != "http://localhost:4444" || claims["aud"] != "https://api.example" {
+		t.Fatalf("resource token claims = %#v, err = %v", claims, err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"missing resource", "grant_type=client_credentials&client_id=app-client-1&client_secret=initial-secret-123"},
+		{"unregistered resource", "grant_type=client_credentials&client_id=app-client-1&client_secret=initial-secret-123&resource=https%3A%2F%2Fother.example"},
+		{"multiple resources", "grant_type=client_credentials&client_id=app-client-1&client_secret=initial-secret-123&resource=https%3A%2F%2Fapi.example&resource=https%3A%2F%2Fother.example"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "invalid_target") {
+				t.Fatalf("expected invalid_target, got %d: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	// Scope escalation must fail before token issuance.
+	reqEscalation := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=client_credentials&client_id=app-client-1&client_secret=initial-secret-123&scope=admin&resource=https%3A%2F%2Fapi.example"))
+	reqEscalation.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	recEscalation := httptest.NewRecorder()
+	router.ServeHTTP(recEscalation, reqEscalation)
+	if recEscalation.Code != http.StatusBadRequest || !strings.Contains(recEscalation.Body.String(), "invalid_scope") {
+		t.Fatalf("expected invalid_scope for scope escalation, got %d: %s", recEscalation.Code, recEscalation.Body.String())
+	}
 
 	// 4. POST /admin/clients/{id}/rotate-secret - Rotate Secret with overlap
 	rotateReq := httptest.NewRequest("POST", "/admin/clients/app-client-1/rotate-secret", strings.NewReader(`{"overlap_seconds": 3600}`))
 	rotateReq.Header.Set("Content-Type", "application/json")
 	rotateRec := httptest.NewRecorder()
-	router.ServeHTTP(rotateRec, rotateReq)
+	adminRouter.ServeHTTP(rotateRec, rotateReq)
 
 	if rotateRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK from rotate-secret, got %d: %s", rotateRec.Code, rotateRec.Body.String())
@@ -217,7 +255,7 @@ func TestAdminClientsLifecycleAndSecretRotation(t *testing.T) {
 	}
 
 	// 5. Authenticate with new secret - must succeed
-	reqTokNew := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=client_credentials&client_id=app-client-1&client_secret="+newSecret))
+	reqTokNew := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=client_credentials&client_id=app-client-1&client_secret="+newSecret+"&resource=https%3A%2F%2Fapi.example"))
 	reqTokNew.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	recTokNew := httptest.NewRecorder()
 	router.ServeHTTP(recTokNew, reqTokNew)
@@ -227,7 +265,7 @@ func TestAdminClientsLifecycleAndSecretRotation(t *testing.T) {
 	}
 
 	// 6. Authenticate with OLD secret during rollover window - must STILL succeed
-	reqTokOld := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=client_credentials&client_id=app-client-1&client_secret=initial-secret-123"))
+	reqTokOld := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=client_credentials&client_id=app-client-1&client_secret=initial-secret-123&resource=https%3A%2F%2Fapi.example"))
 	reqTokOld.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	recTokOld := httptest.NewRecorder()
 	router.ServeHTTP(recTokOld, reqTokOld)
@@ -241,7 +279,7 @@ func TestAdminClientsLifecycleAndSecretRotation(t *testing.T) {
 	reqPatch := httptest.NewRequest("PATCH", "/admin/clients/app-client-1", strings.NewReader(patchBody))
 	reqPatch.Header.Set("Content-Type", "application/json")
 	recPatch := httptest.NewRecorder()
-	router.ServeHTTP(recPatch, reqPatch)
+	adminRouter.ServeHTTP(recPatch, reqPatch)
 
 	if recPatch.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK from PATCH /admin/clients/{id}, got %d: %s", recPatch.Code, recPatch.Body.String())
@@ -250,7 +288,7 @@ func TestAdminClientsLifecycleAndSecretRotation(t *testing.T) {
 	// 8. DELETE /admin/clients/{id} - Delete client
 	reqDel := httptest.NewRequest("DELETE", "/admin/clients/app-client-1", nil)
 	recDel := httptest.NewRecorder()
-	router.ServeHTTP(recDel, reqDel)
+	adminRouter.ServeHTTP(recDel, reqDel)
 
 	if recDel.Code != http.StatusNoContent {
 		t.Fatalf("expected 204 No Content from DELETE /admin/clients/{id}, got %d", recDel.Code)
@@ -259,7 +297,7 @@ func TestAdminClientsLifecycleAndSecretRotation(t *testing.T) {
 	// Verify 404 after deletion
 	reqGetDeleted := httptest.NewRequest("GET", "/admin/clients/app-client-1", nil)
 	recGetDeleted := httptest.NewRecorder()
-	router.ServeHTTP(recGetDeleted, reqGetDeleted)
+	adminRouter.ServeHTTP(recGetDeleted, reqGetDeleted)
 	if recGetDeleted.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 Not Found for deleted client, got %d", recGetDeleted.Code)
 	}
@@ -279,19 +317,28 @@ func TestTokenIntrospectionRevocationAndGrants(t *testing.T) {
 	repo := postgres.NewRepository(pool)
 	server := NewServer("http://localhost:4444", repo, km, engine, newTestHealthHandler(false))
 	router := server.Routes()
+	adminRouter := server.AdminRoutes()
 
 	// 1. Issue a valid token
+	clientSecret := "introspection-secret"
+	clientSecretHash, err := oauth2.HashSecret(clientSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
 	client := &core.OAuth2Client{
-		ID:         "client-intro",
-		ClientName: "Intro Client",
-		IsPublic:   true,
-		Scopes:     []string{"openid", "email"},
+		ID:               "client-intro",
+		ClientName:       "Intro Client",
+		ClientSecretHash: clientSecretHash,
+		GrantTypes:       []string{"client_credentials"},
+		IsPublic:         false,
+		Scopes:           []string{"openid", "email"},
+		AllowedAudiences: []string{"https://api.example"},
 	}
 	if err := repo.CreateClient(context.Background(), client); err != nil {
 		t.Fatalf("CreateClient error: %v", err)
 	}
 
-	tokenResp, err := engine.IssueClientCredentialsToken(client, []string{"openid", "email"})
+	tokenResp, err := engine.IssueClientCredentialsToken(client, []string{"openid", "email"}, "https://api.example")
 	if err != nil {
 		t.Fatalf("IssueClientCredentialsToken error: %v", err)
 	}
@@ -299,6 +346,7 @@ func TestTokenIntrospectionRevocationAndGrants(t *testing.T) {
 	// 2. POST /oauth2/introspect - Token is active
 	reqIntro := httptest.NewRequest("POST", "/oauth2/introspect", strings.NewReader("token="+tokenResp.AccessToken))
 	reqIntro.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqIntro.SetBasicAuth(client.ID, clientSecret)
 	recIntro := httptest.NewRecorder()
 	router.ServeHTTP(recIntro, reqIntro)
 
@@ -314,9 +362,73 @@ func TestTokenIntrospectionRevocationAndGrants(t *testing.T) {
 		t.Errorf("expected sub 'client-intro', got %v", introResp["sub"])
 	}
 
-	// 3. POST /oauth2/revoke - Revoke token
+	// A missing client authentication cannot inspect the token.
+	unauthenticated := httptest.NewRequest("POST", "/oauth2/introspect", strings.NewReader("token="+tokenResp.AccessToken))
+	unauthenticated.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	unauthenticatedRec := httptest.NewRecorder()
+	router.ServeHTTP(unauthenticatedRec, unauthenticated)
+	if unauthenticatedRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated introspection rejection, got %d", unauthenticatedRec.Code)
+	}
+
+	// Another confidential client gets the RFC inactive/empty responses and
+	// cannot inspect or revoke this client's token.
+	otherSecretHash, err := oauth2.HashSecret("other-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := &core.OAuth2Client{ID: "client-other", ClientName: "Other Client", ClientSecretHash: otherSecretHash, GrantTypes: []string{"client_credentials"}}
+	if err := repo.CreateClient(context.Background(), other); err != nil {
+		t.Fatal(err)
+	}
+	otherIntro := httptest.NewRequest("POST", "/oauth2/introspect", strings.NewReader("token="+tokenResp.AccessToken))
+	otherIntro.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	otherIntro.SetBasicAuth(other.ID, "other-secret")
+	otherIntroRec := httptest.NewRecorder()
+	router.ServeHTTP(otherIntroRec, otherIntro)
+	var otherIntroBody map[string]interface{}
+	_ = json.Unmarshal(otherIntroRec.Body.Bytes(), &otherIntroBody)
+	if otherIntroRec.Code != http.StatusOK || otherIntroBody["active"] != false {
+		t.Fatalf("cross-client introspection leaked token: status=%d body=%s", otherIntroRec.Code, otherIntroRec.Body.String())
+	}
+	otherRevoke := httptest.NewRequest("POST", "/oauth2/revoke", strings.NewReader("token="+tokenResp.AccessToken))
+	otherRevoke.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	otherRevoke.SetBasicAuth(other.ID, "other-secret")
+	otherRevokeRec := httptest.NewRecorder()
+	router.ServeHTTP(otherRevokeRec, otherRevoke)
+	if otherRevokeRec.Code != http.StatusOK || otherRevokeRec.Body.String() != "{}\n" {
+		t.Fatalf("cross-client revocation did not preserve empty RFC response: status=%d body=%s", otherRevokeRec.Code, otherRevokeRec.Body.String())
+	}
+
+	// Public clients are explicitly rejected even though they need no secret.
+	public := &core.OAuth2Client{ID: "client-public", ClientName: "Public Client", IsPublic: true}
+	if err := repo.CreateClient(context.Background(), public); err != nil {
+		t.Fatal(err)
+	}
+	publicIntro := httptest.NewRequest("POST", "/oauth2/introspect", strings.NewReader("token="+tokenResp.AccessToken+"&client_id="+public.ID))
+	publicIntro.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	publicIntroRec := httptest.NewRecorder()
+	router.ServeHTTP(publicIntroRec, publicIntro)
+	if publicIntroRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected public client rejection, got %d", publicIntroRec.Code)
+	}
+
+	// The owner remains active after the unauthorized revocation attempt.
+	stillActive := httptest.NewRequest("POST", "/oauth2/introspect", strings.NewReader("token="+tokenResp.AccessToken))
+	stillActive.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	stillActive.SetBasicAuth(client.ID, clientSecret)
+	stillActiveRec := httptest.NewRecorder()
+	router.ServeHTTP(stillActiveRec, stillActive)
+	var stillActiveBody map[string]interface{}
+	_ = json.Unmarshal(stillActiveRec.Body.Bytes(), &stillActiveBody)
+	if stillActiveBody["active"] != true {
+		t.Fatalf("cross-client revocation changed token state: %s", stillActiveRec.Body.String())
+	}
+
+	// 3. POST /oauth2/revoke - owner revokes token
 	reqRevoke := httptest.NewRequest("POST", "/oauth2/revoke", strings.NewReader("token="+tokenResp.AccessToken))
 	reqRevoke.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqRevoke.SetBasicAuth(client.ID, clientSecret)
 	recRevoke := httptest.NewRecorder()
 	router.ServeHTTP(recRevoke, reqRevoke)
 
@@ -327,6 +439,7 @@ func TestTokenIntrospectionRevocationAndGrants(t *testing.T) {
 	// 4. POST /oauth2/introspect - Token is now inactive
 	reqIntro2 := httptest.NewRequest("POST", "/oauth2/introspect", strings.NewReader("token="+tokenResp.AccessToken))
 	reqIntro2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqIntro2.SetBasicAuth(client.ID, clientSecret)
 	recIntro2 := httptest.NewRecorder()
 	router.ServeHTTP(recIntro2, reqIntro2)
 
@@ -351,7 +464,7 @@ func TestTokenIntrospectionRevocationAndGrants(t *testing.T) {
 
 	reqGrants := httptest.NewRequest("GET", "/admin/grants?client_id=client-intro", nil)
 	recGrants := httptest.NewRecorder()
-	router.ServeHTTP(recGrants, reqGrants)
+	adminRouter.ServeHTTP(recGrants, reqGrants)
 
 	if recGrants.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK from /admin/grants, got %d: %s", recGrants.Code, recGrants.Body.String())
@@ -372,6 +485,7 @@ func TestKeyRotationEndpoint(t *testing.T) {
 	engine := oauth2.NewEngine("http://localhost:4444", km)
 	server := NewServer("http://localhost:4444", nil, km, engine, newTestHealthHandler(false))
 	router := server.Routes()
+	adminRouter := server.AdminRoutes()
 
 	// Initial JWKS has 1 key
 	reqJWKS1 := httptest.NewRequest("GET", "/.well-known/jwks.json", nil)
@@ -386,7 +500,7 @@ func TestKeyRotationEndpoint(t *testing.T) {
 	// POST /admin/keys/rotate
 	reqRotate := httptest.NewRequest("POST", "/admin/keys/rotate", nil)
 	recRotate := httptest.NewRecorder()
-	router.ServeHTTP(recRotate, reqRotate)
+	adminRouter.ServeHTTP(recRotate, reqRotate)
 
 	if recRotate.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK from /admin/keys/rotate, got %d", recRotate.Code)
@@ -421,7 +535,7 @@ func TestScopeCatalogueEndpoints(t *testing.T) {
 	pool := pgtest.StartPostgres(t, "../../../migrations")
 	repo := postgres.NewRepository(pool)
 	server := NewServer("http://localhost:4444", repo, km, engine, newTestHealthHandler(false))
-	router := server.Routes()
+	adminRouter := server.AdminRoutes()
 
 	// 1. POST /admin/scopes - Create scope
 	createBody := `{
@@ -432,7 +546,7 @@ func TestScopeCatalogueEndpoints(t *testing.T) {
 	reqCreate := httptest.NewRequest("POST", "/admin/scopes", strings.NewReader(createBody))
 	reqCreate.Header.Set("Content-Type", "application/json")
 	recCreate := httptest.NewRecorder()
-	router.ServeHTTP(recCreate, reqCreate)
+	adminRouter.ServeHTTP(recCreate, reqCreate)
 
 	if recCreate.Code != http.StatusCreated {
 		t.Fatalf("expected 201 Created from POST /admin/scopes, got %d: %s", recCreate.Code, recCreate.Body.String())
@@ -441,7 +555,7 @@ func TestScopeCatalogueEndpoints(t *testing.T) {
 	// 2. GET /admin/scopes - List scopes
 	reqList := httptest.NewRequest("GET", "/admin/scopes", nil)
 	recList := httptest.NewRecorder()
-	router.ServeHTTP(recList, reqList)
+	adminRouter.ServeHTTP(recList, reqList)
 
 	if recList.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK from GET /admin/scopes, got %d", recList.Code)
@@ -457,7 +571,7 @@ func TestScopeCatalogueEndpoints(t *testing.T) {
 	// 3. DELETE /admin/scopes/{name} - Delete scope
 	reqDel := httptest.NewRequest("DELETE", "/admin/scopes/billing:read", nil)
 	recDel := httptest.NewRecorder()
-	router.ServeHTTP(recDel, reqDel)
+	adminRouter.ServeHTTP(recDel, reqDel)
 
 	if recDel.Code != http.StatusNoContent {
 		t.Fatalf("expected 204 No Content from DELETE /admin/scopes/{name}, got %d", recDel.Code)
@@ -466,7 +580,7 @@ func TestScopeCatalogueEndpoints(t *testing.T) {
 	// 4. DELETE /admin/scopes/{name} again - 404 Not Found
 	reqDel2 := httptest.NewRequest("DELETE", "/admin/scopes/billing:read", nil)
 	recDel2 := httptest.NewRecorder()
-	router.ServeHTTP(recDel2, reqDel2)
+	adminRouter.ServeHTTP(recDel2, reqDel2)
 
 	if recDel2.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 Not Found from deleting non-existent scope, got %d", recDel2.Code)
@@ -504,4 +618,3 @@ func TestHTTP_Metrics(t *testing.T) {
 		t.Errorf("expected body to contain autorix_janus_tokens_issued_total, got: %s", body)
 	}
 }
-

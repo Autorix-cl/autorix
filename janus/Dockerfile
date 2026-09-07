@@ -25,7 +25,7 @@ WORKDIR /build/janus
 # Compile static binary
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-s -w -extldflags '-static' -X github.com/autorix/platform/version.Version=${VERSION:-dev} -X github.com/autorix/platform/version.BuildSHA=${BUILD_SHA:-unknown} -X github.com/autorix/platform/version.BuildTime=${BUILD_TIME:-unknown}" \
-    -o /build/janusd ./cmd/janusd/main.go
+    -o /build/janusd ./cmd/janusd
 
 # Production runtime stage
 FROM alpine:3.20

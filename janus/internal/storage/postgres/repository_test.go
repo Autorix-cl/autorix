@@ -29,6 +29,7 @@ func newTestClient(id string) *core.OAuth2Client {
 		ResponseTypes:    []string{"code"},
 		RedirectURIs:     []string{"https://example.com/callback"},
 		Scopes:           []string{"openid", "offline_access"},
+		AllowedAudiences: []string{"https://api.example"},
 		IsPublic:         false,
 	}
 }
@@ -71,6 +72,9 @@ func TestCreateAndGetClient(t *testing.T) {
 	}
 	if len(got.RedirectURIs) != 1 || got.RedirectURIs[0] != "https://example.com/callback" {
 		t.Errorf("GetClient() RedirectURIs = %v, want [https://example.com/callback]", got.RedirectURIs)
+	}
+	if len(got.AllowedAudiences) != 1 || got.AllowedAudiences[0] != "https://api.example" {
+		t.Errorf("GetClient() AllowedAudiences = %v, want [https://api.example]", got.AllowedAudiences)
 	}
 }
 
@@ -277,7 +281,7 @@ func TestCreateAndConsumeGrant(t *testing.T) {
 		t.Fatalf("CreateGrant() error = %v", err)
 	}
 
-	consumed, err := repo.ConsumeGrant(ctx, grant.CodeHash)
+	consumed, err := repo.ConsumeGrant(ctx, grant.CodeHash, grant.ClientID, grant.RedirectURI)
 	if err != nil {
 		t.Fatalf("ConsumeGrant() error = %v", err)
 	}
@@ -308,18 +312,49 @@ func TestConsumeGrant_AlreadyConsumed(t *testing.T) {
 		t.Fatalf("CreateGrant() error = %v", err)
 	}
 
-	if _, err := repo.ConsumeGrant(ctx, grant.CodeHash); err != nil {
+	if _, err := repo.ConsumeGrant(ctx, grant.CodeHash, grant.ClientID, grant.RedirectURI); err != nil {
 		t.Fatalf("ConsumeGrant() first call error = %v", err)
 	}
 
 	// Second consumption attempt must fail as ErrNotFound: the row exists
 	// but no longer matches "consumed = false".
-	second, err := repo.ConsumeGrant(ctx, grant.CodeHash)
+	second, err := repo.ConsumeGrant(ctx, grant.CodeHash, grant.ClientID, grant.RedirectURI)
 	if !errors.Is(err, postgres.ErrNotFound) {
 		t.Fatalf("ConsumeGrant() second call error = %v, want ErrNotFound", err)
 	}
 	if second != nil {
 		t.Errorf("ConsumeGrant() second call = %+v, want nil", second)
+	}
+}
+
+func TestConsumeGrant_RequiresClientAndRedirectURIBinding(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	grant := newTestGrant(t, ctx, repo, "client-"+uuid.NewString())
+	if err := repo.CreateGrant(ctx, grant); err != nil {
+		t.Fatalf("CreateGrant() error = %v", err)
+	}
+
+	for _, tt := range []struct {
+		name        string
+		clientID    string
+		redirectURI string
+	}{
+		{name: "wrong client", clientID: "attacker", redirectURI: grant.RedirectURI},
+		{name: "wrong redirect URI", clientID: grant.ClientID, redirectURI: "https://attacker.example/callback"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := repo.ConsumeGrant(ctx, grant.CodeHash, tt.clientID, tt.redirectURI)
+			if !errors.Is(err, postgres.ErrNotFound) || got != nil {
+				t.Fatalf("ConsumeGrant() = (%+v, %v), want (nil, ErrNotFound)", got, err)
+			}
+		})
+	}
+
+	// Failed exchanges must not burn the code for its legitimate client.
+	got, err := repo.ConsumeGrant(ctx, grant.CodeHash, grant.ClientID, grant.RedirectURI)
+	if err != nil || got == nil {
+		t.Fatalf("legitimate exchange after rejected attempts = (%+v, %v), want grant, nil", got, err)
 	}
 }
 
@@ -335,7 +370,7 @@ func TestConsumeGrant_Expired(t *testing.T) {
 		t.Fatalf("CreateGrant() error = %v", err)
 	}
 
-	got, err := repo.ConsumeGrant(ctx, grant.CodeHash)
+	got, err := repo.ConsumeGrant(ctx, grant.CodeHash, grant.ClientID, grant.RedirectURI)
 	if !errors.Is(err, postgres.ErrNotFound) {
 		t.Fatalf("ConsumeGrant() on expired grant error = %v, want ErrNotFound", err)
 	}
@@ -348,7 +383,7 @@ func TestConsumeGrant_NotFound(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()
 
-	got, err := repo.ConsumeGrant(ctx, "no-such-code-hash")
+	got, err := repo.ConsumeGrant(ctx, "no-such-code-hash", "client", "https://example.com/callback")
 	if !errors.Is(err, postgres.ErrNotFound) {
 		t.Fatalf("ConsumeGrant() error = %v, want ErrNotFound", err)
 	}
@@ -384,7 +419,7 @@ func TestCreateGrant_UnknownClient(t *testing.T) {
 	}
 
 	// The grant must not have been persisted; consuming it must report not found.
-	got, consumeErr := repo.ConsumeGrant(ctx, grant.CodeHash)
+	got, consumeErr := repo.ConsumeGrant(ctx, grant.CodeHash, grant.ClientID, grant.RedirectURI)
 	if !errors.Is(consumeErr, postgres.ErrNotFound) {
 		t.Fatalf("ConsumeGrant() after failed CreateGrant() error = %v, want ErrNotFound", consumeErr)
 	}
@@ -669,4 +704,3 @@ func TestScopeCatalogueCRUD(t *testing.T) {
 		t.Fatalf("GetScope() after delete error = %v, want ErrNotFound", err)
 	}
 }
-

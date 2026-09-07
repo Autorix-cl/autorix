@@ -16,6 +16,7 @@ type OAuth2Client struct {
 	ResponseTypes           []string   `json:"response_types"`
 	RedirectURIs            []string   `json:"redirect_uris"`
 	Scopes                  []string   `json:"scopes"`
+	AllowedAudiences        []string   `json:"allowed_audiences"`
 	IsPublic                bool       `json:"is_public"`
 	CreatedAt               time.Time  `json:"created_at"`
 	UpdatedAt               time.Time  `json:"updated_at"`
@@ -36,6 +37,7 @@ type Grant struct {
 	Subject             string    `json:"sub"` // User ID from Ego
 	Scopes              []string  `json:"scopes"`
 	RedirectURI         string    `json:"redirect_uri"`
+	Resource            string    `json:"resource,omitempty"`
 	CodeChallenge       string    `json:"code_challenge,omitempty"`
 	CodeChallengeMethod string    `json:"code_challenge_method,omitempty"`
 	ExpiresAt           time.Time `json:"expires_at"`
@@ -70,6 +72,18 @@ type JWKS struct {
 	Keys []JWK `json:"keys"`
 }
 
+// SigningKey is the durable representation of a Janus JWT signing key. The
+// newest key is used for signing; older keys remain available in JWKS so
+// verifiers can complete token rollover safely.
+type SigningKey struct {
+	Kid           string    `json:"kid"`
+	Algorithm     string    `json:"algorithm"`
+	Use           string    `json:"use"`
+	PrivateKeyPEM string    `json:"-"`
+	PublicKeyPEM  string    `json:"-"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 // TokenResponse represents RFC 6749 Token Endpoint Response
 type TokenResponse struct {
 	AccessToken  string `json:"access_token"`
@@ -79,6 +93,7 @@ type TokenResponse struct {
 	IDToken      string `json:"id_token,omitempty"`
 	Scope        string `json:"scope"`
 }
+
 // LoginChallenge represents a decoupled login request
 type LoginChallenge struct {
 	Challenge           string     `json:"challenge"`
@@ -90,6 +105,7 @@ type LoginChallenge struct {
 	Nonce               string     `json:"nonce"`
 	CodeChallenge       string     `json:"code_challenge"`
 	CodeChallengeMethod string     `json:"code_challenge_method"`
+	Resource            string     `json:"resource,omitempty"`
 	Subject             string     `json:"subject"`
 	LoginVerifier       string     `json:"login_verifier"`
 	HandledAt           *time.Time `json:"handled_at"`
@@ -104,6 +120,7 @@ type ConsentChallenge struct {
 	Subject         string     `json:"subject"`
 	RequestedScopes []string   `json:"requested_scopes"`
 	GrantedScopes   []string   `json:"granted_scopes"`
+	Resource        string     `json:"resource,omitempty"`
 	ConsentVerifier string     `json:"consent_verifier"`
 	HandledAt       *time.Time `json:"handled_at"`
 	CreatedAt       time.Time  `json:"created_at"`

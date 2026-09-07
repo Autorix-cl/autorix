@@ -73,6 +73,7 @@ func NewServer(issuer string, repo *postgres.Repository, km *jwks.KeyManager, en
 	}
 }
 
+// Routes serves only the public OAuth2/OIDC API and operational endpoints.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
@@ -93,6 +94,14 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /oauth2/token", s.handleToken)
 	mux.HandleFunc("POST /oauth2/introspect", s.handleIntrospect)
 	mux.HandleFunc("POST /oauth2/revoke", s.handleRevoke)
+
+	return mux
+}
+
+// AdminRoutes must be served on a private listener. These privileged endpoints
+// trust callers; never expose them through public ingress or unauthenticated public proxies.
+func (s *Server) AdminRoutes() http.Handler {
+	mux := http.NewServeMux()
 
 	// Admin API - Clients
 	mux.HandleFunc("POST /admin/clients", s.handleCreateClient)
@@ -162,12 +171,13 @@ func (s *Server) handleUpdateClient(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name          *string   `json:"client_name"`
-		GrantTypes    *[]string `json:"grant_types"`
-		ResponseTypes *[]string `json:"response_types"`
-		RedirectURIs  *[]string `json:"redirect_uris"`
-		Scopes        *[]string `json:"scopes"`
-		IsPublic      *bool     `json:"is_public"`
+		Name             *string   `json:"client_name"`
+		GrantTypes       *[]string `json:"grant_types"`
+		ResponseTypes    *[]string `json:"response_types"`
+		RedirectURIs     *[]string `json:"redirect_uris"`
+		Scopes           *[]string `json:"scopes"`
+		AllowedAudiences *[]string `json:"allowed_audiences"`
+		IsPublic         *bool     `json:"is_public"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -189,6 +199,9 @@ func (s *Server) handleUpdateClient(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Scopes != nil {
 		client.Scopes = *req.Scopes
+	}
+	if req.AllowedAudiences != nil {
+		client.AllowedAudiences = *req.AllowedAudiences
 	}
 	if req.IsPublic != nil {
 		client.IsPublic = *req.IsPublic
@@ -319,15 +332,32 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid_client", "Invalid client_secret")
 		return
 	}
+	if !oauth2.SupportsGrantType(client, grantType) {
+		writeError(w, http.StatusBadRequest, "unauthorized_client", "Client is not authorized for this grant_type")
+		return
+	}
 
 	switch grantType {
 	case "client_credentials":
+		if client.IsPublic {
+			writeError(w, http.StatusBadRequest, "unauthorized_client", "Public clients cannot use client_credentials")
+			return
+		}
 		scopes := strings.Fields(r.FormValue("scope"))
 		if len(scopes) == 0 {
 			scopes = client.Scopes
 		}
+		if !oauth2.ScopesAllowed(client, scopes) {
+			writeError(w, http.StatusBadRequest, "invalid_scope", "Requested scope is not authorized for this client")
+			return
+		}
+		resources := r.Form["resource"]
+		if len(resources) != 1 || !oauth2.AudienceAllowed(client, resources[0]) {
+			writeError(w, http.StatusBadRequest, "invalid_target", "resource must exactly match a registered client audience")
+			return
+		}
 
-		resp, err := s.engine.IssueClientCredentialsToken(client, scopes)
+		resp, err := s.engine.IssueClientCredentialsToken(client, scopes, resources[0])
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "server_error", err.Error())
 			return
@@ -338,13 +368,18 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 	case "authorization_code":
 		code := r.FormValue("code")
 		codeVerifier := r.FormValue("code_verifier")
+		redirectURI := r.FormValue("redirect_uri")
 		if code == "" {
 			writeError(w, http.StatusBadRequest, "invalid_request", "Missing code parameter")
 			return
 		}
+		if redirectURI == "" {
+			writeError(w, http.StatusBadRequest, "invalid_request", "Missing redirect_uri parameter")
+			return
+		}
 
 		codeHash := hashCode(code)
-		grant, err := s.repo.ConsumeGrant(r.Context(), codeHash)
+		grant, err := s.repo.ConsumeGrant(r.Context(), codeHash, client.ID, redirectURI)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_grant", "Code is expired or already consumed")
 			return
@@ -380,6 +415,10 @@ func (s *Server) handleIntrospect(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "Failed to parse form")
 		return
 	}
+	client, ok := s.authenticateConfidentialClient(w, r)
+	if !ok {
+		return
+	}
 
 	token := r.FormValue("token")
 	if token == "" {
@@ -390,6 +429,10 @@ func (s *Server) handleIntrospect(w http.ResponseWriter, r *http.Request) {
 	// 1. Try JWT verification
 	claims, err := s.keyManager.VerifyJWT(token)
 	if err == nil {
+		if tokenClientID(claims, s.issuer) != client.ID {
+			writeJSON(w, http.StatusOK, map[string]interface{}{"active": false})
+			return
+		}
 		tokenHash := hashCode(token)
 		if s.repo != nil {
 			revoked, checkErr := s.repo.IsTokenRevoked(r.Context(), tokenHash)
@@ -456,7 +499,7 @@ func (s *Server) handleIntrospect(w http.ResponseWriter, r *http.Request) {
 	if s.repo != nil {
 		tokenHash := hashCode(token)
 		rec, err := s.repo.GetTokenRecord(r.Context(), tokenHash)
-		if err == nil && !rec.Revoked && rec.ExpiresAt.After(time.Now()) {
+		if err == nil && rec.ClientID == client.ID && !rec.Revoked && rec.ExpiresAt.After(time.Now()) {
 			writeJSON(w, http.StatusOK, map[string]interface{}{
 				"active":     true,
 				"scope":      strings.Join(rec.Scopes, " "),
@@ -478,6 +521,10 @@ func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "Failed to parse form")
 		return
 	}
+	client, ok := s.authenticateConfidentialClient(w, r)
+	if !ok {
+		return
+	}
 
 	token := r.FormValue("token")
 	tokenTypeHint := r.FormValue("token_type_hint")
@@ -493,26 +540,25 @@ func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request) {
 
 		claims, err := s.keyManager.VerifyJWT(token)
 		if err == nil {
-			clientID, _ = claims["aud"].(string)
+			clientID = tokenClientID(claims, s.issuer)
+			if clientID != client.ID {
+				writeJSON(w, http.StatusOK, map[string]interface{}{})
+				return
+			}
 			sub, _ = claims["sub"].(string)
 			if expVal, ok := claims["exp"].(float64); ok {
 				expiresAt = time.Unix(int64(expVal), 0)
 			}
-
-			// If aud is not a client ID in the DB, check if sub is the client ID (e.g. M2M client_credentials)
-			if clientID != "" {
-				if _, err := s.repo.GetClient(r.Context(), clientID); err != nil {
-					if sub != "" {
-						if _, err := s.repo.GetClient(r.Context(), sub); err == nil {
-							clientID = sub
-						}
-					}
-				}
-			} else if sub != "" {
-				if _, err := s.repo.GetClient(r.Context(), sub); err == nil {
-					clientID = sub
-				}
+		} else if rec, recordErr := s.repo.GetTokenRecord(r.Context(), tokenHash); recordErr == nil {
+			if rec.ClientID != client.ID {
+				writeJSON(w, http.StatusOK, map[string]interface{}{})
+				return
 			}
+			clientID, sub, scopes, expiresAt = rec.ClientID, rec.Subject, rec.Scopes, rec.ExpiresAt
+		} else {
+			// RFC 7009 requires a successful empty response for unknown tokens.
+			writeJSON(w, http.StatusOK, map[string]interface{}{})
+			return
 		}
 
 		_ = s.repo.RevokeToken(r.Context(), &core.TokenRecord{
@@ -527,6 +573,46 @@ func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request) {
 
 	// RFC 7009: acknowledge revocation with 200 OK
 	writeJSON(w, http.StatusOK, map[string]interface{}{})
+}
+
+// authenticateConfidentialClient authenticates resource-server clients for
+// introspection and revocation. Public clients cannot safely be entrusted with
+// token metadata or another party's revocation capability.
+func (s *Server) authenticateConfidentialClient(w http.ResponseWriter, r *http.Request) (*core.OAuth2Client, bool) {
+	if s.repo == nil {
+		writeError(w, http.StatusUnauthorized, "invalid_client", "Client authentication is required")
+		return nil, false
+	}
+	clientID, secret, basic := r.BasicAuth()
+	if !basic {
+		clientID, secret = r.FormValue("client_id"), r.FormValue("client_secret")
+	}
+	if clientID == "" {
+		writeError(w, http.StatusUnauthorized, "invalid_client", "Client authentication is required")
+		return nil, false
+	}
+	client, err := s.repo.GetClient(r.Context(), clientID)
+	if err != nil || client.IsPublic || !oauth2.AuthenticateClient(client, secret) {
+		writeError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
+		return nil, false
+	}
+	return client, true
+}
+
+// tokenClientID derives ownership from Janus token claims. New M2M access
+// tokens carry client_id because RFC 8707 permits their audience to be an API
+// resource rather than the OAuth client. The legacy fallbacks retain support
+// for tokens issued before that claim was introduced.
+func tokenClientID(claims map[string]interface{}, issuer string) string {
+	if clientID, _ := claims["client_id"].(string); clientID != "" {
+		return clientID
+	}
+	audience, _ := claims["aud"].(string)
+	if audience == issuer {
+		owner, _ := claims["sub"].(string)
+		return owner
+	}
+	return audience
 }
 
 func (s *Server) handleListGrants(w http.ResponseWriter, r *http.Request) {
@@ -598,13 +684,14 @@ func (s *Server) handleDeleteScope(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ID           string   `json:"client_id"`
-		Name         string   `json:"client_name"`
-		Secret       string   `json:"client_secret"`
-		GrantTypes   []string `json:"grant_types"`
-		RedirectURIs []string `json:"redirect_uris"`
-		Scopes       []string `json:"scopes"`
-		IsPublic     bool     `json:"is_public"`
+		ID               string   `json:"client_id"`
+		Name             string   `json:"client_name"`
+		Secret           string   `json:"client_secret"`
+		GrantTypes       []string `json:"grant_types"`
+		RedirectURIs     []string `json:"redirect_uris"`
+		Scopes           []string `json:"scopes"`
+		AllowedAudiences []string `json:"allowed_audiences"`
+		IsPublic         bool     `json:"is_public"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -629,6 +716,7 @@ func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
 		GrantTypes:       req.GrantTypes,
 		RedirectURIs:     req.RedirectURIs,
 		Scopes:           req.Scopes,
+		AllowedAudiences: req.AllowedAudiences,
 		IsPublic:         req.IsPublic,
 	}
 
@@ -658,12 +746,6 @@ func writeError(w http.ResponseWriter, status int, errCode, description string) 
 	})
 }
 
-// Add this to s.Routes() in server.go:
-// mux.HandleFunc("GET /oauth2/auth", s.handleAuth)
-// mux.HandleFunc("PUT /admin/oauth2/auth/requests/login/accept", s.handleAcceptLogin)
-// mux.HandleFunc("PUT /admin/oauth2/auth/requests/consent/accept", s.handleAcceptConsent)
-// ... also remember to add os.Getenv("LOGIN_UI_URL") logic or default in server.go ...
-
 func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "Failed to parse form")
@@ -673,12 +755,12 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	// Wait, is there a login_verifier? If yes, we process the accepted login and issue consent challenge!
 	loginVerifier := r.FormValue("login_verifier")
 	consentVerifier := r.FormValue("consent_verifier")
-	
+
 	if consentVerifier != "" {
 		// Consent is accepted, generate auth code and redirect to client
 		loginChallengeID := r.FormValue("login_challenge")
 		consentChallengeID := r.FormValue("consent_challenge")
-		
+
 		lc, err := s.repo.GetLoginChallenge(r.Context(), loginChallengeID)
 		if err != nil || lc.HandledAt == nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", "Invalid login challenge")
@@ -689,17 +771,18 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid_request", "Invalid consent challenge")
 			return
 		}
-		
+
 		// Generate Authorization Code
 		code := uuid.NewString()
 		codeHash := hashCode(code)
-		
+
 		grant := &core.Grant{
 			CodeHash:            codeHash,
 			ClientID:            lc.ClientID,
 			Subject:             cc.Subject,
 			Scopes:              cc.GrantedScopes,
 			RedirectURI:         lc.RedirectURI,
+			Resource:            cc.Resource,
 			CodeChallenge:       lc.CodeChallenge,
 			CodeChallengeMethod: lc.CodeChallengeMethod,
 			ExpiresAt:           time.Now().Add(10 * time.Minute),
@@ -708,7 +791,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "server_error", "Failed to create grant")
 			return
 		}
-		
+
 		// Redirect to client
 		redirectURI := lc.RedirectURI + "?code=" + code
 		if lc.State != "" {
@@ -726,19 +809,20 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid_request", "Invalid login challenge")
 			return
 		}
-		
+
 		cc := &core.ConsentChallenge{
 			Challenge:       uuid.NewString(),
 			LoginChallenge:  lc.Challenge,
 			ClientID:        lc.ClientID,
 			Subject:         lc.Subject,
 			RequestedScopes: lc.Scopes,
+			Resource:        lc.Resource,
 		}
 		if err := s.repo.CreateConsentChallenge(r.Context(), cc); err != nil {
 			writeError(w, http.StatusInternalServerError, "server_error", "Failed to create consent challenge")
 			return
 		}
-		
+
 		// Redirect to Consent UI
 		consentUIURL := "http://localhost:3000/consent" // default or from env
 		http.Redirect(w, r, consentUIURL+"?consent_challenge="+cc.Challenge, http.StatusFound)
@@ -751,10 +835,26 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "Missing client_id")
 		return
 	}
-	
+
 	client, err := s.repo.GetClient(r.Context(), clientID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_client", "Unknown client_id")
+		return
+	}
+
+	responseType := r.FormValue("response_type")
+	redirectURI := r.FormValue("redirect_uri")
+	if responseType != "code" || !oauth2.SupportsGrantType(client, "authorization_code") {
+		writeError(w, http.StatusBadRequest, "unauthorized_client", "Client is not authorized for authorization_code")
+		return
+	}
+	if !oauth2.RedirectURIAllowed(client, redirectURI) {
+		writeError(w, http.StatusBadRequest, "invalid_request", "redirect_uri must exactly match a registered client URI")
+		return
+	}
+	codeChallenge := r.FormValue("code_challenge")
+	if codeChallenge == "" || r.FormValue("code_challenge_method") != "S256" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "PKCE S256 code_challenge is required")
 		return
 	}
 
@@ -762,17 +862,30 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	if len(scopes) == 0 {
 		scopes = client.Scopes
 	}
+	if !oauth2.ScopesAllowed(client, scopes) {
+		writeError(w, http.StatusBadRequest, "invalid_scope", "Requested scope is not authorized for this client")
+		return
+	}
+	resource := ""
+	if resources, supplied := r.Form["resource"]; supplied {
+		if len(resources) != 1 || !oauth2.AudienceAllowed(client, resources[0]) {
+			writeError(w, http.StatusBadRequest, "invalid_target", "resource must exactly match a registered client audience")
+			return
+		}
+		resource = resources[0]
+	}
 
 	lc := &core.LoginChallenge{
 		Challenge:           uuid.NewString(),
 		ClientID:            clientID,
-		RedirectURI:         r.FormValue("redirect_uri"),
-		ResponseType:        r.FormValue("response_type"),
+		RedirectURI:         redirectURI,
+		ResponseType:        responseType,
 		Scopes:              scopes,
+		Resource:            resource,
 		State:               r.FormValue("state"),
 		Nonce:               r.FormValue("nonce"),
-		CodeChallenge:       r.FormValue("code_challenge"),
-		CodeChallengeMethod: r.FormValue("code_challenge_method"),
+		CodeChallenge:       codeChallenge,
+		CodeChallengeMethod: "S256",
 	}
 
 	if err := s.repo.CreateLoginChallenge(r.Context(), lc); err != nil {
