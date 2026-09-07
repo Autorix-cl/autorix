@@ -47,14 +47,17 @@ type Grant struct {
 
 // TokenRecord represents a persisted refresh or access token
 type TokenRecord struct {
-	TokenHash string    `json:"-"`
-	ClientID  string    `json:"client_id"`
-	Subject   string    `json:"sub"`
-	TokenType string    `json:"token_type"` // "refresh_token", "access_token"
-	Scopes    []string  `json:"scopes"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Revoked   bool      `json:"revoked"`
-	CreatedAt time.Time `json:"created_at"`
+	TokenHash string     `json:"-"`
+	ClientID  string     `json:"client_id"`
+	Subject   string     `json:"sub"`
+	TokenType string     `json:"token_type"` // "refresh_token", "access_token"
+	Scopes    []string   `json:"scopes"`
+	Resource  string     `json:"resource,omitempty"`
+	FamilyID  string     `json:"-"`
+	ExpiresAt time.Time  `json:"expires_at"`
+	Revoked   bool       `json:"revoked"`
+	RotatedAt *time.Time `json:"rotated_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // JWK represents a JSON Web Key (RFC 7517)

@@ -618,3 +618,110 @@ func TestHTTP_Metrics(t *testing.T) {
 		t.Errorf("expected body to contain autorix_janus_tokens_issued_total, got: %s", body)
 	}
 }
+
+func TestRefreshTokenRotationAndReuseDetection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping postgres-backed HTTP test in -short mode")
+	}
+	km, err := jwks.NewKeyManager()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool := pgtest.StartPostgres(t, "../../../migrations")
+	repo := postgres.NewRepository(pool)
+	issuer := "http://localhost:4444"
+	server := NewServer(issuer, repo, km, oauth2.NewEngine(issuer, km), newTestHealthHandler(false), WithRefreshTokenTTL(48*time.Hour))
+	router := server.Routes()
+
+	secret := "refresh-secret"
+	secretHash, err := oauth2.HashSecret(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &core.OAuth2Client{
+		ID: "refresh-client", ClientName: "Refresh Client", ClientSecretHash: secretHash,
+		GrantTypes: []string{"authorization_code", "refresh_token"}, ResponseTypes: []string{"code"},
+		RedirectURIs: []string{"https://app.example/callback"}, Scopes: []string{"openid", "offline_access", "profile"},
+		AllowedAudiences: []string{"https://api.example"},
+	}
+	if err := repo.CreateClient(context.Background(), client); err != nil {
+		t.Fatal(err)
+	}
+	code := "authorization-code-for-refresh"
+	grant := &core.Grant{CodeHash: hashCode(code), ClientID: client.ID, Subject: "user-1", Scopes: []string{"openid", "offline_access", "profile"}, RedirectURI: client.RedirectURIs[0], Resource: "https://api.example", ExpiresAt: time.Now().Add(time.Minute)}
+	if err := repo.CreateGrant(context.Background(), grant); err != nil {
+		t.Fatal(err)
+	}
+
+	exchange := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=authorization_code&code="+code+"&redirect_uri=https%3A%2F%2Fapp.example%2Fcallback"))
+	exchange.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	exchange.SetBasicAuth(client.ID, secret)
+	exchangeRec := httptest.NewRecorder()
+	router.ServeHTTP(exchangeRec, exchange)
+	if exchangeRec.Code != http.StatusOK {
+		t.Fatalf("authorization-code exchange status=%d body=%s", exchangeRec.Code, exchangeRec.Body.String())
+	}
+	var first core.TokenResponse
+	if err := json.Unmarshal(exchangeRec.Body.Bytes(), &first); err != nil {
+		t.Fatal(err)
+	}
+	if first.RefreshToken == "" {
+		t.Fatal("offline_access authorization-code exchange did not issue a refresh token")
+	}
+	stored, err := repo.GetTokenRecord(context.Background(), hashCode(first.RefreshToken))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.TokenHash == first.RefreshToken || stored.Subject != "user-1" || stored.Resource != "https://api.example" || stored.FamilyID == "" {
+		t.Fatalf("unsafe refresh token persistence: %#v", stored)
+	}
+
+	// A registered refresh grant alone is insufficient without offline_access.
+	noOfflineCode := "authorization-code-without-offline-access"
+	if err := repo.CreateGrant(context.Background(), &core.Grant{CodeHash: hashCode(noOfflineCode), ClientID: client.ID, Subject: "user-1", Scopes: []string{"openid", "profile"}, RedirectURI: client.RedirectURIs[0], ExpiresAt: time.Now().Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	noOffline := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=authorization_code&code="+noOfflineCode+"&redirect_uri=https%3A%2F%2Fapp.example%2Fcallback"))
+	noOffline.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	noOffline.SetBasicAuth(client.ID, secret)
+	noOfflineRec := httptest.NewRecorder()
+	router.ServeHTTP(noOfflineRec, noOffline)
+	var noOfflineResponse core.TokenResponse
+	if noOfflineRec.Code != http.StatusOK || json.Unmarshal(noOfflineRec.Body.Bytes(), &noOfflineResponse) != nil || noOfflineResponse.RefreshToken != "" {
+		t.Fatalf("authorization-code exchange without offline_access issued a refresh token: status=%d body=%s", noOfflineRec.Code, noOfflineRec.Body.String())
+	}
+
+	refresh := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=refresh_token&refresh_token="+first.RefreshToken))
+	refresh.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	refresh.SetBasicAuth(client.ID, secret)
+	refreshRec := httptest.NewRecorder()
+	router.ServeHTTP(refreshRec, refresh)
+	if refreshRec.Code != http.StatusOK {
+		t.Fatalf("refresh status=%d body=%s", refreshRec.Code, refreshRec.Body.String())
+	}
+	var second core.TokenResponse
+	if err := json.Unmarshal(refreshRec.Body.Bytes(), &second); err != nil {
+		t.Fatal(err)
+	}
+	if second.RefreshToken == "" || second.RefreshToken == first.RefreshToken {
+		t.Fatalf("refresh token was not rotated: %#v", second)
+	}
+	claims, err := km.VerifyJWT(second.AccessToken)
+	if err != nil || claims["client_id"] != client.ID || claims["sub"] != "user-1" || claims["aud"] != "https://api.example" {
+		t.Fatalf("refreshed access token binding = %#v, err=%v", claims, err)
+	}
+
+	// A reused predecessor revokes the whole family, including the latest token.
+	reuse := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader("grant_type=refresh_token&refresh_token="+first.RefreshToken))
+	reuse.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reuse.SetBasicAuth(client.ID, secret)
+	reuseRec := httptest.NewRecorder()
+	router.ServeHTTP(reuseRec, reuse)
+	if reuseRec.Code != http.StatusBadRequest || !strings.Contains(reuseRec.Body.String(), "invalid_grant") {
+		t.Fatalf("reuse response status=%d body=%s", reuseRec.Code, reuseRec.Body.String())
+	}
+	latest, err := repo.GetTokenRecord(context.Background(), hashCode(second.RefreshToken))
+	if err != nil || !latest.Revoked {
+		t.Fatalf("latest token must be revoked after reuse: %#v, err=%v", latest, err)
+	}
+}

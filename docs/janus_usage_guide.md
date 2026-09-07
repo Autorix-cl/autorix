@@ -56,6 +56,22 @@ Janus delegates user authentication and consent to your own UI:
 2. **Accept Login:** UI calls `PUT /admin/oauth2/auth/requests/login/accept` with user context.
 3. **Accept Consent:** UI calls `PUT /admin/oauth2/auth/requests/consent/accept` with granted scopes.
 
+### Refresh Token Rotation
+
+Janus issues a refresh token only after an authorization-code exchange when **both** conditions are met: the registered client includes `refresh_token` in `grant_types`, and the approved grant includes `offline_access`. The token is a 256-bit, URL-safe opaque value; Janus stores only its SHA-256 hash.
+
+Use the token endpoint with the same client authentication that owns the refresh token:
+
+```bash
+curl -X POST http://localhost:4444/oauth2/token \
+  -u "client_id:client_secret" \
+  -d "grant_type=refresh_token&refresh_token=REDACTED"
+```
+
+Every successful refresh rotates the token. The replacement preserves the original client, subject, granted scopes, and RFC 8707 resource; requests cannot change `scope` or `resource` during refresh. Reusing a predecessor revokes the complete token family and returns `invalid_grant`, so clients must atomically replace their stored token after every response.
+
+`REFRESH_TOKEN_TTL` configures the lifetime and defaults to `720h` (30 days). Set a positive Go duration appropriate for the deployment; changing it affects newly issued tokens only.
+
 ### Public API Reference (Port `4444`)
 
 - **Token Issuance:** `POST /oauth2/token`

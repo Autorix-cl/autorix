@@ -1,7 +1,9 @@
 package http
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -53,24 +55,42 @@ func init() {
 }
 
 type Server struct {
-	issuer        string
-	repo          *postgres.Repository
-	keyManager    *jwks.KeyManager
-	engine        *oauth2.Engine
-	healthHandler *health.Handler
+	issuer          string
+	repo            *postgres.Repository
+	keyManager      *jwks.KeyManager
+	engine          *oauth2.Engine
+	healthHandler   *health.Handler
+	refreshTokenTTL time.Duration
 }
 
-func NewServer(issuer string, repo *postgres.Repository, km *jwks.KeyManager, engine *oauth2.Engine, healthHandler *health.Handler) *Server {
+type ServerOption func(*Server)
+
+// WithRefreshTokenTTL configures refresh-token expiration. Zero or negative
+// values are ignored so the secure 30-day default remains in effect.
+func WithRefreshTokenTTL(ttl time.Duration) ServerOption {
+	return func(s *Server) {
+		if ttl > 0 {
+			s.refreshTokenTTL = ttl
+		}
+	}
+}
+
+func NewServer(issuer string, repo *postgres.Repository, km *jwks.KeyManager, engine *oauth2.Engine, healthHandler *health.Handler, options ...ServerOption) *Server {
 	if km != nil {
 		janusActiveJWKSKeys.Set(float64(km.KeyCount()))
 	}
-	return &Server{
-		issuer:        issuer,
-		repo:          repo,
-		keyManager:    km,
-		engine:        engine,
-		healthHandler: healthHandler,
+	server := &Server{
+		issuer:          issuer,
+		repo:            repo,
+		keyManager:      km,
+		engine:          engine,
+		healthHandler:   healthHandler,
+		refreshTokenTTL: 30 * 24 * time.Hour,
 	}
+	for _, option := range options {
+		option(server)
+	}
+	return server
 }
 
 // Routes serves only the public OAuth2/OIDC API and operational endpoints.
@@ -398,12 +418,75 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "server_error", err.Error())
 			return
 		}
+		// Refresh tokens are opt-in. Both the client registration and the
+		// granted offline_access scope are required before persisting one.
+		if oauth2.HasScope(grant.Scopes, "offline_access") && oauth2.SupportsGrantType(client, "refresh_token") {
+			refreshToken, tokenErr := generateOpaqueToken()
+			if tokenErr != nil {
+				writeError(w, http.StatusInternalServerError, "server_error", "Failed to generate refresh token")
+				return
+			}
+			record := &core.TokenRecord{
+				TokenHash: hashCode(refreshToken),
+				ClientID:  client.ID,
+				Subject:   grant.Subject,
+				TokenType: "refresh_token",
+				Scopes:    grant.Scopes,
+				Resource:  grant.Resource,
+				FamilyID:  uuid.NewString(),
+				ExpiresAt: time.Now().UTC().Add(s.refreshTokenTTL),
+			}
+			if err := s.repo.CreateRefreshToken(r.Context(), record); err != nil {
+				writeError(w, http.StatusInternalServerError, "server_error", "Failed to persist refresh token")
+				return
+			}
+			resp.RefreshToken = refreshToken
+		}
 		janusTokensIssuedTotal.WithLabelValues("authorization_code").Inc()
 		writeJSON(w, http.StatusOK, resp)
 
 	case "refresh_token":
+		presentedToken := r.FormValue("refresh_token")
+		if presentedToken == "" {
+			writeError(w, http.StatusBadRequest, "invalid_request", "Missing refresh_token parameter")
+			return
+		}
+		if scope := r.FormValue("scope"); scope != "" {
+			writeError(w, http.StatusBadRequest, "invalid_scope", "scope cannot be changed during refresh")
+			return
+		}
+		if _, supplied := r.Form["resource"]; supplied {
+			writeError(w, http.StatusBadRequest, "invalid_target", "resource cannot be changed during refresh")
+			return
+		}
+		rotatedToken, tokenErr := generateOpaqueToken()
+		if tokenErr != nil {
+			writeError(w, http.StatusInternalServerError, "server_error", "Failed to generate refresh token")
+			return
+		}
+		replacement := &core.TokenRecord{
+			TokenHash: hashCode(rotatedToken),
+			ClientID:  client.ID,
+			TokenType: "refresh_token",
+			ExpiresAt: time.Now().UTC().Add(s.refreshTokenTTL),
+		}
+		previous, err := s.repo.RotateRefreshToken(r.Context(), hashCode(presentedToken), client.ID, replacement)
+		if err != nil {
+			if errors.Is(err, postgres.ErrNotFound) || errors.Is(err, postgres.ErrRefreshTokenReuse) {
+				writeError(w, http.StatusBadRequest, "invalid_grant", "Invalid refresh token")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "server_error", "Failed to rotate refresh token")
+			return
+		}
+		resp, err := s.engine.IssueRefreshTokenAccessToken(previous.ClientID, previous.Subject, previous.Scopes, previous.Resource)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "server_error", err.Error())
+			return
+		}
+		resp.RefreshToken = rotatedToken
 		janusTokensIssuedTotal.WithLabelValues("refresh_token").Inc()
-		writeError(w, http.StatusBadRequest, "unsupported_grant_type", "Refresh token grant not implemented")
+		writeJSON(w, http.StatusOK, resp)
 
 	default:
 		writeError(w, http.StatusBadRequest, "unsupported_grant_type", "Supported: client_credentials, authorization_code, refresh_token")
@@ -731,6 +814,16 @@ func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
 func hashCode(code string) string {
 	sum := sha256.Sum256([]byte(code))
 	return hex.EncodeToString(sum[:])
+}
+
+// generateOpaqueToken returns 256 bits of URL-safe cryptographic randomness.
+// Only its SHA-256 hash is persisted by callers.
+func generateOpaqueToken() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(bytes), nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {

@@ -164,6 +164,9 @@ func (e *Engine) IssueAuthorizationCodeToken(grant *core.Grant) (*core.TokenResp
 		lifespan,
 	)
 	accessClaims["token_use"] = "access_token"
+	// Resource audiences identify APIs, not the OAuth client. Preserve the
+	// client ownership claim for introspection and revocation isolation.
+	accessClaims["client_id"] = grant.ClientID
 	accessToken, err := e.keyManager.SignJWT(accessClaims)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign access token: %w", err)
@@ -171,7 +174,7 @@ func (e *Engine) IssueAuthorizationCodeToken(grant *core.Grant) (*core.TokenResp
 
 	// ID tokens are an OpenID Connect artifact and must not be issued unless
 	// the client was granted the openid scope.
-	if !hasScope(grant.Scopes, "openid") {
+	if !HasScope(grant.Scopes, "openid") {
 		return &core.TokenResponse{
 			AccessToken: accessToken,
 			TokenType:   "Bearer",
@@ -205,7 +208,32 @@ func (e *Engine) IssueAuthorizationCodeToken(grant *core.Grant) (*core.TokenResp
 	}, nil
 }
 
-func hasScope(scopes []string, wanted string) bool {
+// IssueRefreshTokenAccessToken mints the access token produced by a valid
+// refresh-token rotation. The caller owns persistence and must pass only the
+// client, subject, scopes, and resource bound to the consumed refresh token.
+func (e *Engine) IssueRefreshTokenAccessToken(clientID, subject string, scopes []string, resource string) (*core.TokenResponse, error) {
+	lifespan := time.Hour
+	audience := clientID
+	if resource != "" {
+		audience = resource
+	}
+	claims := jwks.GenerateClaims(e.issuer, subject, audience, scopes, lifespan)
+	claims["token_use"] = "access_token"
+	claims["client_id"] = clientID
+	accessToken, err := e.keyManager.SignJWT(claims)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign refreshed access token: %w", err)
+	}
+	return &core.TokenResponse{
+		AccessToken: accessToken,
+		TokenType:   "Bearer",
+		ExpiresIn:   int64(lifespan.Seconds()),
+		Scope:       strings.Join(scopes, " "),
+	}, nil
+}
+
+// HasScope reports whether a granted scope is present.
+func HasScope(scopes []string, wanted string) bool {
 	for _, scope := range scopes {
 		if scope == wanted {
 			return true

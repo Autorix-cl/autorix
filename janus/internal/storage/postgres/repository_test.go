@@ -704,3 +704,96 @@ func TestScopeCatalogueCRUD(t *testing.T) {
 		t.Fatalf("GetScope() after delete error = %v, want ErrNotFound", err)
 	}
 }
+
+func TestRotateRefreshTokenRevokesFamilyOnReuse(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	client := newTestClient("refresh-client-" + uuid.NewString())
+	client.GrantTypes = []string{"authorization_code", "refresh_token"}
+	if err := repo.CreateClient(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+
+	initial := &core.TokenRecord{
+		TokenHash: "refresh-initial-" + uuid.NewString(), ClientID: client.ID, Subject: "user-1",
+		TokenType: "refresh_token", Scopes: []string{"openid", "offline_access"}, Resource: "https://api.example",
+		FamilyID: uuid.NewString(), ExpiresAt: time.Now().Add(24 * time.Hour),
+	}
+	if err := repo.CreateRefreshToken(ctx, initial); err != nil {
+		t.Fatal(err)
+	}
+	replacement := &core.TokenRecord{TokenHash: "refresh-next-" + uuid.NewString(), ClientID: client.ID, TokenType: "refresh_token", ExpiresAt: time.Now().Add(24 * time.Hour)}
+	consumed, err := repo.RotateRefreshToken(ctx, initial.TokenHash, client.ID, replacement)
+	if err != nil {
+		t.Fatalf("RotateRefreshToken() error = %v", err)
+	}
+	if consumed.Subject != initial.Subject || consumed.Resource != initial.Resource || consumed.FamilyID != initial.FamilyID {
+		t.Fatalf("consumed binding = %#v", consumed)
+	}
+	if replacement.Subject != initial.Subject || replacement.Resource != initial.Resource || replacement.FamilyID != initial.FamilyID {
+		t.Fatalf("replacement binding = %#v", replacement)
+	}
+
+	old, err := repo.GetTokenRecord(ctx, initial.TokenHash)
+	if err != nil || !old.Revoked || old.RotatedAt == nil {
+		t.Fatalf("old refresh token after rotation = %#v, err = %v", old, err)
+	}
+	if _, err := repo.RotateRefreshToken(ctx, initial.TokenHash, client.ID, &core.TokenRecord{
+		TokenHash: "refresh-third-" + uuid.NewString(), ClientID: client.ID, TokenType: "refresh_token", ExpiresAt: time.Now().Add(24 * time.Hour),
+	}); !errors.Is(err, postgres.ErrRefreshTokenReuse) {
+		t.Fatalf("reuse error = %v, want ErrRefreshTokenReuse", err)
+	}
+	latest, err := repo.GetTokenRecord(ctx, replacement.TokenHash)
+	if err != nil || !latest.Revoked {
+		t.Fatalf("latest token must be revoked after family reuse: %#v, err = %v", latest, err)
+	}
+}
+
+func TestRotateRefreshTokenConcurrentReuseRevokesFamily(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	client := newTestClient("refresh-concurrent-" + uuid.NewString())
+	if err := repo.CreateClient(ctx, client); err != nil {
+		t.Fatal(err)
+	}
+	initial := &core.TokenRecord{
+		TokenHash: "refresh-concurrent-initial-" + uuid.NewString(), ClientID: client.ID, Subject: "user-1",
+		TokenType: "refresh_token", Scopes: []string{"offline_access"}, FamilyID: uuid.NewString(), ExpiresAt: time.Now().Add(time.Hour),
+	}
+	if err := repo.CreateRefreshToken(ctx, initial); err != nil {
+		t.Fatal(err)
+	}
+	type result struct {
+		replacement *core.TokenRecord
+		err         error
+	}
+	results := make(chan result, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			replacement := &core.TokenRecord{TokenHash: "refresh-concurrent-next-" + uuid.NewString(), ClientID: client.ID, TokenType: "refresh_token", ExpiresAt: time.Now().Add(time.Hour)}
+			_, err := repo.RotateRefreshToken(ctx, initial.TokenHash, client.ID, replacement)
+			results <- result{replacement: replacement, err: err}
+		}()
+	}
+	var successful *core.TokenRecord
+	var reuseCount int
+	for i := 0; i < 2; i++ {
+		result := <-results
+		if result.err == nil {
+			successful = result.replacement
+			continue
+		}
+		if errors.Is(result.err, postgres.ErrRefreshTokenReuse) {
+			reuseCount++
+			continue
+		}
+		t.Fatalf("unexpected concurrent rotation error: %v", result.err)
+	}
+	if successful == nil || reuseCount != 1 {
+		t.Fatalf("concurrent rotation results: successful=%v reuseCount=%d", successful != nil, reuseCount)
+	}
+	latest, err := repo.GetTokenRecord(ctx, successful.TokenHash)
+	if err != nil || !latest.Revoked {
+		t.Fatalf("concurrent reuse must revoke latest token: %#v, err=%v", latest, err)
+	}
+}

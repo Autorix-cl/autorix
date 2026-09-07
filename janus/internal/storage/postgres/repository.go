@@ -15,7 +15,8 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("record not found")
+	ErrNotFound          = errors.New("record not found")
+	ErrRefreshTokenReuse = errors.New("refresh token reuse detected")
 )
 
 type Repository struct {
@@ -517,15 +518,19 @@ func (r *Repository) IsTokenRevoked(ctx context.Context, tokenHash string) (bool
 // GetTokenRecord retrieves an issued token record by its hash
 func (r *Repository) GetTokenRecord(ctx context.Context, tokenHash string) (*core.TokenRecord, error) {
 	query := `
-		SELECT token_hash, client_id, subject, token_type, scopes, expires_at, revoked, created_at
+		SELECT token_hash, client_id, subject, token_type, scopes, resource, family_id, expires_at, revoked, rotated_at, created_at
 		FROM oauth2_tokens
 		WHERE token_hash = $1
 	`
 	var rec core.TokenRecord
+	var familyID *string
 	err := r.pool.QueryRow(ctx, query, tokenHash).Scan(
 		&rec.TokenHash, &rec.ClientID, &rec.Subject, &rec.TokenType,
-		&rec.Scopes, &rec.ExpiresAt, &rec.Revoked, &rec.CreatedAt,
+		&rec.Scopes, &rec.Resource, &familyID, &rec.ExpiresAt, &rec.Revoked, &rec.RotatedAt, &rec.CreatedAt,
 	)
+	if familyID != nil {
+		rec.FamilyID = *familyID
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -533,6 +538,99 @@ func (r *Repository) GetTokenRecord(ctx context.Context, tokenHash string) (*cor
 		return nil, fmt.Errorf("failed to query token record: %w", err)
 	}
 	return &rec, nil
+}
+
+// CreateRefreshToken persists a newly issued opaque refresh token. The caller
+// must generate the raw token separately and provide only its SHA-256 hash.
+func (r *Repository) CreateRefreshToken(ctx context.Context, record *core.TokenRecord) error {
+	if record == nil || record.TokenHash == "" || record.ClientID == "" || record.Subject == "" || record.FamilyID == "" || record.ExpiresAt.IsZero() {
+		return errors.New("invalid refresh token record")
+	}
+	if record.TokenType != "refresh_token" {
+		return errors.New("token record must be a refresh token")
+	}
+	if record.Scopes == nil {
+		record.Scopes = []string{}
+	}
+	now := time.Now().UTC()
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO oauth2_tokens (token_hash, client_id, subject, token_type, scopes, resource, family_id, expires_at, revoked, created_at)
+		VALUES ($1, $2, $3, 'refresh_token', $4, $5, $6, $7, false, $8)`,
+		record.TokenHash, record.ClientID, record.Subject, record.Scopes, record.Resource, record.FamilyID, record.ExpiresAt, now)
+	if err != nil {
+		return fmt.Errorf("create refresh token: %w", err)
+	}
+	record.CreatedAt = now
+	return nil
+}
+
+// RotateRefreshToken atomically consumes a refresh token and inserts its
+// replacement. Reuse of an already rotated token revokes the whole family.
+// It deliberately returns the same public error shape to token endpoints for
+// invalid, expired, revoked, and reused tokens.
+func (r *Repository) RotateRefreshToken(ctx context.Context, presentedHash, clientID string, replacement *core.TokenRecord) (*core.TokenRecord, error) {
+	if replacement == nil || replacement.TokenHash == "" || replacement.ClientID != clientID || replacement.TokenType != "refresh_token" || replacement.ExpiresAt.IsZero() {
+		return nil, errors.New("invalid refresh token replacement")
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin refresh token rotation: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	now := time.Now().UTC()
+	var previous core.TokenRecord
+	err = tx.QueryRow(ctx, `
+		UPDATE oauth2_tokens
+		SET revoked = true, rotated_at = $3
+		WHERE token_hash = $1 AND client_id = $2 AND token_type = 'refresh_token'
+		  AND revoked = false AND expires_at > $3
+		RETURNING token_hash, client_id, subject, token_type, scopes, resource, family_id, expires_at, revoked, rotated_at, created_at`,
+		presentedHash, clientID, now).Scan(
+		&previous.TokenHash, &previous.ClientID, &previous.Subject, &previous.TokenType, &previous.Scopes,
+		&previous.Resource, &previous.FamilyID, &previous.ExpiresAt, &previous.Revoked, &previous.RotatedAt, &previous.CreatedAt)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("consume refresh token: %w", err)
+		}
+		var familyID string
+		var rotatedAt *time.Time
+		lookupErr := tx.QueryRow(ctx, `
+			SELECT family_id, rotated_at FROM oauth2_tokens
+			WHERE token_hash = $1 AND client_id = $2 AND token_type = 'refresh_token'`, presentedHash, clientID).Scan(&familyID, &rotatedAt)
+		if lookupErr == nil && familyID != "" && rotatedAt != nil {
+			if _, revokeErr := tx.Exec(ctx, `UPDATE oauth2_tokens SET revoked = true WHERE family_id = $1 AND token_type = 'refresh_token'`, familyID); revokeErr != nil {
+				return nil, fmt.Errorf("revoke reused refresh token family: %w", revokeErr)
+			}
+			if commitErr := tx.Commit(ctx); commitErr != nil {
+				return nil, fmt.Errorf("commit refresh token reuse revocation: %w", commitErr)
+			}
+			return nil, ErrRefreshTokenReuse
+		}
+		if lookupErr != nil && !errors.Is(lookupErr, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("lookup refresh token: %w", lookupErr)
+		}
+		return nil, ErrNotFound
+	}
+
+	// Values used to mint the replacement come exclusively from the consumed
+	// record so callers cannot broaden identity, scope, or resource binding.
+	replacement.Subject = previous.Subject
+	replacement.Scopes = previous.Scopes
+	replacement.Resource = previous.Resource
+	replacement.FamilyID = previous.FamilyID
+	replacement.CreatedAt = now
+	_, err = tx.Exec(ctx, `
+		INSERT INTO oauth2_tokens (token_hash, client_id, subject, token_type, scopes, resource, family_id, expires_at, revoked, created_at)
+		VALUES ($1, $2, $3, 'refresh_token', $4, $5, $6, $7, false, $8)`,
+		replacement.TokenHash, clientID, replacement.Subject, replacement.Scopes, replacement.Resource, replacement.FamilyID, replacement.ExpiresAt, now)
+	if err != nil {
+		return nil, fmt.Errorf("create rotated refresh token: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit refresh token rotation: %w", err)
+	}
+	return &previous, nil
 }
 
 // CreateScope registers a new scope in the catalogue

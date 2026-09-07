@@ -238,3 +238,25 @@ func TestAuthenticateClient(t *testing.T) {
 		t.Error("expected public client to pass")
 	}
 }
+
+func TestEngine_IssueRefreshTokenAccessTokenPreservesBinding(t *testing.T) {
+	km, err := jwks.NewKeyManager()
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := NewEngine("https://issuer.example", km).IssueRefreshTokenAccessToken(
+		"web-client", "user-1", []string{"openid", "offline_access", "profile"}, "https://api.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.IDToken != "" {
+		t.Fatal("refresh-token exchange must not mint a new ID token")
+	}
+	claims, err := km.VerifyJWT(resp.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims["client_id"] != "web-client" || claims["sub"] != "user-1" || claims["aud"] != "https://api.example" {
+		t.Fatalf("access token binding = %#v", claims)
+	}
+}

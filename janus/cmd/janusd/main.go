@@ -37,6 +37,7 @@ type appConfig struct {
 	CORSOrigins       string        `env:"CORS_ALLOWED_ORIGINS"`
 	IssuerURL         string        `env:"ISSUER_URL" envDefault:"http://localhost:4444"`
 	KeyReloadInterval time.Duration `env:"KEY_RELOAD_INTERVAL" envDefault:"30s"`
+	RefreshTokenTTL   time.Duration `env:"REFRESH_TOKEN_TTL" envDefault:"720h"`
 }
 
 func main() {
@@ -111,7 +112,8 @@ func main() {
 	})
 
 	// 3. HTTP Server
-	server := transport.NewServer(cfg.IssuerURL, repo, keyManager, engine, healthHandler)
+	server := transport.NewServer(cfg.IssuerURL, repo, keyManager, engine, healthHandler,
+		transport.WithRefreshTokenTTL(cfg.RefreshTokenTTL))
 
 	handler := httpx.Chain(server.Routes(),
 		httpx.RequestID,
@@ -225,6 +227,9 @@ func (cfg appConfig) validate() error {
 	}
 	if cfg.KeyReloadInterval <= 0 {
 		return errors.New("KEY_RELOAD_INTERVAL must be positive")
+	}
+	if cfg.RefreshTokenTTL <= 0 {
+		return errors.New("REFRESH_TOKEN_TTL must be positive")
 	}
 	return nil
 }
