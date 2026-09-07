@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -174,6 +175,9 @@ func TestNexus_BatchCheck(t *testing.T) {
 
 func TestThemis_Evaluate(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/policies/evaluate" {
+			t.Fatalf("expected public evaluation route, got %s", r.URL.Path)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{
 			"all_passed": true,
@@ -225,5 +229,47 @@ func TestVulcan_VerifyAndAttenuate(t *testing.T) {
 	att, err := client.Vulcan.Attenuate(context.Background(), "av_live_test", []string{"ip = 10.0.0.1"})
 	if err != nil || att != "av_live_attenuated" {
 		t.Fatalf("expected attenuated token, got %s (err: %v)", att, err)
+	}
+}
+
+func TestJanus_PublicOAuthOperations(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"issuer":"https://issuer.example","authorization_endpoint":"https://issuer.example/oauth2/auth","token_endpoint":"https://issuer.example/oauth2/token","jwks_uri":"https://issuer.example/.well-known/jwks.json"}`))
+		case "/oauth2/token":
+			if got := r.FormValue("code_verifier"); got != "verifier" {
+				t.Errorf("expected PKCE verifier, got %q", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"access_token":"access","token_type":"Bearer","expires_in":3600,"refresh_token":"refresh"}`))
+		case "/oauth2/revoke":
+			user, _, ok := r.BasicAuth()
+			if !ok || user != "service" {
+				t.Error("expected confidential client authentication")
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{JanusURL: server.URL})
+	url, err := client.Janus.AuthorizationURL("browser", "https://app.example/callback", "state", "openid offline_access", "challenge")
+	if err != nil || !strings.Contains(url, "code_challenge_method=S256") {
+		t.Fatalf("unexpected authorization URL: %q, %v", url, err)
+	}
+	discovery, err := client.Janus.Discovery(context.Background())
+	if err != nil || discovery.Issuer != "https://issuer.example" {
+		t.Fatalf("unexpected discovery: %+v, %v", discovery, err)
+	}
+	token, err := client.Janus.ExchangeToken(context.Background(), TokenRequest{GrantType: "authorization_code", ClientID: "browser", Code: "code", CodeVerifier: "verifier", RedirectURI: "https://app.example/callback"})
+	if err != nil || token.RefreshToken != "refresh" {
+		t.Fatalf("unexpected token response: %+v, %v", token, err)
+	}
+	if err := client.Janus.Revoke(context.Background(), "service", "secret", "access", "access_token"); err != nil {
+		t.Fatal(err)
 	}
 }

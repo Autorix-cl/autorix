@@ -1,230 +1,56 @@
-# TypeScript & React SDK Reference Manual (`@autorix/sdk-js`)
+# TypeScript and React SDK
 
-The official **Autorix TypeScript / JavaScript SDK** provides universal client libraries for Node.js, Next.js App Router/Pages Router, Express, and React 19 web applications.
+Package: `@autorix/sdk-js`
 
----
+The SDK supports Node.js 18+ and browser-like runtimes with `fetch`. React is optional unless importing React exports. Pass `AbortSignal` as the final argument of client operations to cancel a request.
 
-## 1. Installation
+## Create a client
 
-```bash
-npm install @autorix/sdk-js
-```
-
----
-
-## 2. Universal Client Initialization (Node.js / Next.js)
-
-```typescript
-import { AutorixClient } from "@autorix/sdk-js";
-
-export const autorix = new AutorixClient({
-  baseUrl: process.env.AUTORIX_BASE_URL || "http://localhost:4455",
-  nexusUrl: process.env.AUTORIX_NEXUS_URL || "http://localhost:8080",
-  themisUrl: process.env.AUTORIX_THEMIS_URL || "http://localhost:4488",
-  egoUrl: process.env.AUTORIX_EGO_URL || "http://localhost:4433",
-  janusUrl: process.env.AUTORIX_JANUS_URL || "http://localhost:4444",
-  vulcanUrl: process.env.AUTORIX_VULCAN_URL || "http://localhost:4466",
-  apiKey: process.env.AUTORIX_API_KEY,
-  
-  // Performance & Caching
-  enableCache: true,
-  cacheTtlMs: 15_000,
-  
-  // Resilience: Retry with Exponential Backoff & Jitter
-  retryConfig: {
-    maxRetries: 3,
-    initialDelayMs: 50,
-    maxDelayMs: 2000,
-    backoffFactor: 2.0,
-  },
+```ts
+const autorix = new AutorixClient({
+  nexusUrl: "https://nexus.example.internal",
+  themisUrl: "https://themis.example.internal",
+  janusUrl: "https://login.example.com",
+  timeoutMs: 10_000,
 });
 ```
 
----
+`AutorixConfig` accepts engine URLs, `timeoutMs`, retry/cache configuration, server-only `apiKey`, and an injectable `fetch` implementation. Failures from ordinary operations throw `AutorixApiError` or `AutorixTimeoutError`; permission and capability verification deliberately resolve to denied results.
 
-## 3. Server-Side Operations Reference
+## Public runtime operations
 
-### 3.1 Evaluating ReBAC Permissions (`check` & `checkBatch`)
+```ts
+await autorix.check({ namespace: "documents", object: "document-42", relation: "viewer", subject: "user-7" });
+await autorix.writeTuples([{ namespace: "documents", object: "document-42", relation: "viewer", subjectId: "user-7" }]);
+await autorix.listPolicies({ tenantId: "default", limit: 20 });
+await autorix.createPolicy(policy);
+await autorix.createApiKey({ name: "worker", ownerId: "service-7", scopes: ["reports:read"] });
+```
 
-```typescript
-// Single ReBAC check
-const decision = await autorix.check({
-  namespace: "dashboards",
-  object: "analytics_prod",
-  relation: "viewer",
-  subject: "usr_9988",
-  context: { ip: "192.168.1.50" },
-  explain: true,
+Nexus supports checks, batch checks, tuple list/write/delete, expansion, and subject/resource lookup. Themis supports evaluation, policy CRUD, versions, validation, and dry runs. Vulcan supports key create/list/verify/attenuate/revoke. List operations return `Page<T>` with `data`, `nextCursor`, and `hasMore`.
+
+## Janus OAuth/OIDC
+
+```ts
+const authorizationUrl = autorix.createAuthorizationUrl({
+  clientId: "spa-client", redirectUri: "https://app.example/callback", state, codeChallenge,
 });
-
-if (decision.allowed) {
-  console.log("Access granted!");
-}
-
-// Vectorized Batch check (runs concurrently)
-const batchResults = await autorix.checkBatch([
-  { namespace: "reports", object: "q1", relation: "read", subject: "usr_9988" },
-  { namespace: "reports", object: "q2", relation: "write", subject: "usr_9988" },
-  { namespace: "reports", object: "q3", relation: "delete", subject: "usr_9988" },
-]);
-```
-
-### 3.2 Evaluating Themis ABAC CEL Policies (`evaluatePolicy`)
-
-```typescript
-const policyResult = await autorix.evaluatePolicy({
-  tenantId: "default",
-  context: {
-    request: {
-      auth: {
-        claims: { department: "finance" },
-        mfa: true,
-      },
-    },
-    resource: {
-      amount: 25000,
-    },
-  },
+const tokens = await autorix.exchangeAuthorizationCode({
+  clientId: "spa-client", code, redirectUri: "https://app.example/callback", codeVerifier,
 });
-
-if (policyResult.allPassed) {
-  // Proceed with transaction
-}
+const refreshed = await autorix.refreshToken(tokens.refresh_token!, "spa-client");
 ```
 
-### 3.3 Validating API Keys & Macaroons (`verifyApiKey`)
+`getOpenIdConfiguration`, `getJwks`, `createAuthorizationUrl`, `exchangeAuthorizationCode`, `refreshToken`, `introspectToken`, and `revokeToken` are available. The client does not generate or persist PKCE values or tokens. Authorization-code and refresh exchanges are not automatically retried.
 
-```typescript
-const verification = await autorix.verifyApiKey("av_live_9f8e7d6c5b4a3f2e...", {
-  ip: "10.0.4.15",
-  method: "POST",
-  required_scope: "invoices:write",
-});
+Use `clientSecret` only in backend code. `introspectToken` and `revokeToken` do not accept a client secret; use a confidential backend integration when Janus requires client authentication.
 
-if (verification.valid) {
-  console.log(`Key Name: ${verification.name}, Scopes: ${verification.scopes}`);
-}
-```
+## React integration and browser boundary
 
----
+`AutorixProvider` calls Ego `whoami` with cookies enabled. `useAutorix`, `useSession`, `usePermission`, `useBatchPermissions`, and `usePolicy` are available. `logout` is also available on `AutorixClient`; registration and login flows are not.
 
-## ⚛️ 4. React 19 Hooks & Provider
+Never expose `apiKey`, a client secret, or operator credentials in a browser bundle. UI checks are not enforcement: repeat the authorization decision on the backend.
 
-### 4.1 Provider Setup in Next.js Root Layout
+## Retry and cache notes
 
-```tsx
-// app/layout.tsx
-import { AutorixProvider } from "@autorix/sdk-js";
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en">
-      <body>
-        <AutorixProvider config={{ baseUrl: "http://localhost:4455" }}>
-          {children}
-        </AutorixProvider>
-      </body>
-    </html>
-  );
-}
-```
-
----
-
-### 4.2 `useSession()` Hook
-Retrieves current user identity, traits, and authentication status:
-
-```tsx
-import { useSession } from "@autorix/sdk-js";
-
-export function UserBadge() {
-  const { user, isAuthenticated, loading, refreshSession } = useSession();
-
-  if (loading) return <span>Loading profile...</span>;
-  if (!isAuthenticated) return <a href="/login">Sign In</a>;
-
-  return (
-    <div>
-      <p>Signed in as: {user?.traits.email}</p>
-      <button onClick={() => refreshSession()}>Refresh Session</button>
-    </div>
-  );
-}
-```
-
----
-
-### 4.3 `usePermission()` Hook
-ReBAC check for an individual resource:
-
-```tsx
-import { usePermission } from "@autorix/sdk-js";
-
-export function DocumentEditorButton({ documentId }: { documentId: string }) {
-  const { allowed, checking } = usePermission("documents", documentId, "editor");
-
-  if (checking) return <button disabled>Checking...</button>;
-  if (!allowed) return null; // Hidden if unauthorized
-
-  return <button onClick={() => openEditor(documentId)}>Edit Document</button>;
-}
-```
-
----
-
-### 4.4 `useBatchPermissions()` Hook
-Vectorized evaluation for tables, cards, or lists of resources:
-
-```tsx
-import { useBatchPermissions } from "@autorix/sdk-js";
-
-export function FileExplorer({ files }: { files: Array<{ id: string; name: string }> }) {
-  const { results, checking } = useBatchPermissions(
-    files.map((file) => ({
-      namespace: "files",
-      object: file.id,
-      relation: "deleter",
-    }))
-  );
-
-  return (
-    <ul>
-      {files.map((file, idx) => (
-        <li key={file.id}>
-          <span>{file.name}</span>
-          {results[idx]?.allowed && (
-            <button onClick={() => deleteFile(file.id)}>Delete</button>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
-```
-
----
-
-### 4.5 `usePolicy()` Hook
-Real-time evaluation of Google CEL ABAC rules:
-
-```tsx
-import { usePolicy, useSession } from "@autorix/sdk-js";
-
-export function HighValueWireTransfer({ amount }: { amount: number }) {
-  const { user } = useSession();
-  const { passed, evaluating } = usePolicy({
-    user,
-    transfer_amount: amount,
-    time_of_day: new Date().getHours(),
-  });
-
-  return (
-    <div>
-      <button disabled={evaluating || !passed}>
-        {evaluating ? "Evaluating Compliance..." : "Execute Transfer"}
-      </button>
-      {!passed && !evaluating && <p className="text-red-500">Action blocked by risk policy</p>}
-    </div>
-  );
-}
-```
+Only `GET`, `HEAD`, and `OPTIONS` retry by default; non-idempotent writes do not. Nexus decisions are cached in process for 10 seconds by default. The SDK has no OpenTelemetry integration.

@@ -1,30 +1,48 @@
-# CLI Oficial de Autorix (`autorixctl`) y APIs Directas
+# CLI e integración HTTP/gRPC directa
 
-`autorixctl` es la herramienta de línea de comandos para automatizar tareas administrativas, gestionar tuplas de permisos y enrolar motores en clústeres de Autorix.
+`autorixctl` es un CLI pequeño de plano de control ubicado en `cmd/autorixctl`. Para lenguajes sin SDK compatible, use los contratos REST/gRPC del servicio directamente y gestione autenticación, tiempos de espera, reintentos y errores en su propio cliente.
 
----
-
-## 📦 Instalación
+## Compilar desde fuente
 
 ```bash
-# Vía Go
-go install github.com/autorix-cl/autorix/cmd/autorixctl@latest
-
-# O descarga el binario desde GitHub Releases
-curl -fsSL https://get.autorix.io | sh
+go build -o autorixctl ./cmd/autorixctl
 ```
 
----
-
-## 🛠️ Comandos Comunes
+## Comandos CLI implementados
 
 ```bash
-# Verificar permisos
-autorixctl check documents roadmap_2026 viewer user:alice
+# Evaluar una comprobación de relación Nexus.
+autorixctl check --ns documents --obj document-42 --rel viewer --subj user-7
 
-# Insertar tupla de relación
-autorixctl tuple add documents roadmap_2026 editor user:bob
+# Crear un token de inscripción Argus.
+autorixctl token mint --engine nexus --env production --description "nexus worker"
 
-# Enrolar un nuevo motor
-autorixctl fleet enroll --token aet_01917f8a7b6c...
+# Consultar o verificar la auditoría Argus.
+autorixctl audit list
+autorixctl audit verify
 ```
+
+Los nombres de comando y flags anteriores conforman la interfaz actual. `tokens mint` (plural), `--namespace`, `--object`, `--relation`, `--subject` y `audit export` no están implementados.
+
+## REST directo
+
+Una comprobación Nexus directa envía JSON a `POST /check` en la URL Nexus:
+
+```bash
+curl --fail-with-body \
+  --request POST http://localhost:8080/check \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "namespace": "documents",
+    "object": "document-42",
+    "relation": "viewer",
+    "subject_id": "user-7",
+    "subject_namespace": "user"
+  }'
+```
+
+No interprete un fallo de red o HTTP como autorización. Deniegue la solicitud protegida y registre el fallo.
+
+## gRPC directo
+
+Las definiciones Protobuf están disponibles en `api/autorix/<service>/v1/`. Genere clientes con su propia cadena compatible de `protoc` o Buf después de elegir el contrato de servicio necesario. Autorix no distribuye ni mantiene actualmente SDKs generados para Rust, .NET, Java, PHP, Ruby u otros lenguajes.

@@ -1,125 +1,48 @@
-# CLI & Direct API/gRPC Integration Guide
+# CLI and direct HTTP/gRPC integration
 
-For languages without a dedicated native SDK (e.g. **Rust**, **C# / .NET**, **Java / Kotlin**, **PHP**, **Ruby**), Autorix provides the `autorixctl` CLI and high-throughput Protobuf gRPC / REST endpoints.
+`autorixctl` is a small control-plane CLI located in `cmd/autorixctl`. For languages without a supported SDK, use the service REST/gRPC contracts directly and own authentication, timeouts, retries, and error handling in your client.
 
----
-
-## 💻 1. The `autorixctl` CLI
-
-`autorixctl` is the command-line control plane client for developers and DevOps pipelines.
-
-### 1.1 Installation
-
-Download the precompiled binary from the repository release artifacts or compile directly:
+## Build from source
 
 ```bash
-# Build locally
 go build -o autorixctl ./cmd/autorixctl
 ```
 
-### 1.2 Common CLI Commands
+## Implemented CLI commands
 
-#### Evaluating a ReBAC Permission:
 ```bash
-autorixctl check \
-  --namespace documents \
-  --object roadmap_2026 \
-  --relation editor \
-  --subject user:usr_alice
-```
+# Evaluate a Nexus relationship check.
+autorixctl check --ns documents --obj document-42 --rel viewer --subj user-7
 
-#### Minting an Engine Enrollment Token:
-```bash
-autorixctl tokens mint \
-  --engine nexus \
-  --environment production \
-  --ttl 24h
-```
+# Mint an Argus enrollment token.
+autorixctl token mint --engine nexus --env production --description "nexus worker"
 
-#### Verifying the SHA-256 Merkle Audit Chain:
-```bash
+# Query or verify the Argus audit trail.
+autorixctl audit list
 autorixctl audit verify
 ```
 
-#### Exporting Audit Logs:
-```bash
-autorixctl audit export --format csv --output audit.csv
-```
+The command names and flags above are the current interface. `tokens mint` (plural), `--namespace`, `--object`, `--relation`, `--subject`, and `audit export` are not implemented commands.
 
----
+## Direct REST
 
-## ⚡ 2. Universal gRPC Integration (Rust, C#, Java)
-
-All Autorix services expose standard Protobuf contracts (`api/autorix/<service>/v1/`). You can generate native clients using `protoc` or `buf`.
-
-### 2.1 Generating gRPC Clients with Buf
+A direct Nexus check sends JSON to `POST /check` on the Nexus URL:
 
 ```bash
-# For Rust (tonic)
-buf generate --template buf.gen.rust.yaml
-
-# For C# (Grpc.Tools)
-buf generate --template buf.gen.csharp.yaml
-
-# For Java / Kotlin (grpc-java)
-buf generate --template buf.gen.java.yaml
+curl --fail-with-body \
+  --request POST http://localhost:8080/check \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "namespace": "documents",
+    "object": "document-42",
+    "relation": "viewer",
+    "subject_id": "user-7",
+    "subject_namespace": "user"
+  }'
 ```
 
-### 2.2 Direct gRPC `Check` Call in Rust (Tonic)
+Do not treat a network or HTTP error as authorization. Fail the protected request closed and record the failure.
 
-```rust
-use autorix_nexus::v1::nexus_service_client::NexusServiceClient;
-use autorix_nexus::v1::CheckRequest;
+## Direct gRPC
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = NexusServiceClient::connect("http://127.0.0.1:50051").await?;
-
-    let request = tonic::Request::new(CheckRequest {
-        namespace: "documents".into(),
-        object: "roadmap_2026".into(),
-        relation: "viewer".into(),
-        subject_id: "usr_alice".into(),
-        subject_namespace: "user".into(),
-        subject_relation: "".into(),
-        request_context: None,
-        resolution_token: "".into(),
-    });
-
-    let response = client.check(request).await?;
-    println!("Allowed: {}", response.into_inner().allowed);
-
-    Ok(())
-}
-```
-
----
-
-## 🌐 3. Direct REST Integration (PHP, Ruby, cURL)
-
-Any HTTP client can interact directly with the REST endpoints:
-
-### Direct Check in PHP (`cURL`)
-```php
-<?php
-$payload = json_encode([
-    'namespace' => 'documents',
-    'object' => 'roadmap_2026',
-    'relation' => 'viewer',
-    'subject_id' => 'usr_alice',
-    'subject_namespace' => 'user'
-]);
-
-$ch = curl_init('http://localhost:8080/check');
-curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type:application/json']);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-$result = json_decode(curl_exec($ch), true);
-curl_close($ch);
-
-if ($result['allowed']) {
-    echo "Permission granted\n";
-}
-?>
-```
+Protobuf definitions are available beneath `api/autorix/<service>/v1/`. Generate clients with your own supported `protoc` or Buf toolchain after selecting the service contract you need. Autorix does not ship or maintain generated Rust, .NET, Java, PHP, Ruby, or other language SDKs today.

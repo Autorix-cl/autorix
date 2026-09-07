@@ -1,65 +1,48 @@
-# Autorix Official Client SDKs
+# Autorix SDKs
 
-**Autorix SDKs** provide idiomatic, type-safe, and enterprise-grade client libraries for **Go**, **TypeScript/React**, and **Python**. Engineered to Google and AWS reliability standards, each SDK features built-in **exponential backoff with full jitter**, **vectorized batch evaluation**, **in-memory decision caching**, and distributed tracing propagation.
+Autorix ships source SDKs for Go, TypeScript/React, and Python. They are typed HTTP clients for the supported public-runtime operations below; they are not generated clients for every Autorix service.
 
----
+## Capability matrix
 
-## 📦 Supported Languages & Frameworks
+| Capability | Go | TypeScript / React | Python |
+| --- | --- | --- | --- |
+| Ego session | Current session | Current session and logout | Registration, login, current session, logout |
+| Nexus | Check, batch check, expand, resource lookup | Checks, tuple read/write/delete, expand, subject/resource lookup | Same as TypeScript |
+| Themis | Evaluate | Evaluate, policy CRUD, versions, validate, dry run | Same, plus fixtures and test suite |
+| Vulcan | Verify and attenuate | Create, list, verify, attenuate, revoke | Same |
+| Janus | Discovery, authorization URL, token exchange, introspection, revoke, JWKS | Discovery, authorization URL, code exchange, refresh, introspection, revoke, JWKS | Same, plus client credentials |
+| Argus | Audit-chain verification | No | No |
+| Framework helpers | `net/http` | React hooks | FastAPI, Django, Flask |
 
-| Language / Stack | Package Name | Installation | Key Features |
-| :--- | :--- | :--- | :--- |
-| **Go** | `github.com/autorix-cl/autorix/sdk/go` | `go get github.com/autorix-cl/autorix/sdk/go` | Sub-clients for all 8 engines, `CheckBatch`, Full Jitter Retries, HTTP Middleware (`RequirePermission`). |
-| **TypeScript / React** | `@autorix/sdk-js` | `npm install @autorix/sdk-js` | Universal Node.js + React 19 hooks (`useSession`, `usePermission`, `useBatchPermissions`, `usePolicy`), in-memory cache. |
-| **Python** | `autorix` | `pip install autorix` | Sync & Async (`httpx`) clients, FastAPI `Depends()` security integration, `check_batch`, Pydantic models. |
-| **CLI & Direct** | `autorixctl` / HTTP / gRPC | Precompiled binary | Raw REST endpoints, gRPC Protobuf reflection for Rust, C#, PHP, Java. |
+No SDK currently implements Ego WebAuthn. Argus administrative APIs are not exposed through TypeScript or Python.
 
----
+## Packages and prerequisites
 
-## 🏛️ Shared Architectural Standards Across All SDKs
+| SDK | Source package | Runtime requirement |
+| --- | --- | --- |
+| Go | `github.com/autorix-cl/autorix/sdk/go` | Go 1.25.6 (module declaration) |
+| TypeScript | `@autorix/sdk-js` | Node.js 18+ or a runtime with `fetch`; React is optional unless React exports are used |
+| Python | `autorix` | Python 3.9+ |
 
-All Autorix client libraries adhere to the following reliability principles:
+Confirm that a release is published in your package registry before depending on an external install command; source development uses the corresponding `sdk/<language>` directory.
 
-```text
-       [ Application Code ]
-                │
-                ▼
-  ┌───────────────────────────┐
-  │       Autorix Client      │
-  │                           │
-  │  ┌─────────────────────┐  │ (Checks local cache first: TTL 10-30s)
-  │  │ Local Memory Cache  │  │
-  │  └──────────┬──────────┘  │
-  │             │ (Cache Miss)│
-  │  ┌──────────▼──────────┐  │ (Exponential Backoff + Full Jitter)
-  │  │ Retry Engine        │  │ (Retries 429, 502, 503, 504, Timeouts)
-  │  └──────────┬──────────┘  │
-  │             │             │
-  │  ┌──────────▼──────────┐  │ (Injects X-Request-ID, W3C traceparent)
-  │  │ Telemetry Injector  │  │
-  │  └──────────┬──────────┘  │
-  └─────────────┼─────────────┘
-                │
-                ▼ (HTTP/1.1 REST or gRPC HTTP/2)
-       [ Autorix IAM Cluster ]
-```
+## Security boundary: browser and backend
 
-### 1. Fail-Closed Security Posture
-If a network partition occurs and retries are exhausted, the SDK **always returns `allowed = false`** and logs the error, ensuring no unauthorized action is inadvertently permitted during cluster degradation.
+The TypeScript SDK can build an OAuth authorization URL with PKCE and exchange an authorization code. It does not persist tokens or generate/store the PKCE verifier; the application owns both. Never pass `clientSecret`, an API key, an operator token, or another privileged credential to browser code. Use a backend for confidential OAuth operations, key management, tuple and policy writes.
 
-### 2. Resilience: Exponential Backoff & Full Jitter
-To prevent *Thundering Herd* spikes against the database during cluster failovers, all SDKs implement randomized jitter backoff:
-```text
-Sleep Delay = UniformRandom(0, min(InitialDelay * Factor^Attempt, MaxDelay))
-```
+React permission hooks are presentation helpers, not an authorization boundary. The backend must re-check and enforce the requested action. Proxy identity headers must be stripped from external requests and injected only after authentication.
 
-### 3. Vectorized Parallel Execution (`BatchCheck`)
-Instead of executing sequential HTTP round-trips for each resource on a page, batch checks evaluate all permissions concurrently across worker pools.
+## Common behavior
 
----
+- Go and TypeScript retry only safe/idempotent reads by default. OAuth code and refresh-token exchanges are deliberately not retried.
+- Python supports explicit retries for its read operations and Nexus checks. Its write operations are not retried.
+- Nexus decision caching is in-process and defaults to 10 seconds. It is not distributed or invalidated by relationship changes.
+- TypeScript has `AutorixApiError` and `AutorixTimeoutError`; Python has `AutorixError` and `AutorixHTTPError`. Go returns standard errors.
+- The SDKs do not currently provide OpenTelemetry instrumentation or generated API contracts.
 
-## 🚀 Choose Your SDK
+## Choose an SDK
 
-* 🐹 [**Go SDK Reference Manual**](/sdk/go)
-* ⚛️ [**TypeScript & React SDK Reference Manual**](/sdk/typescript)
-* 🐍 [**Python & FastAPI SDK Reference Manual**](/sdk/python)
-* 💻 [**CLI & Universal REST/gRPC Integration**](/sdk/cli)
+- [Go SDK](/sdk/go)
+- [TypeScript and React SDK](/sdk/typescript)
+- [Python SDK](/sdk/python)
+- [CLI and direct HTTP/gRPC](/sdk/cli)

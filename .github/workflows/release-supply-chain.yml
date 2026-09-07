@@ -63,11 +63,13 @@ jobs:
           cache-dependency-path: |
             console/package-lock.json
             docs/package-lock.json
+            sdk/typescript/package-lock.json
 
-      - name: Validate Console and documentation builds
+      - name: Validate Console, documentation, and TypeScript SDK
         run: |
           (cd console && npm ci && npm test -- --run && npm run build)
           (cd docs && npm ci && npm run build)
+          (cd sdk/typescript && npm ci && npm test && npm run pack:check)
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -78,7 +80,12 @@ jobs:
           python-version: '3.11'
 
       - name: Install release validation dependencies
-        run: pip install pyyaml
+        run: pip install build pyyaml
+
+      - name: Validate Python SDK package
+        run: |
+          (cd sdk/python && PYTHONPATH=. python3 -m unittest discover -s tests -v)
+          (cd sdk/python && python3 -m build --wheel --no-isolation)
 
       - name: Validate self-hosted configuration contracts
         run: |

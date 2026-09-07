@@ -1,28 +1,29 @@
-# SDKs Oficiales de Autorix: Visión General y Arquitectura
+# SDKs de Autorix
 
-Los SDKs oficiales de Autorix proporcionan a los desarrolladores clientes fuertemente tipados, de alto rendimiento y listos para producción para integrar la suite de autenticación y autorización en microservicios, SPAs y APIs.
+Autorix ofrece SDKs para Go, TypeScript/React y Python para las API públicas de ejecución. Las API `/admin` y los servicios Argus, Aegis y Hermes no se incluyen en esta versión de los SDKs.
 
----
+## Matriz de capacidades
 
-## 🛠️ Lenguajes Soportados
+| Área | Go | TypeScript / React | Python |
+| --- | --- | --- | --- |
+| Nexus: comprobaciones, expansión y búsquedas | Sí | Sí | Sí |
+| Nexus: gestión pública de tuplas | No | Sí | Sí |
+| Themis: evaluación y políticas públicas | Evaluación | Sí | Sí |
+| Vulcan: verificación y atenuación | Sí | Sí | Sí |
+| Vulcan: ciclo público de claves | No | Sí | Sí |
+| Ego: sesión y flujo de identidad | `whoami` | sesión/cierre | registro, sesión y cierre |
+| Janus: OAuth/OIDC | discovery, PKCE, token, revocación | Sí | Sí |
+| Integraciones | `net/http` | React | FastAPI, Flask, Django |
 
-* 🐹 [**Go SDK**](/es/sdk/go) (`github.com/autorix-cl/autorix/sdk/go`)
-* ⚛️ [**TypeScript / React SDK**](/es/sdk/typescript) (`@autorix/sdk-js`)
-* 🐍 [**Python / FastAPI SDK**](/es/sdk/python) (`autorix`)
-* 💻 [**CLI y REST/gRPC Directo**](/es/sdk/cli) (`autorixctl`)
+## Límite navegador y backend
 
----
+TypeScript puede usar PKCE en un navegador, pero la aplicación debe crear y conservar state, verifier y tokens. No incluya secretos de cliente, API keys ni credenciales privilegiadas en código de navegador. La gestión de claves, tuplas y políticas debe realizarse desde un backend controlado, y toda decisión mostrada en la interfaz debe volver a aplicarse en el backend.
 
-## 📐 Principios de Ingeniería Compartidos
+## Fiabilidad
 
-### 1. Seguridad por Defecto (*Fail-Closed*)
-Si el SDK no puede comunicarse con los motores debido a una partición de red o caída de base de datos, el cliente **siempre evalúa a denegación estricta** (`allowed: false`).
+Los SDKs exponen errores tipados y paginación donde la API lo permite. Solo las lecturas idempotentes se reintentan; los intercambios OAuth y las operaciones de escritura no se reintentan automáticamente. Las comprobaciones de permisos fallan cerradas.
 
-### 2. Resiliencia: Exponential Backoff & Full Jitter
-Para proteger contra avalanchas de tráfico (*Thundering Herd*), todos los SDKs aplican reintentos con dispersión aleatoria:
-```text
-Sleep Delay = UniformRandom(0, min(InitialDelay * Factor^Attempt, MaxDelay))
-```
-
-### 3. Verificación Vectorizada en Lote (`BatchCheck`)
-Permite comprobar múltiples tuplas de permisos concurrentemente en un único ciclo de reloj.
+- [SDK de Go](/es/sdk/go)
+- [SDK de TypeScript y React](/es/sdk/typescript)
+- [SDK de Python](/es/sdk/python)
+- [CLI y API directa](/es/sdk/cli)

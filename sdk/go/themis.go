@@ -51,7 +51,7 @@ func (t *ThemisClient) Evaluate(ctx context.Context, req EvaluatePolicyRequest) 
 		return nil, fmt.Errorf("failed to marshal themis evaluate request: %w", err)
 	}
 
-	url := strings.TrimRight(t.client.config.ThemisURL, "/") + "/v1/policies/evaluate"
+	url := strings.TrimRight(t.client.config.ThemisURL, "/") + "/policies/evaluate"
 
 	httpResp, err := executeWithRetry(ctx, t.client.config.RetryConfig, func(opCtx context.Context) (*http.Response, error) {
 		httpReq, err := http.NewRequestWithContext(opCtx, http.MethodPost, url, bytes.NewReader(data))
