@@ -4,7 +4,11 @@ Autorix Aegis is your Zero-Trust Policy Enforcement Point (PEP) and Reverse Acce
 
 ## Quick Path: Proxying an API Endpoint
 
-The fastest way to secure an endpoint is to configure a rule via the Admin API (`:4456`). This rule authenticates via JWT, checks permissions in Nexus, and injects user identity headers.
+Configure a rule through the private Admin API (`:4456`), using a local process
+or an authenticated port-forward. Compose no longer publishes this port.
+Configure trusted JWT issuer, audience, and JWKS at process startup first;
+rule-level JWKS URLs cannot change the trust source. See the
+[security migration guide](./security_boundary_migration.md).
 
 ```bash
 curl -X POST http://localhost:4456/rules \
@@ -15,7 +19,7 @@ curl -X POST http://localhost:4456/rules \
       "url": "http://api.enterprise.corp/api/v1/customers/<[0-9a-f-]+>",
       "methods": ["GET"]
     },
-    "authenticators": [{"handler": "jwt", "config": {"jwks_url": "http://janus:4444/.well-known/jwks.json"}}],
+    "authenticators": [{"handler": "jwt"}],
     "authorizers": [{"handler": "nexus_rebac", "config": {"namespace": "customers", "relation": "viewer", "subject_from": "jwt.sub", "object_from": "url_param.0"}}],
     "mutators": [{"handler": "header", "config": {"headers": {"X-User-ID": "{{ .Subject }}"}}}],
     "upstream": {"url": "http://customer-svc.internal:8080"}

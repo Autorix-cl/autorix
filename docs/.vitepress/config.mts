@@ -16,6 +16,7 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: 'Home', link: '/' },
+          { text: 'Getting Started', link: '/getting-started' },
           { text: 'Architecture', link: '/api_reference_and_integration_guide' },
           {
             text: 'IAM Engines',
@@ -61,6 +62,8 @@ export default defineConfig({
             collapsed: false,
             items: [
               { text: 'Getting Started & Home', link: '/' },
+              { text: 'Docker Compose onboarding', link: '/getting-started' },
+              { text: 'Security configuration', link: '/security-configuration' },
               { text: 'Master API Reference & Architecture', link: '/api_reference_and_integration_guide' }
             ]
           },
@@ -102,6 +105,10 @@ export default defineConfig({
             items: [
               { text: 'Day-1 & Day-2 Operations Runbook', link: '/operations_and_runbook' },
               { text: 'Production Kubernetes Deployment', link: '/production_k8s_guide' },
+              { text: 'Production transition', link: '/production-transition' },
+              { text: 'Upgrade and rollback', link: '/upgrade-rollback' },
+              { text: 'Production Acceptance Checklist', link: '/production_acceptance_checklist' },
+              { text: 'Assurance Evidence Matrix', link: '/assurance_evidence_matrix' },
               { text: 'Roadmap & Future Phases', link: '/roadmap' }
             ]
           }
@@ -121,6 +128,7 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: 'Inicio', link: '/es/' },
+          { text: 'Primeros pasos', link: '/es/primeros-pasos' },
           { text: 'Arquitectura', link: '/es/api_reference_and_integration_guide' },
           {
             text: 'Motores IAM',
@@ -166,6 +174,8 @@ export default defineConfig({
             collapsed: false,
             items: [
               { text: 'Primeros Pasos e Inicio', link: '/es/' },
+              { text: 'Inicio con Docker Compose', link: '/es/primeros-pasos' },
+              { text: 'Configuración de seguridad', link: '/es/configuracion-seguridad' },
               { text: 'Guía Maestra de Arquitectura', link: '/es/api_reference_and_integration_guide' }
             ]
           },
@@ -207,6 +217,8 @@ export default defineConfig({
             items: [
               { text: 'Runbook Operativo Día 1 y 2', link: '/es/operations_and_runbook' },
               { text: 'Despliegue en Kubernetes', link: '/es/production_k8s_guide' },
+              { text: 'Transición a producción', link: '/es/transicion-produccion' },
+              { text: 'Actualización y rollback', link: '/es/actualizacion-rollback' },
               { text: 'Hoja de Ruta (Roadmap)', link: '/es/roadmap' }
             ]
           }

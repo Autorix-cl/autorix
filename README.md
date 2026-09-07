@@ -2,22 +2,42 @@
 
 Autorix is a high-performance, modular Identity and Access Management (IAM) suite. It provides authentication, authorization (ReBAC/ABAC), OAuth2/OIDC, and Zero-Trust proxy enforcement, all backed by cryptographic audit logging.
 
-## Quick start
+## Quick start (local development only)
 
-Launch the entire 9-service cluster (with isolated PostgreSQL databases and Prometheus monitoring) in one command:
+> **Docker Compose is for local development and evaluation only.** It uses
+> development credentials, local ports, HTTP service traffic, and PostgreSQL
+> with `sslmode=disable`. Do not expose this stack to the Internet or use it as
+> a production deployment.
+
+Requirements: Docker Engine with Compose v2, 8 GB RAM, and ports `3000`,
+`4444`, `4455`, and `5432` available.
 
 ```bash
-docker compose up -d --build
+./scripts/generate-local-secrets.sh
+docker compose --profile core up -d --build
+docker compose --profile core ps
 ```
 
-1. Open **[http://localhost:3000](http://localhost:3000)** in your browser.
-2. Get your bootstrap token from the logs:
+1. Run `./scripts/generate-local-secrets.sh` before every fresh local setup. It creates untracked development secrets; do not commit its output.
+2. Open **[http://localhost:3000](http://localhost:3000)**.
+3. Retrieve Argus's one-time bootstrap token locally:
    ```bash
-   docker logs autorix-argus | grep "Bootstrap token"
+   docker logs autorix-argus | grep -i "bootstrap token"
    ```
-3. Complete the setup wizard to create your root administrator account.
+4. Complete the Console setup flow. Never commit or share bootstrap tokens or
+   credentials.
 
-> **Default Local Credentials:** `admin@autorix.local` / `SecretMasterKey#2026`
+Verify the public development endpoints:
+
+```bash
+curl -fsS http://localhost:4444/health/ready
+curl -fsS http://localhost:4455/health/ready
+curl -fsS http://localhost:4400/health/ready
+```
+
+Janus administration (`:4445`) and Aegis administration (`:4456`) are private;
+Compose does not publish them. See the [onboarding guide](docs/getting-started.md)
+before changing security settings.
 
 ## Architecture at a glance
 

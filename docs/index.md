@@ -99,7 +99,8 @@ features:
 Launch the entire 9-service cluster with isolated PostgreSQL databases and Prometheus monitoring with a single command:
 
 ```bash
-docker compose up -d --build
+./scripts/generate-local-secrets.sh
+docker compose --profile core up -d --build
 ```
 
 ### Initial Bootstrap & Root Owner Setup
