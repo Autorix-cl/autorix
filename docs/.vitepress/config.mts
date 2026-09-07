@@ -110,7 +110,8 @@ export default defineConfig({
               { text: 'JWT trust and private administration migration', link: '/security_boundary_migration' },
               { text: 'Production Acceptance Checklist', link: '/production_acceptance_checklist' },
               { text: 'Assurance Evidence Matrix', link: '/assurance_evidence_matrix' },
-              { text: 'Roadmap & Future Phases', link: '/roadmap' }
+              { text: 'Roadmap & Future Phases', link: '/roadmap' },
+              { text: 'Community & Support', link: '/community' }
             ]
           }
         ],
@@ -165,7 +166,8 @@ export default defineConfig({
             items: [
               { text: 'Runbook de Operaciones', link: '/es/operations_and_runbook' },
               { text: 'Guía de Kubernetes', link: '/es/production_k8s_guide' },
-              { text: 'Hoja de Ruta (Roadmap)', link: '/es/roadmap' }
+              { text: 'Hoja de Ruta (Roadmap)', link: '/es/roadmap' },
+              { text: 'Comunidad y soporte', link: '/es/comunidad' }
             ]
           }
         ],
@@ -223,7 +225,8 @@ export default defineConfig({
               { text: 'Migración de confianza JWT y administración privada', link: '/es/migracion-limites-seguridad' },
               { text: 'Checklist de aceptación para producción', link: '/es/checklist-aceptacion-produccion' },
               { text: 'Matriz de evidencia de aseguramiento', link: '/es/matriz-evidencia-aseguramiento' },
-              { text: 'Hoja de Ruta (Roadmap)', link: '/es/roadmap' }
+              { text: 'Hoja de Ruta (Roadmap)', link: '/es/roadmap' },
+              { text: 'Comunidad y soporte', link: '/es/comunidad' }
             ]
           }
         ],

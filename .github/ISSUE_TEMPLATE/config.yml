@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and community support
+    url: https://github.com/Autorix-cl/autorix/discussions
+    about: Ask usage, configuration, and design questions in GitHub Discussions.
+  - name: Report a security vulnerability privately
+    url: https://github.com/Autorix-cl/autorix/security/advisories/new
+    about: Do not disclose vulnerabilities in public issues.

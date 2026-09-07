@@ -1,0 +1,60 @@
+name: Bug report
+description: Report a reproducible defect in Autorix.
+title: "bug: "
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a defect. Do not include tokens, passwords,
+        private keys, personal data, or security-vulnerability details. Follow
+        SECURITY.md for private vulnerability reporting.
+  - type: input
+    id: version
+    attributes:
+      label: Autorix version or commit
+      description: Include the release tag or commit SHA.
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Aegis
+        - Argus
+        - Console
+        - Ego
+        - Hermes
+        - Janus
+        - Nexus
+        - Themis
+        - Vulcan
+        - Deployment or documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest safe reproduction and sanitized logs.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Deployment method, OS, runtime versions, and relevant configuration with secrets removed.
