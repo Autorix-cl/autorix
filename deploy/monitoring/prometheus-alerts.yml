@@ -1,0 +1,106 @@
+# Native Prometheus rule file for the optional self-hosted Alertmanager.
+# Keep it aligned with the PrometheusRule manifest used by Kubernetes.
+groups:
+- name: autorix.rules
+  rules:
+  - alert: AutorixHighNexusLatency
+    expr: histogram_quantile(0.99, sum(rate(autorix_nexus_check_duration_seconds_bucket[5m]))
+      by (le)) > 0.02
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: Autorix Nexus ReBAC P99 latency > 20ms
+      description: Nexus graph evaluation latency is unusually high ({{ $value }}s).
+  - alert: AutorixHighThemisLatency
+    expr: histogram_quantile(0.99, sum(rate(autorix_themis_evaluation_duration_seconds_bucket[5m]))
+      by (le)) > 0.05
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: Autorix Themis policy evaluation P99 latency > 50ms
+      description: Themis policy evaluation latency is unusually high ({{ $value }}s).
+  - alert: AutorixHighUnauthorizedRate
+    expr: sum(rate(autorix_aegis_requests_total{status="403"}[5m])) / sum(rate(autorix_aegis_requests_total[5m]))
+      > 0.1
+    for: 3m
+    labels:
+      severity: critical
+    annotations:
+      summary: Autorix Aegis experiencing high 403 Forbidden rejection rate (> 10%)
+      description: Possible brute force or misconfigured access policy.
+  - alert: AutorixHermesSCIMSyncFailures
+    expr: sum(rate(autorix_hermes_scim_sync_total{status="error"}[5m])) / sum(rate(autorix_hermes_scim_sync_total[5m]))
+      > 0.05
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Autorix Hermes SCIM synchronization failure rate > 5%
+      description: Hermes SCIM directory synchronization is failing.
+  - alert: AutorixVulcanKeyVerificationFailures
+    expr: sum(rate(autorix_vulcan_keys_verified_total{status="invalid"}[5m])) / sum(rate(autorix_vulcan_keys_verified_total[5m]))
+      > 0.1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Autorix Vulcan key verification failure rate > 10%
+      description: Vulcan cryptographic key verification is failing frequently.
+  - alert: AutorixJanusTokenIssuanceFailures
+    expr: sum(rate(autorix_janus_tokens_issued_total{status="error"}[5m])) / sum(rate(autorix_janus_tokens_issued_total[5m]))
+      > 0.05
+    for: 3m
+    labels:
+      severity: critical
+    annotations:
+      summary: Autorix Janus token issuance failure rate > 5%
+      description: Janus OIDC token issuance requests are failing.
+  - alert: AutorixServiceCrashLooping
+    expr: rate(kube_pod_container_status_restarts_total{container=~"nexus|ego|janus|aegis|vulcan|hermes|themis|argus"}[5m])
+      > 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Autorix engine {{ $labels.container }} is restarting
+      description: Pod is crash looping.
+- name: autorix.slo
+  rules:
+  - alert: AutorixAvailabilityErrorBudgetFastBurn
+    expr: "(\n  (\n    sum by (engine) (rate(autorix_http_requests_total{engine=~\"\
+      aegis|ego|janus\",status=~\"5..\"}[5m]))\n    /\n    sum by (engine) (rate(autorix_http_requests_total{engine=~\"\
+      aegis|ego|janus\"}[5m]))\n  ) > (14.4 * 0.001)\n)\nand on (engine)\n(\n  (\n\
+      \    sum by (engine) (rate(autorix_http_requests_total{engine=~\"aegis|ego|janus\"\
+      ,status=~\"5..\"}[1h]))\n    /\n    sum by (engine) (rate(autorix_http_requests_total{engine=~\"\
+      aegis|ego|janus\"}[1h]))\n  ) > (14.4 * 0.001)\n)\nand on (engine)\n(sum by\
+      \ (engine) (rate(autorix_http_requests_total{engine=~\"aegis|ego|janus\"}[5m]))\
+      \ > 0)\n"
+    for: 2m
+    labels:
+      severity: page
+      slo: availability
+      objective: '99.9'
+    annotations:
+      summary: Autorix {{ $labels.engine }} is burning its availability error budget
+        rapidly
+      description: 5xx rate exceeds the 14.4x burn threshold for both 5m and 1h windows.
+        Investigate the service and its dependencies.
+  - alert: AutorixAvailabilityErrorBudgetSlowBurn
+    expr: "(\n  (\n    sum by (engine) (rate(autorix_http_requests_total{engine=~\"\
+      aegis|ego|janus\",status=~\"5..\"}[30m]))\n    /\n    sum by (engine) (rate(autorix_http_requests_total{engine=~\"\
+      aegis|ego|janus\"}[30m]))\n  ) > (6 * 0.001)\n)\nand on (engine)\n(\n  (\n \
+      \   sum by (engine) (rate(autorix_http_requests_total{engine=~\"aegis|ego|janus\"\
+      ,status=~\"5..\"}[6h]))\n    /\n    sum by (engine) (rate(autorix_http_requests_total{engine=~\"\
+      aegis|ego|janus\"}[6h]))\n  ) > (6 * 0.001)\n)\nand on (engine)\n(sum by (engine)\
+      \ (rate(autorix_http_requests_total{engine=~\"aegis|ego|janus\"}[30m])) > 0)\n"
+    for: 15m
+    labels:
+      severity: ticket
+      slo: availability
+      objective: '99.9'
+    annotations:
+      summary: Autorix {{ $labels.engine }} is burning its availability error budget
+      description: 5xx rate exceeds the 6x burn threshold for both 30m and 6h windows.
+        Investigate before the monthly SLO is at risk.

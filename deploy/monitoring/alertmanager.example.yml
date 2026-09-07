@@ -1,0 +1,7 @@
+# Development-only notification sink. It contains no credentials and discards
+# every alert. Copy this file outside the repository, configure a real receiver
+# (webhook, email, PagerDuty, etc.), then set ALERTMANAGER_CONFIG_PATH to it.
+route:
+  receiver: discard
+receivers:
+  - name: discard

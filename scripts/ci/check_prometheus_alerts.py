@@ -7,6 +7,7 @@ import yaml
 
 
 ALERTS = Path(__file__).resolve().parents[2] / "deploy" / "monitoring" / "prometheus-alerts.yaml"
+NATIVE_ALERTS = Path(__file__).resolve().parents[2] / "deploy" / "monitoring" / "prometheus-alerts.yml"
 
 
 def main() -> int:
@@ -22,6 +23,9 @@ def main() -> int:
         for rule in group["rules"]:
             if not rule.get("alert") or not rule.get("expr"):
                 raise ValueError("every alert rule requires alert and expr")
+    native = yaml.safe_load(NATIVE_ALERTS.read_text())
+    if native.get("groups") != groups:
+        raise ValueError("native Prometheus rules must match the PrometheusRule manifest")
     print(f"Prometheus alert YAML parsed ({sum(len(group['rules']) for group in groups)} rules).")
     return 0
 

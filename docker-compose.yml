@@ -298,6 +298,7 @@ services:
       - "127.0.0.1:9090:9090"
     volumes:
       - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/monitoring/prometheus-alerts.yml:/etc/prometheus/rules/autorix.yml:ro
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
@@ -318,6 +319,22 @@ services:
         condition: service_healthy
       aegis:
         condition: service_healthy
+
+  # Alertmanager is deliberately opt-in. The default example configuration
+  # discards notifications, so operators must point ALERTMANAGER_CONFIG_PATH
+  # at their own receiver configuration before enabling this profile.
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: autorix-alertmanager
+    restart: unless-stopped
+    profiles: ["alerts"]
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ${ALERTMANAGER_CONFIG_PATH:-./deploy/monitoring/alertmanager.example.yml}:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
 
   docs:
     build:

@@ -39,3 +39,54 @@ for DB in "${DATABASES[@]}"; do
   pg_dump -h localhost -U autorix -d "$DB" -F c -b -v -f "${DB}_backup_$(date +%Y%m%d).dump"
 done
 ```
+
+---
+
+## Alertmanager opcional (autohospedado)
+
+Prometheus evalúa el archivo de reglas incluido. La entrega de notificaciones
+permanece **deshabilitada** hasta que se configure deliberadamente Alertmanager
+con un receptor administrado por el operador. Este repositorio no incluye URL
+de webhook, credenciales SMTP ni tokens de paginación.
+
+### Docker Compose
+
+1. Copie `deploy/monitoring/alertmanager.example.yml` fuera del repositorio y
+   sustituya el receptor `discard` por una configuración revisada de webhook,
+   correo electrónico o paginación. Mantenga las credenciales en un gestor de
+   secretos o en un archivo ignorado por Git.
+2. Inicie el monitoreo y las notificaciones juntos:
+   ```bash
+   ALERTMANAGER_CONFIG_PATH=/secure/path/alertmanager.yml \
+     docker compose --profile core --profile extended --profile alerts up -d prometheus alertmanager
+   ```
+3. Compruebe que Alertmanager esté disponible solo en el host local en
+   `http://127.0.0.1:9093`. Prometheus continúa siendo utilizable cuando el
+   perfil `alerts` no está habilitado, pero no puede entregar notificaciones.
+
+### Helm para Kubernetes
+
+Cree el Secret de configuración fuera de los valores de Helm. La clave
+`alertmanager.yml` debe contener la configuración completa de Alertmanager:
+
+```bash
+kubectl -n autorix create secret generic autorix-alertmanager-config \
+  --from-file=alertmanager.yml=/secure/path/alertmanager.yml
+```
+
+Después, proporcione un archivo de valores con imagen fijada por digest:
+
+```yaml
+monitoring:
+  alertmanager:
+    enabled: true
+    existingConfigSecret: autorix-alertmanager-config
+    configKey: alertmanager.yml
+    image:
+      digest: sha256:<verified-alertmanager-image-digest>
+```
+
+El chart monta ese Secret existente en modo de solo lectura y utiliza estado de
+alertas local efímero. Configure estado durable y alta disponibilidad mediante
+un operador de Alertmanager dedicado si sus objetivos de recuperación lo
+requieren.

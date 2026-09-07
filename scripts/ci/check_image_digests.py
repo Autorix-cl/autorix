@@ -51,6 +51,21 @@ def main() -> int:
     if "image digest is required" not in default_render.stderr:
         raise AssertionError("production render failed for an unexpected reason: " + default_render.stderr)
 
+    alertmanager_without_secret = command(
+        "helm",
+        "template",
+        "alertmanager-secret-contract",
+        str(CHART),
+        "-f",
+        str(CI_VALUES),
+        "--set",
+        "monitoring.alertmanager.existingConfigSecret=",
+    )
+    if alertmanager_without_secret.returncode == 0:
+        raise AssertionError("Alertmanager rendered without an existing configuration Secret")
+    if "monitoring.alertmanager.existingConfigSecret is required" not in alertmanager_without_secret.stderr:
+        raise AssertionError("Alertmanager secret contract failed unexpectedly: " + alertmanager_without_secret.stderr)
+
     lint = command("helm", "lint", str(CHART), "-f", str(CI_VALUES))
     if lint.returncode != 0:
         raise AssertionError("CI Helm lint failed:\n" + lint.stderr)

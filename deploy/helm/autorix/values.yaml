@@ -220,6 +220,25 @@ monitoring:
     interval: "15s"
     scrapeTimeout: "10s"
     labels: {}
+  # Optional self-hosted Alertmanager. The chart never creates notification
+  # credentials: supply an existing Secret containing a reviewed receiver
+  # configuration before enabling it.
+  alertmanager:
+    enabled: false
+    replicaCount: 1
+    image:
+      repository: "quay.io/prometheus/alertmanager"
+      tag: "v0.28.1"
+      digest: ""
+    existingConfigSecret: ""
+    configKey: "alertmanager.yml"
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
 
 # Applies an ingress-default-deny policy to Autorix workloads, then explicitly
 # admits the ingress controller, in-namespace Autorix traffic, and monitoring.

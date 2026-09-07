@@ -116,3 +116,51 @@ curl -s http://localhost:4400/v1/audit/export?format=csv -o audit-trail-$(date +
 ### Nexus ReBAC Latency Spikes
 - [ ] **Check tuple volume**: `docker exec autorix-postgres psql -U autorix -d autorix_nexus -c "SELECT count(*) FROM relation_tuples;"`
 - [ ] **Check database connections**: Review `postgres_pool_acquired_connections{engine="nexus"}` in Prometheus (`http://localhost:9090`).
+
+---
+
+## Optional Alertmanager (self-hosted)
+
+Prometheus evaluates the bundled rule file. Notification delivery is **disabled**
+until you intentionally configure Alertmanager with an operator-owned receiver.
+No webhook URL, SMTP credential, or paging token is included in this repository.
+
+### Docker Compose
+
+1. Copy `deploy/monitoring/alertmanager.example.yml` outside the repository and
+   replace the `discard` receiver with your reviewed webhook, email, or paging
+   configuration. Keep credentials in your secret manager or an ignored file.
+2. Start monitoring and notifications together:
+   ```bash
+   ALERTMANAGER_CONFIG_PATH=/secure/path/alertmanager.yml \
+     docker compose --profile core --profile extended --profile alerts up -d prometheus alertmanager
+   ```
+3. Confirm Alertmanager is reachable only on the local host at
+   `http://127.0.0.1:9093`. Prometheus remains usable when the `alerts` profile
+   is not enabled, but it cannot deliver notifications.
+
+### Kubernetes Helm
+
+Create the configuration Secret outside Helm values. Its `alertmanager.yml`
+key must contain the complete Alertmanager configuration:
+
+```bash
+kubectl -n autorix create secret generic autorix-alertmanager-config \
+  --from-file=alertmanager.yml=/secure/path/alertmanager.yml
+```
+
+Then provide a digest-pinned values overlay:
+
+```yaml
+monitoring:
+  alertmanager:
+    enabled: true
+    existingConfigSecret: autorix-alertmanager-config
+    configKey: alertmanager.yml
+    image:
+      digest: sha256:<verified-alertmanager-image-digest>
+```
+
+The chart mounts that existing Secret read-only and uses ephemeral local alert
+state. Configure durable state and high availability through a dedicated
+Alertmanager operator if those are required by your recovery objectives.
