@@ -107,6 +107,7 @@ export default defineConfig({
               { text: 'Production Kubernetes Deployment', link: '/production_k8s_guide' },
               { text: 'Production transition', link: '/production-transition' },
               { text: 'Upgrade and rollback', link: '/upgrade-rollback' },
+              { text: 'JWT trust and private administration migration', link: '/security_boundary_migration' },
               { text: 'Production Acceptance Checklist', link: '/production_acceptance_checklist' },
               { text: 'Assurance Evidence Matrix', link: '/assurance_evidence_matrix' },
               { text: 'Roadmap & Future Phases', link: '/roadmap' }
@@ -219,6 +220,9 @@ export default defineConfig({
               { text: 'Despliegue en Kubernetes', link: '/es/production_k8s_guide' },
               { text: 'Transición a producción', link: '/es/transicion-produccion' },
               { text: 'Actualización y rollback', link: '/es/actualizacion-rollback' },
+              { text: 'Migración de confianza JWT y administración privada', link: '/es/migracion-limites-seguridad' },
+              { text: 'Checklist de aceptación para producción', link: '/es/checklist-aceptacion-produccion' },
+              { text: 'Matriz de evidencia de aseguramiento', link: '/es/matriz-evidencia-aseguramiento' },
               { text: 'Hoja de Ruta (Roadmap)', link: '/es/roadmap' }
             ]
           }
