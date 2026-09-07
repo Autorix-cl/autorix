@@ -14,9 +14,10 @@ export async function GET() {
     const argusUrl = getServiceUrl("argus");
 
     // Fetch enrollment audit logs and fleet instances in parallel
-    const [auditRes, instancesRes] = await Promise.allSettled([
+    const [auditRes, instancesRes, alertsRes] = await Promise.allSettled([
       fetch(`${argusUrl}/v1/enrollment-audit?limit=25`, { cache: "no-store" }),
       fetch(`${argusUrl}/v1/instances?limit=25`, { cache: "no-store" }),
+      fetch(`${getServiceUrl("prometheus")}/api/v1/alerts`, { cache: "no-store" }),
     ]);
 
     const notifications: FleetNotificationItem[] = [];
@@ -97,6 +98,24 @@ export async function GET() {
             timestamp: inst.last_heartbeat_at || new Date().toISOString(),
           });
         }
+      }
+    }
+
+    // Prometheus alerts are also displayed in the inbox. Delivery remains Alertmanager-owned.
+    if (alertsRes.status === "fulfilled" && alertsRes.value.ok) {
+      const alertsData = await alertsRes.value.json();
+      const alerts = Array.isArray(alertsData?.data?.alerts) ? alertsData.data.alerts : [];
+      for (const alert of alerts) {
+        if (alert.state !== "firing") continue;
+        const labels = alert.labels || {};
+        const name = labels.alertname || "Prometheus alert";
+        notifications.push({
+          id: `prometheus-${[name, labels.instance, alert.activeAt].filter(Boolean).join("-")}`,
+          type: labels.severity === "critical" ? "security" : "info",
+          title: name,
+          message: labels.summary || labels.description || `Prometheus reports ${name} as firing`,
+          timestamp: alert.activeAt || new Date(0).toISOString(),
+        });
       }
     }
 

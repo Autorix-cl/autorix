@@ -1,54 +1,23 @@
 import { NextResponse } from "next/server";
-import type { AlertEvent } from "@/lib/api/schemas/observability";
-
-const SAMPLE_ALERTS: AlertEvent[] = [
-  {
-    id: "evt-1",
-    rule_id: "rule-err-aegis",
-    rule_name: "High Ingress Error Rate",
-    engine_type: "aegis",
-    severity: "warning",
-    state: "firing",
-    value: 0.038,
-    threshold: 0.02,
-    triggered_at: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-  },
-  {
-    id: "evt-2",
-    rule_id: "rule-p99-nexus",
-    rule_name: "Elevated ReBAC Check Latency",
-    engine_type: "nexus",
-    severity: "warning",
-    state: "acknowledged",
-    value: 28.5,
-    threshold: 25.0,
-    triggered_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-  },
-  {
-    id: "evt-3",
-    rule_id: "rule-hermes-cert",
-    rule_name: "IdP Certificate Expiring Soon",
-    engine_type: "hermes",
-    severity: "critical",
-    state: "firing",
-    value: 14.0,
-    threshold: 15.0,
-    triggered_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-  },
-  {
-    id: "evt-4",
-    rule_id: "rule-ego-mfa",
-    rule_name: "MFA Verification Failures Spiking",
-    engine_type: "ego",
-    severity: "info",
-    state: "resolved",
-    value: 0.08,
-    threshold: 0.05,
-    triggered_at: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
-    resolved_at: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-  },
-];
+import { getServiceUrl } from "@/lib/api-config";
+import { alertEventListSchema } from "@/lib/api/schemas/observability";
 
 export async function GET() {
-  return NextResponse.json(SAMPLE_ALERTS);
+  try {
+    const response = await fetch(`${getServiceUrl("prometheus")}/api/v1/alerts`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Prometheus returned ${response.status}`);
+    const body = await response.json();
+    if (body.status !== "success" || !Array.isArray(body.data?.alerts)) throw new Error("Prometheus returned an invalid alerts response");
+    const alerts = body.data.alerts.map((alert: { labels?: Record<string, string>; state?: string; activeAt?: string; value?: string }) => ({
+      id: [alert.labels?.alertname, alert.labels?.instance, alert.activeAt].filter(Boolean).join(":"),
+      rule_id: alert.labels?.alertname ?? "unknown", rule_name: alert.labels?.alertname ?? "Unnamed alert",
+      engine_type: alert.labels?.engine ?? alert.labels?.job ?? "unknown",
+      severity: alert.labels?.severity === "critical" ? "critical" : alert.labels?.severity === "info" ? "info" : "warning",
+      state: alert.state === "firing" ? "firing" : "resolved", value: Number(alert.value ?? 0), threshold: null,
+      triggered_at: alert.activeAt ?? new Date(0).toISOString(),
+    }));
+    return NextResponse.json(alertEventListSchema.parse(alerts));
+  } catch (error) {
+    return NextResponse.json({ error: "Prometheus alerts are unavailable", source: "prometheus", detail: error instanceof Error ? error.message : undefined }, { status: 503 });
+  }
 }

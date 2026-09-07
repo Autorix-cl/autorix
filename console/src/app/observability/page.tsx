@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Activity, Server, FileText, Network, Bell, Target, Wrench, BarChart2 } from "lucide-react";
+import { Activity, Server, FileText, Network, Bell, Target, Wrench } from "lucide-react";
 import { ServiceHeader } from "@/components/layout/service-header";
 import { Button } from "@/components/ui/button";
 import { FleetDashboard } from "./fleet-dashboard";
@@ -36,37 +36,11 @@ export default function ObservabilityPage() {
       <ServiceHeader
         serviceName="Control Plane Observability"
         title="Fleet Observability & Telemetry"
-        description="Real-time RED instrumentation, structured logs, distributed trace waterfalls, alerts and SLOs."
+        description="Live metrics and alerts are sourced from configured control-plane backends. Unconfigured telemetry is shown as unavailable."
         icon={Activity}
         iconColor="text-cyan-400"
-        statusText="TELEMETRY-MESH-LIVE"
+        statusText="SOURCE-DEPENDENT"
         statusVariant="cyan"
-        metrics={[
-          {
-            label: "Monitored Fleet",
-            value: "7 Engines",
-            hint: "Unified Control Plane",
-            icon: Server,
-          },
-          {
-            label: "Fleet Health Rate",
-            value: "99.98% OK",
-            hint: "RED Synthetic Ingress",
-            icon: BarChart2,
-          },
-          {
-            label: "Distributed Tracing",
-            value: "W3C Context",
-            hint: "OTel High-Water Spans",
-            icon: Network,
-          },
-          {
-            label: "SLO Error Budget",
-            value: "99.95% Target",
-            hint: "Rolling 30-Day Budget",
-            icon: Target,
-          },
-        ]}
       />
 
       {/* Navigation Sub-Tabs */}

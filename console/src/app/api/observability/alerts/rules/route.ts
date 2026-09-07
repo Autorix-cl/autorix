@@ -1,85 +1,23 @@
-import { NextRequest, NextResponse } from "next/server";
-import type { AlertRule } from "@/lib/api/schemas/observability";
-
-const SAMPLE_RULES: AlertRule[] = [
-  {
-    id: "rule-err-aegis",
-    name: "High Ingress Error Rate",
-    engine_type: "aegis",
-    severity: "warning",
-    metric: "http_requests_error_ratio",
-    threshold: 0.02,
-    operator: "gt",
-    duration: "2m",
-    enabled: true,
-  },
-  {
-    id: "rule-p99-nexus",
-    name: "Elevated ReBAC Check Latency",
-    engine_type: "nexus",
-    severity: "warning",
-    metric: "nexus_check_duration_p99_ms",
-    threshold: 25.0,
-    operator: "gt",
-    duration: "5m",
-    enabled: true,
-  },
-  {
-    id: "rule-hermes-cert",
-    name: "IdP Certificate Expiring Soon",
-    engine_type: "hermes",
-    severity: "critical",
-    metric: "hermes_idp_cert_days_remaining",
-    threshold: 15.0,
-    operator: "lt",
-    duration: "1h",
-    enabled: true,
-  },
-  {
-    id: "rule-themis-err",
-    name: "ABAC Policy Compile Failures",
-    engine_type: "themis",
-    severity: "critical",
-    metric: "themis_policy_compile_errors_total",
-    threshold: 1.0,
-    operator: "gte",
-    duration: "1m",
-    enabled: true,
-  },
-  {
-    id: "rule-vulcan-key",
-    name: "Excessive Invalid Key Probing",
-    engine_type: "vulcan",
-    severity: "warning",
-    metric: "vulcan_verify_failures_per_sec",
-    threshold: 50.0,
-    operator: "gt",
-    duration: "3m",
-    enabled: true,
-  },
-];
+import { NextResponse } from "next/server";
+import { getServiceUrl } from "@/lib/api-config";
+import { alertRuleListSchema } from "@/lib/api/schemas/observability";
 
 export async function GET() {
-  return NextResponse.json(SAMPLE_RULES);
-}
-
-export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const newRule: AlertRule = {
-      id: `rule-${Date.now()}`,
-      name: body.name || "Custom Alert Rule",
-      engine_type: body.engine_type || "aegis",
-      severity: body.severity || "warning",
-      metric: body.metric || "custom_metric",
-      threshold: Number(body.threshold) || 10,
-      operator: body.operator || "gt",
-      duration: body.duration || "5m",
-      enabled: true,
-    };
-    return NextResponse.json(newRule, { status: 201 });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Failed to create rule";
-    return NextResponse.json({ error: message }, { status: 400 });
+    const response = await fetch(`${getServiceUrl("prometheus")}/api/v1/rules`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Prometheus returned ${response.status}`);
+    const body = await response.json();
+    if (body.status !== "success" || !Array.isArray(body.data?.groups)) throw new Error("Prometheus returned an invalid rules response");
+    const rules = body.data.groups.flatMap((group: { rules?: Array<{ type?: string; name?: string; query?: string; duration?: number; labels?: Record<string, string>; state?: string }> }) =>
+      (group.rules ?? []).filter((rule) => rule.type === "alerting").map((rule) => ({
+        id: rule.name ?? "unknown", name: rule.name ?? "Unnamed alert", engine_type: rule.labels?.engine ?? "unknown",
+        severity: rule.labels?.severity === "critical" ? "critical" : rule.labels?.severity === "info" ? "info" : "warning",
+        metric: rule.query ?? "", threshold: null, operator: null, duration: `${rule.duration ?? 0}s`, enabled: rule.state !== "inactive",
+      })),
+    );
+    return NextResponse.json(alertRuleListSchema.parse(rules));
+  } catch (error) {
+    return NextResponse.json({ error: "Prometheus alert rules are unavailable", source: "prometheus", detail: error instanceof Error ? error.message : undefined }, { status: 503 });
   }
 }
+export async function POST() { return NextResponse.json({ error: "Alert rules are managed by Prometheus configuration" }, { status: 405, headers: { Allow: "GET" } }); }

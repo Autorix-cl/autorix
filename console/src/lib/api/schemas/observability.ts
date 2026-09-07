@@ -7,12 +7,12 @@ export const engineMetricSummarySchema = z.object({
   instance_count: z.number(),
   requests_total: z.number(),
   requests_per_second: z.number(),
-  error_rate: z.number(),
-  latency_p50_ms: z.number(),
-  latency_p95_ms: z.number(),
-  latency_p99_ms: z.number(),
-  auth_decisions_total: z.number(),
-  auth_allow_rate: z.number(),
+  error_rate: z.number().nullable(),
+  latency_p50_ms: z.number().nullable(),
+  latency_p95_ms: z.number().nullable(),
+  latency_p99_ms: z.number().nullable(),
+  auth_decisions_total: z.number().nullable(),
+  auth_allow_rate: z.number().nullable(),
 });
 export type EngineMetricSummary = z.infer<typeof engineMetricSummarySchema>;
 
@@ -24,9 +24,9 @@ export const fleetMetricsSummarySchema = z.object({
   requests_total: z.number(),
   fleet_qps: z.number(),
   fleet_error_rate: z.number(),
-  fleet_latency_p95_ms: z.number(),
-  auth_decisions_total: z.number(),
-  auth_allow_rate: z.number(),
+  fleet_latency_p95_ms: z.number().nullable(),
+  auth_decisions_total: z.number().nullable(),
+  auth_allow_rate: z.number().nullable(),
   engines: z.array(engineMetricSummarySchema),
 });
 export type FleetMetricsSummary = z.infer<typeof fleetMetricsSummarySchema>;
@@ -80,8 +80,8 @@ export const alertRuleSchema = z.object({
   engine_type: z.string(),
   severity: z.enum(["critical", "warning", "info"]),
   metric: z.string(),
-  threshold: z.number(),
-  operator: z.enum(["gt", "lt", "gte", "lte"]),
+  threshold: z.number().nullable(),
+  operator: z.enum(["gt", "lt", "gte", "lte"]).nullable(),
   duration: z.string(),
   enabled: z.boolean().default(true),
 });
@@ -96,7 +96,7 @@ export const alertEventSchema = z.object({
   severity: z.enum(["critical", "warning", "info"]),
   state: z.enum(["firing", "acknowledged", "silenced", "resolved"]),
   value: z.number(),
-  threshold: z.number(),
+  threshold: z.number().nullable(),
   triggered_at: z.string(),
   resolved_at: z.string().optional(),
 });

@@ -1,7 +1,4 @@
 import { NextResponse } from "next/server";
-import { telemetryStore } from "@/lib/server/telemetry-store";
-
 export async function GET() {
-  const traces = telemetryStore.getTraces(50);
-  return NextResponse.json(traces);
+  return NextResponse.json({ error: "A trace backend is not configured", source: "traces" }, { status: 501 });
 }

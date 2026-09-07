@@ -110,7 +110,7 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
           </CardHeader>
           <CardContent className="p-3 pt-0">
             <div className="text-lg font-bold">
-              {metrics ? `${metrics.fleet_latency_p95_ms.toFixed(1)} ms` : "---"}
+              {metrics ? `${(metrics.fleet_latency_p95_ms?.toFixed(1) ?? "N/A")} ms` : "---"}
             </div>
             <p className="text-[10px] text-muted-foreground mt-0.5">Max engine hop</p>
           </CardContent>
@@ -140,7 +140,7 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
           </CardHeader>
           <CardContent className="p-3 pt-0">
             <div className="text-lg font-bold">
-              {metrics ? metrics.auth_decisions_total.toLocaleString() : "---"}
+              {metrics ? (metrics.auth_decisions_total?.toLocaleString() ?? "N/A") : "---"}
             </div>
             <p className="text-[10px] text-muted-foreground mt-0.5">Nexus &amp; Themis</p>
           </CardContent>
@@ -155,7 +155,7 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
           </CardHeader>
           <CardContent className="p-3 pt-0">
             <div className="text-lg font-bold">
-              {metrics ? `${(metrics.auth_allow_rate * 100).toFixed(1)}%` : "---"}
+              {metrics ? `${(metrics.auth_allow_rate === null ? "N/A" : (metrics.auth_allow_rate * 100).toFixed(1))}%` : "---"}
             </div>
             <p className="text-[10px] text-muted-foreground mt-0.5">Authorized traffic</p>
           </CardContent>
@@ -191,6 +191,7 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
+                {!metrics && !isLoading && <tr><td colSpan={10} className="px-4 py-6 text-center text-muted-foreground">Prometheus metrics are unavailable.</td></tr>}
                 {metrics?.engines.map((eng) => (
                   <tr key={eng.engine_type} className="hover:bg-muted/20">
                     <td className="px-4 py-2.5 font-medium flex items-center gap-1.5 uppercase tracking-wide">
@@ -208,15 +209,15 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
                     <td className="px-3 py-2.5 text-muted-foreground">{eng.instance_count} active</td>
                     <td className="px-3 py-2.5 font-mono">{eng.requests_per_second.toFixed(1)}</td>
                     <td className="px-3 py-2.5 font-mono">
-                      <span className={eng.error_rate > 0.01 ? "text-amber-500 font-semibold" : ""}>
-                        {(eng.error_rate * 100).toFixed(2)}%
+                      <span className={eng.error_rate !== null && eng.error_rate > 0.01 ? "text-amber-500 font-semibold" : ""}>
+                        {(eng.error_rate === null ? "N/A" : (eng.error_rate * 100).toFixed(2))}%
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-muted-foreground">{eng.latency_p50_ms.toFixed(1)}ms</td>
-                    <td className="px-3 py-2.5 font-mono font-medium">{eng.latency_p95_ms.toFixed(1)}ms</td>
-                    <td className="px-3 py-2.5 font-mono text-muted-foreground">{eng.latency_p99_ms.toFixed(1)}ms</td>
+                    <td className="px-3 py-2.5 font-mono text-muted-foreground">{(eng.latency_p50_ms?.toFixed(1) ?? "N/A")}ms</td>
+                    <td className="px-3 py-2.5 font-mono font-medium">{(eng.latency_p95_ms?.toFixed(1) ?? "N/A")}ms</td>
+                    <td className="px-3 py-2.5 font-mono text-muted-foreground">{(eng.latency_p99_ms?.toFixed(1) ?? "N/A")}ms</td>
                     <td className="px-3 py-2.5 font-mono">
-                      {eng.auth_allow_rate > 0 ? `${(eng.auth_allow_rate * 100).toFixed(1)}%` : "N/A"}
+                      {eng.auth_allow_rate !== null && eng.auth_allow_rate > 0 ? `${(eng.auth_allow_rate! * 100).toFixed(1)}%` : "N/A"}
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <Button
