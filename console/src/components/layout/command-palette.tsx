@@ -116,6 +116,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           <button
             onClick={() => onOpenChange(false)}
             className="p-1 rounded-md text-muted-foreground hover:text-foreground"
+            aria-label="Close command palette"
           >
             <X className="h-4 w-4" />
           </button>

@@ -48,6 +48,7 @@ export function Header({ onOpenSearch }: HeaderProps) {
         <button
           onClick={onOpenSearch}
           className="flex h-9 w-full items-center justify-between rounded-lg border border-border/80 bg-muted/40 px-3 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:bg-muted/70 hover:text-foreground"
+          aria-label="Open search"
         >
           <div className="flex items-center gap-2">
             <Search className="h-3.5 w-3.5" />
@@ -215,7 +216,10 @@ function OperatorProfileDropdown({ t }: { t: (key: string) => string }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex items-center gap-2 rounded-lg p-1 transition-colors hover:bg-muted/50 focus:outline-none cursor-pointer">
+        <button
+          className="flex items-center gap-2 rounded-lg p-1 transition-colors hover:bg-muted/50 focus:outline-none cursor-pointer"
+          aria-label="Operator Profile"
+        >
           <Avatar className="h-7 w-7 border-amber-500/40 bg-amber-500/10">
             <AvatarFallback className="text-[11px] font-bold text-amber-400">{initials}</AvatarFallback>
           </Avatar>
