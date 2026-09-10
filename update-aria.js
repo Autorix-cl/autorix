@@ -2,6 +2,9 @@ const fs = require('fs');
 
 const updateFile = (filepath, searchStr, replaceStr) => {
     let content = fs.readFileSync(filepath, 'utf8');
+    if (!content.includes(searchStr)) {
+        throw new Error(`Expected text not found in ${filepath}`);
+    }
     content = content.replace(searchStr, replaceStr);
     fs.writeFileSync(filepath, content, 'utf8');
 };

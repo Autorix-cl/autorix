@@ -2,6 +2,9 @@ const fs = require('fs');
 
 const updateFile = (filepath, searchStr, replaceStr) => {
     let content = fs.readFileSync(filepath, 'utf8');
+    if (!content.includes(searchStr)) {
+        throw new Error(`Expected text not found in ${filepath}`);
+    }
     content = content.replace(searchStr, replaceStr);
     fs.writeFileSync(filepath, content, 'utf8');
 };
@@ -14,8 +17,12 @@ updateFile(
 
 // We need a separate pass for the second one
 let content = fs.readFileSync('console/src/components/layout/command-palette.tsx', 'utf8');
+const secondSearch = 'onClick={() => handleSelectAction(act.action)}\n                      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium text-foreground hover:bg-primary/10 hover:text-primary transition-colors text-left"';
+if (!content.includes(secondSearch)) {
+    throw new Error('Expected action button text not found in console/src/components/layout/command-palette.tsx');
+}
 content = content.replace(
-    'onClick={() => handleSelectAction(act.action)}\n                      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium text-foreground hover:bg-primary/10 hover:text-primary transition-colors text-left"',
+    secondSearch,
     'onClick={() => handleSelectAction(act.action)}\n                      aria-label={act.label}\n                      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium text-foreground hover:bg-primary/10 hover:text-primary transition-colors text-left"'
 );
 fs.writeFileSync('console/src/components/layout/command-palette.tsx', content, 'utf8');
