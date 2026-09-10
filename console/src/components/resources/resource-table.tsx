@@ -187,7 +187,7 @@ export function ResourceTable<T extends Record<string, unknown> & { id: string }
           </Button>
 
           {onRefresh && (
-            <Button variant="ghost" size="icon-sm" onClick={onRefresh} className="h-8 w-8">
+            <Button variant="ghost" size="icon-sm" onClick={onRefresh} className="h-8 w-8" aria-label="Refresh table">
               <RefreshCw className="h-3.5 w-3.5" />
             </Button>
           )}

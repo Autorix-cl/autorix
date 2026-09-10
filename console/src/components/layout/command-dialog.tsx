@@ -149,6 +149,7 @@ export function CommandDialog({ open, onOpenChange }: CommandDialogProps) {
                 <button
                   key={item.href}
                   onClick={() => handleSelect(item.href)}
+                  aria-label={`Navigate to ${item.title}`}
                   className="flex w-full items-center justify-between rounded-lg p-2.5 text-left text-xs transition-colors hover:bg-accent hover:text-accent-foreground group cursor-pointer"
                 >
                   <div className="flex items-center gap-3">

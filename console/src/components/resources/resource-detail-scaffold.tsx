@@ -61,7 +61,7 @@ export function ResourceDetailScaffold<T extends Record<string, unknown> & { id:
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-border/60 pb-4">
         <div className="flex items-center gap-3">
           {onBack && (
-            <Button variant="ghost" size="icon-sm" onClick={onBack} className="h-8 w-8">
+            <Button variant="ghost" size="icon-sm" onClick={onBack} className="h-8 w-8" aria-label="Go back">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           )}
