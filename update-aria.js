@@ -1,5 +1,4 @@
 const fs = require('fs');
-const path = require('path');
 
 const updateFile = (filepath, searchStr, replaceStr) => {
     let content = fs.readFileSync(filepath, 'utf8');
