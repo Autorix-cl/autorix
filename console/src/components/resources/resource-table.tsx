@@ -204,6 +204,7 @@ export function ResourceTable<T extends Record<string, unknown> & { id: string }
                   type="button"
                   onClick={toggleSelectAll}
                   className="text-muted-foreground hover:text-foreground"
+                  aria-label="Select all rows"
                 >
                   {selectedIds.size > 0 && selectedIds.size === paginatedData.length ? (
                     <CheckSquare className="h-4 w-4 text-primary" />

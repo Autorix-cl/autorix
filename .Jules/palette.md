@@ -1,3 +1,3 @@
-## 2024-03-24 - Missing ARIA Labels on Icon Buttons
-**Learning:** Found several icon-only buttons across the app without `aria-label` attributes, which creates an accessibility issue for screen readers. Some buttons use `sr-only` text, which works, but many didn't have either.
-**Action:** Always ensure icon-only `<Button>` components have an explicit `aria-label` attribute if they do not contain nested screen-reader text (`<span className="sr-only">`).
+## 2024-05-14 - Missing ARIA Labels on Icon-Only Buttons
+**Learning:** Found a recurring pattern in the codebase where icon-only buttons (like toggles, refresh, back, and password visibility actions) were missing `aria-label`s. This makes them inaccessible to screen readers as the purpose of the button cannot be determined from its visual icon alone.
+**Action:** Always ensure that `<button>` and `<Button>` components that lack visible text content include an appropriate `aria-label` describing their function. This is particularly important for state-toggling buttons (e.g., expand/collapse, show/hide).
