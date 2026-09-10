@@ -96,13 +96,13 @@ export function DataTable<TData, TValue>({
     if (controlledPageSize !== undefined && controlledPageSize !== pagination.pageSize) {
       setPagination((prev) => ({ ...prev, pageSize: controlledPageSize, pageIndex: 0 }));
     }
-  }, [controlledPageSize]);
+  }, [controlledPageSize, pagination.pageSize]);
 
   React.useEffect(() => {
     if (controlledPageIndex !== undefined && controlledPageIndex !== pagination.pageIndex) {
       setPagination((prev) => ({ ...prev, pageIndex: controlledPageIndex }));
     }
-  }, [controlledPageIndex]);
+  }, [controlledPageIndex, pagination.pageIndex]);
 
   const table = useReactTable({
     data,

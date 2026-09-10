@@ -263,7 +263,7 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
               <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-foreground text-background px-4 py-3 rounded-lg shadow-xl animate-in slide-in-from-bottom-5">
                 <div className="flex items-center gap-2 border-r border-background/20 pr-4">
                   <span className="text-sm font-medium">{selectedCount} selected</span>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 text-background hover:bg-background/20" onClick={() => table.resetRowSelection()}>
+                  <Button variant="ghost" size="icon" aria-label="Clear selection" className="h-6 w-6 text-background hover:bg-background/20" onClick={() => table.resetRowSelection()}>
                     <X className="h-4 w-4" />
                   </Button>
                 </div>

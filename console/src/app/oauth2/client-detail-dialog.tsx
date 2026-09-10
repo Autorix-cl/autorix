@@ -141,7 +141,7 @@ export function ClientDetailDialog({
                 <code className="font-mono text-xs flex-1 break-all select-all">
                   {rotatedSecret}
                 </code>
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={handleCopy}>
+                <Button size="icon" variant="ghost" aria-label="Copy to clipboard" className="h-7 w-7" onClick={handleCopy}>
                   {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                 </Button>
               </div>
