@@ -187,7 +187,7 @@ export function ResourceTable<T extends Record<string, unknown> & { id: string }
           </Button>
 
           {onRefresh && (
-            <Button variant="ghost" size="icon-sm" onClick={onRefresh} className="h-8 w-8">
+            <Button variant="ghost" size="icon-sm" onClick={onRefresh} className="h-8 w-8" aria-label="Refresh">
               <RefreshCw className="h-3.5 w-3.5" />
             </Button>
           )}
@@ -204,6 +204,7 @@ export function ResourceTable<T extends Record<string, unknown> & { id: string }
                   type="button"
                   onClick={toggleSelectAll}
                   className="text-muted-foreground hover:text-foreground"
+                  aria-label="Select all rows"
                 >
                   {selectedIds.size > 0 && selectedIds.size === paginatedData.length ? (
                     <CheckSquare className="h-4 w-4 text-primary" />

@@ -34,6 +34,7 @@ function DecisionNodeView({ node, depth = 0 }: { node: DecisionNode; depth?: num
             type="button"
             onClick={() => setExpanded(!expanded)}
             className="p-0.5 hover:bg-muted rounded"
+            aria-label={expanded ? "Collapse node" : "Expand node"}
           >
             <ChevronRight className={`w-3.5 h-3.5 transition-transform ${expanded ? "rotate-90" : ""}`} />
           </button>
