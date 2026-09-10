@@ -136,6 +136,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                     <button
                       key={item.href}
                       onClick={() => handleSelectNav(item.href)}
+                      aria-label={`Navigate to ${item.label}`}
                       className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium text-foreground hover:bg-primary/10 hover:text-primary transition-colors text-left"
                     >
                       <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -159,6 +160,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                     <button
                       key={act.label}
                       onClick={() => handleSelectAction(act.action)}
+                      aria-label={act.label}
                       className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium text-foreground hover:bg-primary/10 hover:text-primary transition-colors text-left"
                     >
                       <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
