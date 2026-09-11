@@ -397,6 +397,7 @@ export default function ProxyRulesPage() {
                                 disabled={idx === 0 || reorderMutation.isPending || !!searchFilter}
                                 onClick={() => moveRule(idx, "up")}
                                 title={searchFilter ? "Clear filter to reorder" : "Move Up"}
+                                aria-label="Move rule up"
                               >
                                 <ArrowUp className="h-3 w-3" />
                               </Button>
@@ -410,6 +411,7 @@ export default function ProxyRulesPage() {
                                 disabled={idx === filteredRules.length - 1 || reorderMutation.isPending || !!searchFilter}
                                 onClick={() => moveRule(idx, "down")}
                                 title={searchFilter ? "Clear filter to reorder" : "Move Down"}
+                                aria-label="Move rule down"
                               >
                                 <ArrowDown className="h-3 w-3" />
                               </Button>
@@ -479,6 +481,7 @@ export default function ProxyRulesPage() {
                                 className="h-8 w-8 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
                                 onClick={() => handleQuickSimulate(rule)}
                                 title="Simulate this rule in test bench"
+                                aria-label="Simulate this rule in test bench"
                               >
                                 <Play className="h-4 w-4" />
                               </Button>
@@ -490,6 +493,7 @@ export default function ProxyRulesPage() {
                                 disabled={deleteMutation.isPending}
                                 onClick={() => handleDelete(rule.id)}
                                 title="Delete rule"
+                                aria-label="Delete rule"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>

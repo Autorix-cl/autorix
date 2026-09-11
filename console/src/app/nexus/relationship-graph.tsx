@@ -152,6 +152,7 @@ export function RelationshipGraph({ initialObjectId = "document:doc_123" }: Rela
               size="icon"
               className="h-8 w-8"
               onClick={() => setZoom((z) => Math.min(1.5, z + 0.1))}
+              aria-label="Zoom in"
             >
               <ZoomIn className="w-3.5 h-3.5" />
             </Button>
@@ -160,6 +161,7 @@ export function RelationshipGraph({ initialObjectId = "document:doc_123" }: Rela
               size="icon"
               className="h-8 w-8"
               onClick={() => setZoom((z) => Math.max(0.6, z - 0.1))}
+              aria-label="Zoom out"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </Button>
@@ -168,6 +170,7 @@ export function RelationshipGraph({ initialObjectId = "document:doc_123" }: Rela
               size="icon"
               className="h-8 w-8"
               onClick={() => setZoom(1)}
+              aria-label="Reset zoom"
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </Button>
