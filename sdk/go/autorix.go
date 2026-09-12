@@ -10,8 +10,8 @@ import (
 type contextKey string
 
 const (
-	userCtxKey         contextKey = "autorix_user"
-	requestIDCtxKey    contextKey = "autorix_request_id"
+	userCtxKey          contextKey = "autorix_user"
+	requestIDCtxKey     contextKey = "autorix_request_id"
 	correlationIDCtxKey contextKey = "autorix_correlation_id"
 )
 
