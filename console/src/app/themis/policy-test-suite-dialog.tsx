@@ -312,6 +312,7 @@ export function PolicyTestSuiteDialog({
                       size="icon"
                       className="h-7 w-7 text-muted-foreground hover:text-destructive"
                       onClick={() => handleDeleteFixture(fix.id)}
+                      aria-label="Delete test fixture"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
