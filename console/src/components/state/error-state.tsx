@@ -3,6 +3,7 @@
 import { AlertTriangle } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { ApiError } from "@/lib/api/client";
+import { Button } from "@/components/ui/button";
 
 /**
  * The shared "something failed" state (P1-S3-T5). Distinct from
@@ -23,13 +24,14 @@ export function ErrorState({ error, onRetry }: { error?: ApiError; onRetry?: () 
       <h3 className="text-sm font-medium">{t("state.errorTitle")}</h3>
       <p className="max-w-sm text-sm text-muted-foreground">{description}</p>
       {onRetry ? (
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={onRetry}
-          className="mt-3 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+          className="mt-3"
         >
           {t("state.retry")}
-        </button>
+        </Button>
       ) : null}
     </div>
   );
