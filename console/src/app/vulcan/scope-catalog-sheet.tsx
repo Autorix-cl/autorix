@@ -172,6 +172,7 @@ export function ScopeCatalogSheet({ isOpen, onOpenChange }: ScopeCatalogSheetPro
                       size="icon"
                       className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
                       onClick={() => handleDelete(s.name)}
+                      aria-label="Delete scope"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>

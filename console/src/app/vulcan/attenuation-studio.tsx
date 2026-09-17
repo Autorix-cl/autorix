@@ -275,6 +275,7 @@ export function AttenuationStudio() {
                       size="icon"
                       className="text-destructive shrink-0 h-8 w-8"
                       onClick={() => removeCaveat(caveat.id)}
+                      aria-label="Remove caveat"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
