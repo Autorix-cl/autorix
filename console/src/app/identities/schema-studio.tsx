@@ -656,6 +656,7 @@ export function SchemaStudio({ onSchemaCreated }: SchemaStudioProps) {
                       onClick={handleDeleteSchema}
                       disabled={isDeleting}
                       className="h-8 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 gap-1.5"
+                      aria-label="Delete Schema"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       <span>{isDeleting ? "Deleting..." : "Delete Schema"}</span>

@@ -288,6 +288,7 @@ export default function OperatorsPage() {
                         disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
                         className="h-7 w-7 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"
                         title="Delete operator permanently"
+                        aria-label="Delete operator permanently"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>

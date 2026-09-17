@@ -256,6 +256,7 @@ export function SAMLProviderSheet({
                     size="icon"
                     className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
                     onClick={() => removeMapping(k)}
+                    aria-label={`Remove mapping for ${k}`}
                   >
                     <Trash2 className="w-3 h-3" />
                   </Button>

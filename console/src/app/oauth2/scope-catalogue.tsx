@@ -185,6 +185,7 @@ export function ScopeCatalogue() {
                         size="icon"
                         onClick={() => handleDelete(s.name)}
                         className="text-muted-foreground hover:text-destructive h-8 w-8"
+                        aria-label={`Delete scope ${s.name}`}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
