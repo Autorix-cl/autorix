@@ -2,6 +2,7 @@
 
 import { PlugZap } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { Button } from "@/components/ui/button";
 
 /**
  * The shared "this engine could not be reached" state (P1-S3-T5). Per the
@@ -20,13 +21,14 @@ export function NotConnectedState({ engineName, onRetry }: { engineName: string;
         {t("state.notConnectedDescription", { engine: engineName })}
       </p>
       {onRetry ? (
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={onRetry}
-          className="mt-3 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+          className="mt-3"
         >
           {t("state.retry")}
-        </button>
+        </Button>
       ) : null}
     </div>
   );

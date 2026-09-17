@@ -1,3 +1,3 @@
-## 2024-05-14 - Missing ARIA Labels on Icon-Only Buttons
-**Learning:** Found a recurring pattern in the codebase where icon-only buttons (like toggles, refresh, back, and password visibility actions) were missing `aria-label`s. This makes them inaccessible to screen readers as the purpose of the button cannot be determined from its visual icon alone.
-**Action:** Always ensure that `<button>` and `<Button>` components that lack visible text content include an appropriate `aria-label` describing their function. This is particularly important for state-toggling buttons (e.g., expand/collapse, show/hide).
+## 2023-10-27 - Standardized Retry Buttons
+**Learning:** Found that some state components (`ErrorState`, `NotConnectedState`) were using native `<button>` tags with custom Tailwind classes instead of the design system's `<Button>` component. This led to missing keyboard focus visible states and slight visual inconsistencies with the rest of the application.
+**Action:** Standardized "Retry" buttons across state components to use `<Button variant="outline" size="sm">` to ensure consistent accessibility (focus rings) and visual design patterns.
