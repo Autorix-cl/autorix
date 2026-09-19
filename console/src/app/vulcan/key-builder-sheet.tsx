@@ -12,6 +12,7 @@ import { CreateKeySchema, CreateKeyInput } from "@/lib/schemas/vulcan";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const AVAILABLE_SCOPES = [
   { id: "read:users", label: "Read Users" },
@@ -212,10 +213,17 @@ export function KeyBuilderSheet() {
                 className="font-mono text-sm bg-muted"
               />
             </div>
-            <Button type="button" size="icon" className="px-3" onClick={handleCopy}>
-              <span className="sr-only">Copy</span>
-              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            </Button>
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger asChild>
+                <Button type="button" size="icon" className="px-3" aria-label="Copy to clipboard" onClick={handleCopy}>
+                  <span className="sr-only">Copy</span>
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{copied ? "Copied!" : "Copy to clipboard"}</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
           
           <DialogFooter className="sm:justify-end mt-4">
