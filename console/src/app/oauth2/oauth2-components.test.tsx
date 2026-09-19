@@ -8,6 +8,7 @@ import { TokenInspector } from "./token-inspector";
 import { ScopeCatalogue } from "./scope-catalogue";
 import { KeyManager } from "./key-manager";
 import { ClientDetailDialog } from "./client-detail-dialog";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 vi.mock("@/lib/api/schema", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/schema")>();
@@ -31,7 +32,9 @@ function renderWithClient(ui: React.ReactElement) {
   return render(
     <I18nProvider>
       <QueryClientProvider client={queryClient}>
-        {ui}
+        <TooltipProvider>
+          {ui}
+        </TooltipProvider>
       </QueryClientProvider>
     </I18nProvider>
   );

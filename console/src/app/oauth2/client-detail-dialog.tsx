@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fetchAndParse } from "@/lib/api/schema";
 import {
@@ -141,9 +142,16 @@ export function ClientDetailDialog({
                 <code className="font-mono text-xs flex-1 break-all select-all">
                   {rotatedSecret}
                 </code>
-                <Button size="icon" variant="ghost" aria-label="Copy to clipboard" className="h-7 w-7" onClick={handleCopy}>
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                </Button>
+                <Tooltip delayDuration={300}>
+                  <TooltipTrigger asChild>
+                    <Button size="icon" variant="ghost" aria-label="Copy to clipboard" className="h-7 w-7" onClick={handleCopy}>
+                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{copied ? "Copied!" : "Copy to clipboard"}</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
               <p className="text-xs text-muted-foreground">
                 This secret will not be displayed again.
