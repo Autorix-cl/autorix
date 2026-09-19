@@ -20,6 +20,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface HeaderProps {
   onOpenSearch?: () => void;
@@ -64,20 +70,29 @@ export function Header({ onOpenSearch }: HeaderProps) {
       <div className="flex items-center gap-3">
         {/* Theme Switcher */}
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-              aria-label="Toggle theme"
-            >
-              {resolvedTheme === "dark" ? (
-                <Moon className="h-4 w-4 text-blue-400" />
-              ) : (
-                <Sun className="h-4 w-4 text-amber-500" />
-              )}
-            </Button>
-          </DropdownMenuTrigger>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    aria-label="Toggle theme"
+                  >
+                    {resolvedTheme === "dark" ? (
+                      <Moon className="h-4 w-4 text-blue-400" />
+                    ) : (
+                      <Sun className="h-4 w-4 text-amber-500" />
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                <p>Toggle theme</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <DropdownMenuContent align="end" className="w-36">
             <DropdownMenuLabel className="text-[10px] uppercase text-muted-foreground">
               Theme
