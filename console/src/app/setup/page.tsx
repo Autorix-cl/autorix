@@ -140,13 +140,14 @@ export default function SetupPage() {
             {/* Bootstrap Token */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+                <label htmlFor="token" className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
                   <Terminal className="w-3.5 h-3.5 text-amber-400" />
                   Bootstrap Token
                 </label>
                 <span className="text-[11px] font-mono text-slate-500">From Argus startup logs (abt_...)</span>
               </div>
               <input
+                id="token"
                 type="text"
                 required
                 value={token}
@@ -159,8 +160,9 @@ export default function SetupPage() {
             {/* Operator Name & Email */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">Full Name</label>
+                <label htmlFor="name" className="block text-xs font-medium text-slate-300 mb-1.5">Full Name</label>
                 <input
+                  id="name"
                   type="text"
                   required
                   value={name}
@@ -170,8 +172,9 @@ export default function SetupPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">Work Email</label>
+                <label htmlFor="email" className="block text-xs font-medium text-slate-300 mb-1.5">Work Email</label>
                 <input
+                  id="email"
                   type="email"
                   required
                   value={email}
@@ -185,11 +188,12 @@ export default function SetupPage() {
             {/* Password & Confirm */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <label htmlFor="password" className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5">
                   <Lock className="w-3.5 h-3.5 text-slate-400" />
                   Master Password
                 </label>
                 <input
+                  id="password"
                   type="password"
                   required
                   minLength={8}
@@ -200,8 +204,9 @@ export default function SetupPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">Confirm Password</label>
+                <label htmlFor="confirmPassword" className="block text-xs font-medium text-slate-300 mb-1.5">Confirm Password</label>
                 <input
+                  id="confirmPassword"
                   type="password"
                   required
                   minLength={8}
