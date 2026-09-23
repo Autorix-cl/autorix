@@ -160,8 +160,9 @@ function LoginForm() {
           {activeTab === "local" ? (
             <form onSubmit={handleLocalLogin} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">Operator Email</label>
+                <label htmlFor="email" className="block text-xs font-medium text-slate-300 mb-1.5">Operator Email</label>
                 <input
+                  id="email"
                   type="email"
                   required
                   autoFocus
@@ -174,10 +175,11 @@ function LoginForm() {
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-medium text-slate-300">Master Password</label>
+                  <label htmlFor="password" className="text-xs font-medium text-slate-300">Master Password</label>
                 </div>
                 <div className="relative">
                   <input
+                    id="password"
                     type={showPassword ? "text" : "password"}
                     required
                     value={password}
