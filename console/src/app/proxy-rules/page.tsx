@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CodeBlock } from "@/components/ui/code-block";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { useApiMutation } from "@/lib/query/use-api-mutation";
 import { fetchAndParse } from "@/lib/api/schema";
@@ -390,31 +391,43 @@ export default function ProxyRulesPage() {
                           <div className="flex items-start gap-3">
                             {/* Priority Controls */}
                             <div className="flex flex-col items-center gap-1 pr-2 border-r">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-6 w-6"
-                                disabled={idx === 0 || reorderMutation.isPending || !!searchFilter}
-                                onClick={() => moveRule(idx, "up")}
-                                title={searchFilter ? "Clear filter to reorder" : "Move Up"}
-                                aria-label="Move rule up"
-                              >
-                                <ArrowUp className="h-3 w-3" />
-                              </Button>
+                              <Tooltip delayDuration={300}>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6"
+                                    disabled={idx === 0 || reorderMutation.isPending || !!searchFilter}
+                                    onClick={() => moveRule(idx, "up")}
+                                    aria-label="Move rule up"
+                                  >
+                                    <ArrowUp className="h-3 w-3" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {searchFilter ? "Clear filter to reorder" : "Move Up"}
+                                </TooltipContent>
+                              </Tooltip>
                               <span className="text-[10px] font-mono font-bold text-muted-foreground">
                                 {idx + 1}
                               </span>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-6 w-6"
-                                disabled={idx === filteredRules.length - 1 || reorderMutation.isPending || !!searchFilter}
-                                onClick={() => moveRule(idx, "down")}
-                                title={searchFilter ? "Clear filter to reorder" : "Move Down"}
-                                aria-label="Move rule down"
-                              >
-                                <ArrowDown className="h-3 w-3" />
-                              </Button>
+                              <Tooltip delayDuration={300}>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6"
+                                    disabled={idx === filteredRules.length - 1 || reorderMutation.isPending || !!searchFilter}
+                                    onClick={() => moveRule(idx, "down")}
+                                    aria-label="Move rule down"
+                                  >
+                                    <ArrowDown className="h-3 w-3" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {searchFilter ? "Clear filter to reorder" : "Move Down"}
+                                </TooltipContent>
+                              </Tooltip>
                             </div>
 
                             {/* Match Criteria */}
@@ -475,28 +488,40 @@ export default function ProxyRulesPage() {
                             </div>
 
                             <div className="flex items-center gap-1">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
-                                onClick={() => handleQuickSimulate(rule)}
-                                title="Simulate this rule in test bench"
-                                aria-label="Simulate this rule in test bench"
-                              >
-                                <Play className="h-4 w-4" />
-                              </Button>
+                              <Tooltip delayDuration={300}>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                                    onClick={() => handleQuickSimulate(rule)}
+                                    aria-label="Simulate this rule in test bench"
+                                  >
+                                    <Play className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Simulate this rule in test bench
+                                </TooltipContent>
+                              </Tooltip>
 
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 text-rose-400 hover:text-rose-500 hover:bg-rose-500/10"
-                                disabled={deleteMutation.isPending}
-                                onClick={() => handleDelete(rule.id)}
-                                title="Delete rule"
-                                aria-label="Delete rule"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              <Tooltip delayDuration={300}>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-rose-400 hover:text-rose-500 hover:bg-rose-500/10"
+                                    disabled={deleteMutation.isPending}
+                                    onClick={() => handleDelete(rule.id)}
+                                    aria-label="Delete rule"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Delete rule
+                                </TooltipContent>
+                              </Tooltip>
                             </div>
                           </div>
                         </div>
