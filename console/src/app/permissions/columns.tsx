@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 import { Tuple } from "@/lib/api/schemas/nexus";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface ZanzibarTupleItem {
   namespace: string;
@@ -74,16 +75,23 @@ export const getColumns = (
     cell: ({ row }) => {
       const tuple = row.original;
       return (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-rose-400 hover:text-rose-500 hover:bg-rose-500/10"
-          onClick={() => onDelete(tuple)}
-          aria-label="Delete tuple"
-        >
-          <span className="sr-only">Delete</span>
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-rose-400 hover:text-rose-500 hover:bg-rose-500/10"
+              onClick={() => onDelete(tuple)}
+              aria-label="Delete tuple"
+            >
+              <span className="sr-only">Delete</span>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            <p>Delete tuple</p>
+          </TooltipContent>
+        </Tooltip>
       );
     },
   },
