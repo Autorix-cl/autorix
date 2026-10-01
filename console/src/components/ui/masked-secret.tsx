@@ -4,6 +4,7 @@ import * as React from "react";
 import { Eye, EyeOff, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface MaskedSecretProps {
   secret: string;
@@ -67,36 +68,46 @@ export function MaskedSecret({
       <span className="select-all text-muted-foreground truncate max-w-[280px]">
         {revealed ? secret : maskedText}
       </span>
-      <div className="flex items-center gap-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 text-muted-foreground hover:text-foreground"
-          onClick={handleToggle}
-          title={revealed ? "Mask secret" : "Reveal secret"}
-          aria-label={revealed ? "Mask secret" : "Reveal secret"}
-        >
-          {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-        </Button>
-        {revealed && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            onClick={handleCopy}
-            title={`Copy ${label}`}
-            aria-label={`Copy ${label}`}
-          >
-            {copied ? (
-              <Check className="h-3.5 w-3.5 text-emerald-400" />
-            ) : (
-              <Copy className="h-3.5 w-3.5" />
-            )}
-          </Button>
-        )}
-      </div>
+      <TooltipProvider>
+        <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                onClick={handleToggle}
+                aria-label={revealed ? "Mask secret" : "Reveal secret"}
+              >
+                {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{revealed ? "Mask secret" : "Reveal secret"}</TooltipContent>
+          </Tooltip>
+          {revealed && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                  onClick={handleCopy}
+                  aria-label={`Copy ${label}`}
+                >
+                  {copied ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-400" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{copied ? "Copied!" : `Copy ${label}`}</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      </TooltipProvider>
     </div>
   );
 }
@@ -138,19 +149,25 @@ export function CopyableIdentifier({
       : safeValue;
 
   return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      title={`Click to copy ${label}: ${safeValue}`}
-      aria-label={`Copy ${label}: ${safeValue}`}
-      className={`group inline-flex items-center gap-1.5 rounded border border-border/50 bg-muted/20 px-2 py-0.5 font-mono text-xs text-muted-foreground hover:border-border hover:bg-muted/40 hover:text-foreground transition-colors ${className}`}
-    >
-      <span className="truncate">{displayValue || "—"}</span>
-      {copied ? (
-        <Check className="h-3 w-3 text-emerald-400 shrink-0" />
-      ) : (
-        <Copy className="h-3 w-3 opacity-50 group-hover:opacity-100 transition-opacity shrink-0" />
-      )}
-    </button>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={handleCopy}
+            aria-label={`Copy ${label}: ${safeValue}`}
+            className={`group inline-flex items-center gap-1.5 rounded border border-border/50 bg-muted/20 px-2 py-0.5 font-mono text-xs text-muted-foreground hover:border-border hover:bg-muted/40 hover:text-foreground transition-colors ${className}`}
+          >
+            <span className="truncate">{displayValue || "—"}</span>
+            {copied ? (
+              <Check className="h-3 w-3 text-emerald-400 shrink-0" />
+            ) : (
+              <Copy className="h-3 w-3 opacity-50 group-hover:opacity-100 transition-opacity shrink-0" />
+            )}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{copied ? "Copied!" : `Click to copy ${label}`}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
