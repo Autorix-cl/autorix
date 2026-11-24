@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 ARG VERSION=dev
 ARG BUILD_SHA=unknown
@@ -28,10 +28,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -o /build/themisd ./cmd/themisd/main.go
 
 # Production runtime stage
-FROM alpine:3.20
+FROM alpine:3.24
 
 # Create non-root user for Zero Trust security
-RUN addgroup -S autorix && adduser -S autorix -G autorix
+RUN apk upgrade --no-cache && addgroup -S autorix && adduser -S autorix -G autorix
 
 WORKDIR /app
 

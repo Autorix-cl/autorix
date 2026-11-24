@@ -162,7 +162,9 @@ func main() {
 	defer stop()
 
 	// 5. First-run bootstrap check (P3-S1-T2): when no operators exist,
-	// generate and log a one-time bootstrap token (abt_...) for /setup.
+	// generate and log a one-time bootstrap token (abt_...) for /setup, and
+	// seed standard environments if the registry starts empty.
+	initDefaultEnvironments(runCtx, logger, repo)
 	initBootstrapToken(runCtx, logger, repo)
 
 	// 6. Background lifecycle sweep (P2-S5-T2) and retention prune
@@ -353,4 +355,34 @@ func initBootstrapToken(ctx context.Context, logger interface {
 	}
 
 	logger.Info("FIRST-RUN BOOTSTRAP TOKEN (Use to create initial Owner at /setup): "+rawToken, "token", rawToken)
+}
+
+func initDefaultEnvironments(ctx context.Context, logger interface {
+	Info(msg string, args ...any)
+	Warn(msg string, args ...any)
+}, repo core.Repository) {
+	envs, err := repo.ListEnvironments(ctx)
+	if err != nil {
+		logger.Warn("failed to check environments during boot", "error", err)
+		return
+	}
+	if len(envs) > 0 {
+		return
+	}
+	defaults := []struct {
+		name         string
+		slug         string
+		description  string
+		isProduction bool
+	}{
+		{name: "Production", slug: "production", description: "Default production environment", isProduction: true},
+		{name: "Staging", slug: "staging", description: "Default staging environment", isProduction: false},
+		{name: "Development", slug: "development", description: "Default development environment", isProduction: false},
+	}
+	for _, d := range defaults {
+		if _, err := repo.CreateEnvironment(ctx, d.name, d.slug, d.description, d.isProduction); err != nil {
+			logger.Warn("failed to seed default environment", "slug", d.slug, "error", err)
+		}
+	}
+	logger.Info("seeded default environments", "count", len(defaults))
 }

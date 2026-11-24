@@ -20,7 +20,7 @@ jobs:
       - name: Set up Go 1.26
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.6'
+          go-version: '1.26'
           cache: true
 
       - name: Check gofmt
@@ -58,7 +58,7 @@ jobs:
       - name: Set up Go 1.26
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.6'
+          go-version: '1.26'
           cache: true
 
       - name: Run unit tests
@@ -98,7 +98,7 @@ jobs:
       - name: Set up Go 1.26
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.6'
+          go-version: '1.26'
           cache: true
 
       - name: Run integration tests (testcontainers spins its own Postgres)
@@ -121,6 +121,7 @@ jobs:
   e2e-console:
     name: Console E2E against the composed stack (P1-S5-T5)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: quality-console
     steps:
       - name: Checkout repository
@@ -143,23 +144,24 @@ jobs:
           cd console
           npx playwright install --with-deps chromium
 
-      - name: Bring up the core stack
+      - name: Bring up the composed stack
         run: |
           ./scripts/generate-local-secrets.sh
-          docker compose --profile core up -d --build
+          docker compose --profile core --profile extended up -d --build \
+            postgres redis argus nexus ego janus aegis vulcan hermes themis console
 
       - name: Wait for every service to be healthy
         run: |
           deadline=$((SECONDS + 180))
           while true; do
-            unhealthy=$(docker compose --profile core ps --format '{{.Service}} {{.Health}}' | awk '$1 != "console" && $2 != "healthy" {print $1}')
+            unhealthy=$(docker compose --profile core --profile extended ps --format '{{.Service}} {{.Health}}' | awk '$1 != "console" && $2 != "healthy" {print $1}')
             if [ -z "$unhealthy" ]; then
               echo "All services healthy."
               break
             fi
             if [ $SECONDS -ge $deadline ]; then
               echo "Timed out waiting for: $unhealthy"
-              docker compose --profile core logs
+              docker compose --profile core --profile extended logs
               exit 1
             fi
             sleep 3
@@ -169,6 +171,8 @@ jobs:
 
       - name: Run E2E specs
         run: |
+          AUTORIX_BOOTSTRAP_TOKEN="$(docker compose --profile core --profile extended logs argus | grep -oE 'abt_[A-Za-z0-9_-]+' | tail -n 1 || true)"
+          export AUTORIX_BOOTSTRAP_TOKEN
           cd console
           npx playwright test
 
@@ -182,7 +186,7 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose --profile core down -v
+        run: docker compose --profile core --profile extended down -v
 
   coverage-ratchet-go:
     name: Coverage ratchet — Go modules (P1-S5-T6)
@@ -197,7 +201,7 @@ jobs:
       - name: Set up Go 1.26
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.6'
+          go-version: '1.26'
           cache: true
 
       - name: Check coverage floor

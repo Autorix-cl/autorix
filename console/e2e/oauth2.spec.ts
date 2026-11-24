@@ -43,6 +43,9 @@ test.describe("Janus OAuth2 / OIDC Studio (Ory Hydra Protocol)", () => {
     // Client secret input must disappear for public clients
     await expect(page.locator("#clientSecret")).not.toBeVisible();
 
+    // Public Authorization Code + PKCE clients require an explicit redirect URI
+    await page.locator("#redirectUris").fill(`https://spa-${unique}.example.com/callback`);
+
     await page.getByRole("button", { name: /Register Application/i }).click();
 
     // Verify public client in table

@@ -47,7 +47,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6.0.0
         with:
-          go-version: '1.26.6'
+          go-version: '1.26'
 
       - name: Run short Go test suite
         run: |
@@ -267,7 +267,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6.0.0
         with:
-          go-version: '1.26.6'
+          go-version: '1.26'
           cache-dependency-path: cmd/autorixctl/go.sum
 
       - name: Build versioned binary

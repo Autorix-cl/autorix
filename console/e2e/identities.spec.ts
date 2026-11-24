@@ -39,10 +39,10 @@ test.describe("Ego Identities Studio (Ory Kratos Trait Model)", () => {
     await searchInput.fill(email);
 
     // Verify only the searched identity is displayed
-    await expect(page.getByRole("cell", { name: email })).toBeVisible();
+    await expect(page.getByRole("cell", { name: email, exact: true })).toBeVisible();
   });
 
-  test("paginates table according to selected rows per page", async ({ page }) => {
+  test("paginates table according to selected rows per page", async ({ page }, testInfo) => {
     // Check initial rows in table body (default 10)
     const rows = page.locator("tbody tr");
     const initialCount = await rows.count();
@@ -50,20 +50,20 @@ test.describe("Ego Identities Studio (Ory Kratos Trait Model)", () => {
 
     // Capture screenshot of paginated identities studio
     await page.screenshot({
-      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-identities-paginated.png",
+      path: testInfo.outputPath("cloud-identities-paginated.png"),
     });
 
     const footer = page.getByText("Rows per page").locator("../..");
     await footer.scrollIntoViewIfNeeded();
     await page.screenshot({
-      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-identities-footer.png",
+      path: testInfo.outputPath("cloud-identities-footer.png"),
     });
 
     // Verify rows per page selector is visible with default 10
     await expect(page.getByText("Rows per page")).toBeVisible();
   });
 
-  test("navigates to Schema Studio & Builder and loads preset templates", async ({ page }) => {
+  test("navigates to Schema Studio & Builder and loads preset templates", async ({ page }, testInfo) => {
     // Click Schema Studio & Builder tab
     await page.getByRole("tab", { name: /Schema Studio & Builder/i }).click();
 
@@ -80,11 +80,11 @@ test.describe("Ego Identities Studio (Ory Kratos Trait Model)", () => {
 
     // Capture screenshot of Schema Studio
     await page.screenshot({
-      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-identities-schema-studio.png",
+      path: testInfo.outputPath("cloud-identities-schema-studio.png"),
     });
   });
 
-  test("navigates to Traits Architecture Guide tab", async ({ page }) => {
+  test("navigates to Traits Architecture Guide tab", async ({ page }, testInfo) => {
     // Click Traits Architecture Guide tab
     await page.getByRole("tab", { name: /Traits Architecture Guide/i }).click();
 
@@ -96,7 +96,7 @@ test.describe("Ego Identities Studio (Ory Kratos Trait Model)", () => {
 
     // Capture screenshot of Traits Guide
     await page.screenshot({
-      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-identities-traits-guide.png",
+      path: testInfo.outputPath("cloud-identities-traits-guide.png"),
     });
   });
 });

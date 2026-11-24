@@ -50,8 +50,9 @@ async function globalSetup(config: FullConfig) {
     await page.goto("/login");
     await page.waitForLoadState("networkidle");
 
-    // If already redirected to dashboard (e.g. valid cookie retained), save state directly
-    if (!page.url().includes("/login")) {
+    // If already redirected to dashboard (e.g. valid cookie retained), save state directly.
+    // Never mistake an unbootstrapped /setup redirect for an authenticated session.
+    if (!page.url().includes("/login") && !page.url().includes("/setup")) {
       await context.addCookies([{ name: "autorix_active_env", value: "prod", domain: "localhost", path: "/" }]);
       await context.storageState({ path: authFile });
       return;

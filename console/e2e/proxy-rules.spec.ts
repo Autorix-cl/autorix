@@ -48,13 +48,13 @@ test.describe("Aegis Zero-Trust Proxy Studio (Ory Oathkeeper PEP)", () => {
     await expect(page.getByText(/No rule matched this path/i).first()).toBeVisible({ timeout: 5000 });
   });
 
-  test("switches between studio tabs and renders scrollable declarative manifest", async ({ page }) => {
+  test("switches between studio tabs and renders scrollable declarative manifest", async ({ page }, testInfo) => {
     // Check initial tab is Routing Pipeline
     await expect(page.getByText(/Active Proxy Rules & Order/i)).toBeVisible();
 
     // Capture screenshot of Rules Pipeline
     await page.screenshot({
-      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-aegis-rules.png",
+      path: testInfo.outputPath("cloud-aegis-rules.png"),
     });
 
     // Switch to Traffic Simulator tab
@@ -63,7 +63,7 @@ test.describe("Aegis Zero-Trust Proxy Studio (Ory Oathkeeper PEP)", () => {
 
     // Capture screenshot of Simulator tab
     await page.screenshot({
-      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-aegis-simulator.png",
+      path: testInfo.outputPath("cloud-aegis-simulator.png"),
     });
 
     // Switch to Declarative Manifest tab
@@ -72,7 +72,7 @@ test.describe("Aegis Zero-Trust Proxy Studio (Ory Oathkeeper PEP)", () => {
 
     // Capture screenshot of Declarative Manifest tab
     await page.screenshot({
-      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-aegis-manifest.png",
+      path: testInfo.outputPath("cloud-aegis-manifest.png"),
     });
   });
 });

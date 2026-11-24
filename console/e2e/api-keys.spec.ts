@@ -25,7 +25,7 @@ test.describe("Vulcan API Keys & Macaroons Studio", () => {
     await expect(page.getByText(/Save your secret key/i)).toBeVisible({ timeout: 10_000 });
   });
 
-  test("switches between studio tabs and captures visual states", async ({ page }) => {
+  test("switches between studio tabs and captures visual states", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 1100 });
     // Initial tab: API Keys Vault
     await expect(page.getByRole("tab", { name: /API Keys Vault/i })).toBeVisible();
@@ -33,7 +33,7 @@ test.describe("Vulcan API Keys & Macaroons Studio", () => {
 
     // Capture screenshot of API Keys tab
     await page.screenshot({
-      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-vulcan-keys.png",
+      path: testInfo.outputPath("cloud-vulcan-keys.png"),
     });
 
     // Switch to Macaroon Inspector tab
@@ -42,7 +42,7 @@ test.describe("Vulcan API Keys & Macaroons Studio", () => {
 
     // Capture screenshot of Macaroon Inspector tab
     await page.screenshot({
-      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-vulcan-inspector.png",
+      path: testInfo.outputPath("cloud-vulcan-inspector.png"),
       fullPage: true,
     });
 
@@ -53,7 +53,7 @@ test.describe("Vulcan API Keys & Macaroons Studio", () => {
 
     // Capture screenshot with decoded structure and verification playground
     await page.screenshot({
-      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-vulcan-inspector-decoded.png",
+      path: testInfo.outputPath("cloud-vulcan-inspector-decoded.png"),
       fullPage: true,
     });
 
@@ -63,7 +63,7 @@ test.describe("Vulcan API Keys & Macaroons Studio", () => {
 
     // Capture screenshot of Attenuation Studio tab
     await page.screenshot({
-      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-vulcan-attenuation.png",
+      path: testInfo.outputPath("cloud-vulcan-attenuation.png"),
     });
   });
 });

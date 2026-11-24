@@ -1,4 +1,27 @@
+import { execFileSync } from "node:child_process";
 import { test, expect } from "./fixtures";
+
+function generateTestCertificatePem(): string {
+  return execFileSync(
+    "openssl",
+    [
+      "req",
+      "-x509",
+      "-newkey",
+      "ec",
+      "-pkeyopt",
+      "ec_paramgen_curve:prime256v1",
+      "-keyout",
+      "/dev/null",
+      "-nodes",
+      "-days",
+      "365",
+      "-subj",
+      "/CN=e2e-test-idp.example.com",
+    ],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+  ).trim();
+}
 
 test.describe("Hermes SAML & SCIM Enterprise Studio", () => {
   test.beforeEach(async ({ page }) => {
@@ -6,7 +29,7 @@ test.describe("Hermes SAML & SCIM Enterprise Studio", () => {
     await page.waitForLoadState("networkidle");
   });
 
-  test("renders SAML SP metadata XML and SCIM directory overview across studio tabs", async ({ page }) => {
+  test("renders SAML SP metadata XML and SCIM directory overview across studio tabs", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 1100 });
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Autorix Hermes|Enterprise/i);
 
@@ -14,7 +37,7 @@ test.describe("Hermes SAML & SCIM Enterprise Studio", () => {
     await expect(page.getByRole("tab", { name: /SAML Identity Providers/i })).toBeVisible();
     await expect(page.getByText(/Active IdP Connections & Assertion Mappings/i)).toBeVisible();
     await page.screenshot({
-      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-hermes-providers.png",
+      path: testInfo.outputPath("cloud-hermes-providers.png"),
       fullPage: true,
     });
 
@@ -22,7 +45,7 @@ test.describe("Hermes SAML & SCIM Enterprise Studio", () => {
     await page.getByRole("tab", { name: /SCIM Directory Sync/i }).click();
     await expect(page.getByText(/SCIM 2.0 Directory Management & Sync Monitor/i).first()).toBeVisible();
     await page.screenshot({
-      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-hermes-scim.png",
+      path: testInfo.outputPath("cloud-hermes-scim.png"),
       fullPage: true,
     });
 
@@ -32,7 +55,7 @@ test.describe("Hermes SAML & SCIM Enterprise Studio", () => {
     await expect(page.getByText(/LIVE SAML SP METADATA/i)).toBeVisible();
     await expect(page.getByText("http://localhost:4477/saml/acs", { exact: true })).toBeVisible();
     await page.screenshot({
-      path: "/Users/macbook/.gemini/antigravity-cli/brain/3a3fb493-f34f-4483-8b1d-d2f8068933b2/screenshots/cloud-hermes-metadata.png",
+      path: testInfo.outputPath("cloud-hermes-metadata.png"),
       fullPage: true,
     });
   });
@@ -41,6 +64,7 @@ test.describe("Hermes SAML & SCIM Enterprise Studio", () => {
     const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const providerSlug = `okta-${unique}`;
     const providerName = `Okta Production IdP ${unique}`;
+    const certPem = generateTestCertificatePem();
 
     await page.getByRole("button", { name: /New Connection Wizard/i }).click();
     await expect(page.getByRole("heading", { name: /SAML Connection Setup Wizard/i })).toBeVisible();
@@ -50,6 +74,7 @@ test.describe("Hermes SAML & SCIM Enterprise Studio", () => {
     await page
       .getByPlaceholder("https://company.okta.com/app/autorix/sso/saml")
       .fill(`https://auth.company-${unique}.okta.com/app/sso/saml`);
+    await page.locator("#saml-cert-pem").fill(certPem);
 
     // Step 1 -> Step 2
     await page.getByRole("button", { name: /^Next/i }).click();

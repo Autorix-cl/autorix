@@ -21,7 +21,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Non-root user for Zero Trust security
-RUN addgroup -S autorix && adduser -S autorix -G autorix
+RUN apk upgrade --no-cache && addgroup -S autorix && adduser -S autorix -G autorix
 
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=autorix:autorix /app/.next/standalone ./

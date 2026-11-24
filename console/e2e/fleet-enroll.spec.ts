@@ -14,8 +14,8 @@ test.describe("Argus Fleet Engine Enrollment Wizard", () => {
     await page.getByRole("button", { name: /mint enrollment token/i }).click();
 
     // Verify token and runtime tabs appear
-    await expect(page.getByText(/enrollment token minted/i)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/aet_live_/i).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /enrollment token minted/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/aet_[A-Za-z0-9_-]+/i).first()).toBeVisible();
     await expect(page.getByRole("tab", { name: /docker/i })).toBeVisible();
   });
 });

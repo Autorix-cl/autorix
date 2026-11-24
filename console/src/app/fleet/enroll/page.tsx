@@ -14,7 +14,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Wizard, type WizardStep } from "@/components/resources/wizard";
 
 const VALID_ENGINES = new Set(["ego", "nexus", "janus", "aegis", "vulcan", "hermes", "themis"]);
-const VALID_ENVS = new Set(["prod", "staging", "dev"]);
+const ENV_ALIASES: Record<string, string> = {
+  prod: "production",
+  production: "production",
+  staging: "staging",
+  dev: "development",
+  development: "development",
+};
 
 function readCsrfCookie(): string | undefined {
   if (typeof document === "undefined") return undefined;
@@ -30,7 +36,7 @@ function FleetEnrollContent() {
   const [engineType, setEngineType] = React.useState(
     initialType && VALID_ENGINES.has(initialType) ? initialType : "ego",
   );
-  const [environment, setEnvironment] = React.useState(initialEnv && VALID_ENVS.has(initialEnv) ? initialEnv : "prod");
+  const [environment, setEnvironment] = React.useState((initialEnv && ENV_ALIASES[initialEnv]) || "production");
   const [usesAllowed, setUsesAllowed] = React.useState("1");
   const [ttlHours, setTtlHours] = React.useState("24");
   const [isMinting, setIsMinting] = React.useState(false);
@@ -51,9 +57,9 @@ function FleetEnrollContent() {
         },
         body: JSON.stringify({
           engine_type: engineType,
-          environment_id: environment,
+          environment,
           uses_allowed: Math.max(1, parseInt(usesAllowed, 10) || 1),
-          ttl_seconds: Math.max(1, parseInt(ttlHours, 10) || 24) * 3600,
+          expires_in_seconds: Math.max(1, parseInt(ttlHours, 10) || 24) * 3600,
         }),
       });
 
@@ -143,9 +149,9 @@ export AUTORIX_ENVIRONMENT="${environment}"
               onChange={(e) => setEnvironment(e.target.value)}
               className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <option value="prod">Production</option>
+              <option value="production">Production</option>
               <option value="staging">Staging</option>
-              <option value="dev">Development</option>
+              <option value="development">Development</option>
             </select>
           </div>
         </div>
