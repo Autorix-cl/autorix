@@ -13,12 +13,21 @@ import (
 	"github.com/autorix/platform/paging"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var (
-	ErrNotFound = errors.New("record not found")
+	ErrNotFound           = errors.New("record not found")
+	ErrConflict           = errors.New("record already exists")
+	ErrInvalidCertificate = errors.New("invalid or expired SAML certificate")
+	ErrInvalidProvider    = errors.New("invalid SAML provider configuration")
 )
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
 
 type Repository struct {
 	pool *pgxpool.Pool
@@ -49,18 +58,27 @@ func populateCertDetails(p *core.SAMLProvider) {
 	}
 }
 
-// CreateSAMLProvider registers a new SAML IdP
+// CreateSAMLProvider registers a new SAML IdP after validating its SSO URL and X.509 certificate.
 func (r *Repository) CreateSAMLProvider(ctx context.Context, p *core.SAMLProvider) error {
 	now := time.Now()
-	if p.IdPCertificatePEM == "" {
-		p.IdPCertificatePEM = "-----BEGIN CERTIFICATE-----\nMIID...AUTORIX...CERT\n-----END CERTIFICATE-----"
+	if err := saml.ValidateSSOURL(p.IdPSSOURL); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidProvider, err)
 	}
+	certs, expiresAt, warnings, err := saml.ValidateCertificatesPEM(p.IdPCertificatePEM)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidCertificate, err)
+	}
+	p.Certificates = certs
+	p.Warnings = warnings
+	p.IdPCertExpiresAt = expiresAt
+
 	if p.AttributeMapping == nil {
 		p.AttributeMapping = map[string]string{}
 	}
-	mappingJSON, _ := json.Marshal(p.AttributeMapping)
-
-	populateCertDetails(p)
+	mappingJSON, err := json.Marshal(p.AttributeMapping)
+	if err != nil {
+		return fmt.Errorf("failed to marshal attribute_mapping: %w", err)
+	}
 
 	query := `
 		INSERT INTO saml_providers (
@@ -68,11 +86,14 @@ func (r *Repository) CreateSAMLProvider(ctx context.Context, p *core.SAMLProvide
 			idp_cert_expires_at, sp_entity_id, attribute_mapping, enabled, created_at, updated_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
 	`
-	_, err := r.pool.Exec(ctx, query,
+	_, err = r.pool.Exec(ctx, query,
 		p.ID, p.DisplayName, p.IdPEntityID, p.IdPSSOURL, p.IdPCertificatePEM,
 		p.IdPCertExpiresAt, p.SPEntityID, mappingJSON, p.Enabled, now,
 	)
 	if err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("%w: %v", ErrConflict, err)
+		}
 		return fmt.Errorf("failed to insert saml provider: %w", err)
 	}
 
@@ -81,15 +102,27 @@ func (r *Repository) CreateSAMLProvider(ctx context.Context, p *core.SAMLProvide
 	return nil
 }
 
-// UpdateSAMLProvider updates an existing SAML IdP
+// UpdateSAMLProvider updates an existing SAML IdP after validating its SSO URL and X.509 certificate.
 func (r *Repository) UpdateSAMLProvider(ctx context.Context, p *core.SAMLProvider) error {
 	now := time.Now()
+	if err := saml.ValidateSSOURL(p.IdPSSOURL); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidProvider, err)
+	}
+	certs, expiresAt, warnings, err := saml.ValidateCertificatesPEM(p.IdPCertificatePEM)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidCertificate, err)
+	}
+	p.Certificates = certs
+	p.Warnings = warnings
+	p.IdPCertExpiresAt = expiresAt
+
 	if p.AttributeMapping == nil {
 		p.AttributeMapping = map[string]string{}
 	}
-	mappingJSON, _ := json.Marshal(p.AttributeMapping)
-
-	populateCertDetails(p)
+	mappingJSON, err := json.Marshal(p.AttributeMapping)
+	if err != nil {
+		return fmt.Errorf("failed to marshal attribute_mapping: %w", err)
+	}
 
 	query := `
 		UPDATE saml_providers
@@ -167,7 +200,7 @@ func (r *Repository) ListSAMLProviders(ctx context.Context, limit int, cursor st
 	}
 	defer rows.Close()
 
-	var providers []core.SAMLProvider
+	providers := make([]core.SAMLProvider, 0)
 	for rows.Next() {
 		var p core.SAMLProvider
 		var mappingJSON []byte
@@ -180,6 +213,9 @@ func (r *Repository) ListSAMLProviders(ctx context.Context, limit int, cursor st
 		_ = json.Unmarshal(mappingJSON, &p.AttributeMapping)
 		populateCertDetails(&p)
 		providers = append(providers, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("failed to iterate saml providers: %w", err)
 	}
 
 	hasMore := len(providers) > limit
@@ -232,6 +268,32 @@ func (r *Repository) GetSAMLProvider(ctx context.Context, id string) (*core.SAML
 	return &p, nil
 }
 
+// GetSAMLProviderByEntityID retrieves a SAML provider by its IdP EntityID (Issuer)
+func (r *Repository) GetSAMLProviderByEntityID(ctx context.Context, entityID string) (*core.SAMLProvider, error) {
+	query := `
+		SELECT id, display_name, idp_entity_id, idp_sso_url, idp_certificate_pem,
+		       idp_cert_expires_at, sp_entity_id, attribute_mapping, enabled, created_at, updated_at
+		FROM saml_providers
+		WHERE idp_entity_id = $1
+	`
+	var p core.SAMLProvider
+	var mappingJSON []byte
+	err := r.pool.QueryRow(ctx, query, entityID).Scan(
+		&p.ID, &p.DisplayName, &p.IdPEntityID, &p.IdPSSOURL, &p.IdPCertificatePEM,
+		&p.IdPCertExpiresAt, &p.SPEntityID, &mappingJSON, &p.Enabled, &p.CreatedAt, &p.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to query saml provider by entity_id: %w", err)
+	}
+
+	_ = json.Unmarshal(mappingJSON, &p.AttributeMapping)
+	populateCertDetails(&p)
+	return &p, nil
+}
+
 // CreateSCIMUser persists an RFC 7643 user
 func (r *Repository) CreateSCIMUser(ctx context.Context, u *core.SCIMUser) error {
 	now := time.Now()
@@ -255,6 +317,9 @@ func (r *Repository) CreateSCIMUser(ctx context.Context, u *core.SCIMUser) error
 		u.ID, u.ExternalID, u.UserName, u.DisplayName, primaryEmail, u.Active, attrJSON, now,
 	)
 	if err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("%w: %v", ErrConflict, err)
+		}
 		return fmt.Errorf("failed to insert scim user: %w", err)
 	}
 
@@ -276,7 +341,7 @@ func (r *Repository) ListSCIMUsers(ctx context.Context) ([]core.SCIMUser, error)
 	}
 	defer rows.Close()
 
-	var users []core.SCIMUser
+	users := make([]core.SCIMUser, 0)
 	for rows.Next() {
 		var u core.SCIMUser
 		var email string
@@ -289,6 +354,9 @@ func (r *Repository) ListSCIMUsers(ctx context.Context) ([]core.SCIMUser, error)
 		}
 		u.Emails = []core.SCIMEmail{{Value: email, Primary: true, Type: "work"}}
 		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate scim users: %w", err)
 	}
 
 	return users, nil
@@ -316,6 +384,9 @@ func (r *Repository) CreateSCIMGroup(ctx context.Context, g *core.SCIMGroup) err
 	`
 	_, err = r.pool.Exec(ctx, query, g.ID, g.DisplayName, membersJSON, now)
 	if err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("%w: %v", ErrConflict, err)
+		}
 		return fmt.Errorf("failed to insert scim group: %w", err)
 	}
 
@@ -344,6 +415,9 @@ func (r *Repository) GetSCIMGroup(ctx context.Context, id uuid.UUID) (*core.SCIM
 	}
 
 	_ = json.Unmarshal(membersJSON, &g.Members)
+	if g.Members == nil {
+		g.Members = []core.SCIMMember{}
+	}
 	return &g, nil
 }
 
@@ -360,7 +434,7 @@ func (r *Repository) ListSCIMGroups(ctx context.Context) ([]core.SCIMGroup, erro
 	}
 	defer rows.Close()
 
-	var groups []core.SCIMGroup
+	groups := make([]core.SCIMGroup, 0)
 	for rows.Next() {
 		var g core.SCIMGroup
 		var membersJSON []byte
@@ -371,7 +445,13 @@ func (r *Repository) ListSCIMGroups(ctx context.Context) ([]core.SCIMGroup, erro
 			return nil, fmt.Errorf("failed to scan scim group: %w", err)
 		}
 		_ = json.Unmarshal(membersJSON, &g.Members)
+		if g.Members == nil {
+			g.Members = []core.SCIMMember{}
+		}
 		groups = append(groups, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate scim groups: %w", err)
 	}
 
 	return groups, nil
@@ -459,6 +539,9 @@ func (r *Repository) ListSCIMSyncHistory(ctx context.Context, limit int) ([]core
 	if limit <= 0 {
 		limit = 50
 	}
+	if limit > 200 {
+		limit = 200
+	}
 	query := `
 		SELECT id, provider_id, resource_type, status, total_records,
 		       created_count, updated_count, deleted_count, error_count,
@@ -473,7 +556,7 @@ func (r *Repository) ListSCIMSyncHistory(ctx context.Context, limit int) ([]core
 	}
 	defer rows.Close()
 
-	var history []core.SCIMSyncHistory
+	history := make([]core.SCIMSyncHistory, 0)
 	for rows.Next() {
 		var s core.SCIMSyncHistory
 		var errorsJSON []byte
@@ -490,9 +573,14 @@ func (r *Repository) ListSCIMSyncHistory(ctx context.Context, limit int) ([]core
 			s.ProviderID = *providerID
 		}
 		_ = json.Unmarshal(errorsJSON, &s.Errors)
+		if s.Errors == nil {
+			s.Errors = []string{}
+		}
 		history = append(history, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate scim sync history: %w", err)
 	}
 
 	return history, nil
 }
-

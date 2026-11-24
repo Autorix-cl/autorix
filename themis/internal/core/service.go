@@ -7,11 +7,26 @@ import (
 	"time"
 )
 
+type contextEvaluator interface {
+	EvaluateContext(ctx context.Context, expression string, payload map[string]interface{}) (bool, error)
+}
+
+type uncachedEvaluator interface {
+	EvaluateUncached(ctx context.Context, expression string, payload map[string]interface{}) (bool, error)
+}
+
 // Service implements the PolicyEngine interface, orchestrating the
 // repository and evaluator to handle CRUD + evaluation operations.
 type Service struct {
 	repo      PolicyRepository
 	evaluator PolicyEvaluator
+}
+
+func (s *Service) evalWithContext(ctx context.Context, expression string, payload map[string]interface{}) (bool, error) {
+	if ce, ok := s.evaluator.(contextEvaluator); ok {
+		return ce.EvaluateContext(ctx, expression, payload)
+	}
+	return s.evaluator.Evaluate(expression, payload)
 }
 
 // NewService creates a new policy engine service.
@@ -99,8 +114,48 @@ func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (resp *Eval
 		return policies[i].Priority < policies[j].Priority
 	})
 
-	resp = &EvaluateResponse{
+	return s.evaluatePolicies(ctx, policies, req.Payload), nil
+}
+
+// EvaluateBatch loads the tenant's enabled policies once and evaluates all
+// payloads against that policy set without repeated database roundtrips.
+func (s *Service) EvaluateBatch(ctx context.Context, tenantID string, labelFilter map[string]string, payloads []map[string]interface{}) ([]*EvaluateResponse, error) {
+	policies, err := s.repo.List(ctx, ListFilter{
+		TenantID:    tenantID,
+		EnabledOnly: true,
+		Labels:      labelFilter,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list policies: %w", err)
+	}
+
+	sort.Slice(policies, func(i, j int) bool {
+		return policies[i].Priority < policies[j].Priority
+	})
+
+	responses := make([]*EvaluateResponse, 0, len(payloads))
+	for _, payload := range payloads {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		start := time.Now()
+		resp := s.evaluatePolicies(ctx, policies, payload)
+		themisEvaluationDuration.Observe(time.Since(start).Seconds())
+		decision := "deny"
+		if resp.AllPassed {
+			decision = "allow"
+		}
+		themisEvaluationTotal.WithLabelValues(decision).Inc()
+		responses = append(responses, resp)
+	}
+
+	return responses, nil
+}
+
+func (s *Service) evaluatePolicies(ctx context.Context, policies []Policy, payload map[string]interface{}) *EvaluateResponse {
+	resp := &EvaluateResponse{
 		AllPassed:      true,
+		Results:        make([]PolicyResult, 0, len(policies)),
 		TotalEvaluated: int32(len(policies)), // #nosec G115 -- bounded by a tenant's policy count, never near int32 range
 	}
 
@@ -111,7 +166,7 @@ func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (resp *Eval
 			Expression: p.Expression,
 		}
 
-		passed, evalErr := s.evaluator.Evaluate(p.Expression, req.Payload)
+		passed, evalErr := s.evalWithContext(ctx, p.Expression, payload)
 		if evalErr != nil {
 			result.Passed = false
 			result.Error = evalErr.Error()
@@ -126,7 +181,7 @@ func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (resp *Eval
 		resp.Results = append(resp.Results, result)
 	}
 
-	return resp, nil
+	return resp
 }
 
 // ListPolicyVersions retrieves the revision history for a policy.
@@ -144,9 +199,18 @@ func (s *Service) ValidateExpression(ctx context.Context, expression string) (*V
 	return s.evaluator.Validate(expression)
 }
 
-// DryRun evaluates an unpersisted expression against a test payload.
+// DryRun evaluates an unpersisted expression against a test payload without
+// inserting the untrusted expression into the shared production CEL cache.
 func (s *Service) DryRun(ctx context.Context, req DryRunRequest) (*DryRunResult, error) {
-	passed, err := s.evaluator.Evaluate(req.Expression, req.Payload)
+	var (
+		passed bool
+		err    error
+	)
+	if ue, ok := s.evaluator.(uncachedEvaluator); ok {
+		passed, err = ue.EvaluateUncached(ctx, req.Expression, req.Payload)
+	} else {
+		passed, err = s.evalWithContext(ctx, req.Expression, req.Payload)
+	}
 	if err != nil {
 		return &DryRunResult{
 			Passed: false,
@@ -190,10 +254,11 @@ func (s *Service) RunTestSuite(ctx context.Context, tenantID, policyID string) (
 		PolicyID:   policyID,
 		AllPassed:  true,
 		TotalTests: len(fixtures),
+		Results:    make([]FixtureRunResult, 0, len(fixtures)),
 	}
 
 	for _, f := range fixtures {
-		actual, evalErr := s.evaluator.Evaluate(policy.Expression, f.Payload)
+		actual, evalErr := s.evalWithContext(ctx, policy.Expression, f.Payload)
 		res := FixtureRunResult{
 			FixtureID:      f.ID,
 			FixtureName:    f.Name,

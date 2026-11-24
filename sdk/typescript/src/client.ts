@@ -18,6 +18,7 @@ export interface AutorixConfig {
   apiKey?: string;
   enableCache?: boolean;
   cacheTtlMs?: number;
+  maxCacheSize?: number;
   timeoutMs?: number;
   retryConfig?: RetryConfig;
   /** Injectable transport for tests or non-browser runtimes. */
@@ -81,7 +82,7 @@ export class AutorixClient {
     this.config = {
       baseUrl: config.baseUrl ?? "http://localhost:4455", egoUrl: config.egoUrl ?? "http://localhost:4433", nexusUrl: config.nexusUrl ?? "http://localhost:8080",
       themisUrl: config.themisUrl ?? "http://localhost:4488", janusUrl: config.janusUrl ?? "http://localhost:4444", vulcanUrl: config.vulcanUrl ?? "http://localhost:4466", argusUrl: config.argusUrl ?? "http://localhost:4400",
-      apiKey: config.apiKey, enableCache: config.enableCache ?? true, cacheTtlMs: config.cacheTtlMs ?? 10_000, timeoutMs: config.timeoutMs ?? 10_000,
+      apiKey: config.apiKey, enableCache: config.enableCache ?? true, cacheTtlMs: config.cacheTtlMs ?? 10_000, maxCacheSize: Math.max(1, config.maxCacheSize ?? 10_000), timeoutMs: config.timeoutMs ?? 10_000,
       retryConfig: { maxRetries: config.retryConfig?.maxRetries ?? 3, initialDelayMs: config.retryConfig?.initialDelayMs ?? 50, maxDelayMs: config.retryConfig?.maxDelayMs ?? 2_000, backoffFactor: config.retryConfig?.backoffFactor ?? 2 },
       fetch: config.fetch ?? globalThis.fetch,
     };
@@ -89,18 +90,21 @@ export class AutorixClient {
   }
 
   private url(base: string, path: string, query?: Record<string, string | number | boolean | undefined>): string {
-    const result = new URL(path, base.endsWith("/") ? base : `${base}/`);
+    const normalizedBase = base.endsWith("/") ? base : `${base}/`;
+    const relativePath = path.replace(/^\/+/, "");
+    const result = new URL(relativePath, normalizedBase);
     for (const [key, value] of Object.entries(query ?? {})) if (value !== undefined) result.searchParams.set(key, String(value));
     return result.toString();
   }
 
-  private async request<T>(base: string, path: string, init: RequestInit & { retry?: boolean } = {}, query?: Record<string, string | number | boolean | undefined>): Promise<T> {
+  private async request<T>(base: string, path: string, init: RequestInit & { retry?: boolean; includeApiKey?: boolean } = {}, query?: Record<string, string | number | boolean | undefined>): Promise<T> {
     const method = (init.method ?? "GET").toUpperCase() as HttpMethod;
     // Retrying non-idempotent writes can duplicate credentials, policies, or relationships.
     const retry = init.retry ?? ["GET", "HEAD", "OPTIONS"].includes(method);
+    const includeApiKey = init.includeApiKey ?? true;
     const headers = new Headers(init.headers);
     headers.set("X-Autorix-SDK", "typescript/1.0.0");
-    if (this.config.apiKey && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${this.config.apiKey}`);
+    if (includeApiKey && this.config.apiKey && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${this.config.apiKey}`);
     const target = this.url(base, path, query);
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.config.retryConfig.maxRetries; attempt++) {
@@ -134,6 +138,21 @@ export class AutorixClient {
     throw lastError ?? new Error("Autorix request failed");
   }
 
+  private setCacheEntry<T>(key: string, data: T): void {
+    const now = Date.now();
+    if (!this.cache.has(key) && this.cache.size >= this.config.maxCacheSize) {
+      for (const [k, item] of this.cache) {
+        if (now >= item.expiresAt) this.cache.delete(k);
+      }
+      while (this.cache.size >= this.config.maxCacheSize) {
+        const oldest = this.cache.keys().next().value;
+        if (oldest === undefined) break;
+        this.cache.delete(oldest);
+      }
+    }
+    this.cache.set(key, { data, expiresAt: now + this.config.cacheTtlMs });
+  }
+
   /** Retrieves the active Ego session. Invalid sessions intentionally return null. */
   async whoami(token?: string, signal?: AbortSignal): Promise<UserSession | null> {
     try { return await this.request<UserSession>(this.config.egoUrl, "/sessions/whoami", { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", signal }); }
@@ -143,19 +162,26 @@ export class AutorixClient {
 
   /** Fails closed: transport and API failures become denied decisions. */
   async check(req: CheckPermissionRequest, signal?: AbortSignal): Promise<CheckPermissionResponse> {
-    const cacheKey = `nexus:${req.namespace}:${req.object}#${req.relation}@${req.subjectNamespace ?? "user"}:${req.subject}`;
-    const cached = this.cache.get(cacheKey) as CacheItem<CheckPermissionResponse> | undefined;
-    if (this.config.enableCache && cached && Date.now() < cached.expiresAt) return cached.data;
+    const hasContext = req.context !== undefined && Object.keys(req.context).length > 0;
+    const cacheable = this.config.enableCache && !hasContext && !req.snapToken && !req.explain;
+    const cacheKey = `nexus:${encodeURIComponent(req.namespace)}:${encodeURIComponent(req.object)}#${encodeURIComponent(req.relation)}@${encodeURIComponent(req.subjectNamespace ?? "user")}:${encodeURIComponent(req.subject)}#${encodeURIComponent(req.subjectRelation ?? "")}`;
+    if (cacheable) {
+      const cached = this.cache.get(cacheKey) as CacheItem<CheckPermissionResponse> | undefined;
+      if (cached) {
+        if (Date.now() < cached.expiresAt) return cached.data;
+        this.cache.delete(cacheKey);
+      }
+    }
     try {
       const response = await this.request<CheckPermissionResponse>(this.config.nexusUrl, "/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ namespace: req.namespace, object: req.object, relation: req.relation, subject_id: req.subject, subject_namespace: req.subjectNamespace ?? "user", subject_relation: req.subjectRelation, request_context: req.context, explain: req.explain, snap_token: req.snapToken }), signal });
-      if (this.config.enableCache) this.cache.set(cacheKey, { data: response, expiresAt: Date.now() + this.config.cacheTtlMs });
+      if (cacheable) this.setCacheEntry(cacheKey, response);
       return response;
     } catch (error) { return { allowed: false, reason: error instanceof Error ? error.message : "Nexus check failed" }; }
   }
   async checkBatch(requests: CheckPermissionRequest[], signal?: AbortSignal): Promise<CheckPermissionResponse[]> { return Promise.all(requests.map((request) => this.check(request, signal))); }
   async listTuples(namespace?: string, page?: { limit?: number; cursor?: string }, signal?: AbortSignal): Promise<Page<RelationTuple>> { return this.request<Page<RelationTuple>>(this.config.nexusUrl, "/tuples", { signal }, { namespace, limit: page?.limit, cursor: page?.cursor }); }
-  async writeTuples(tuples: RelationTuple[], signal?: AbortSignal): Promise<void> { return this.request<void>(this.config.nexusUrl, "/tuples", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tuples: tuples.map(toWireTuple) }), signal }); }
-  async deleteTuples(tuples: RelationTuple[], signal?: AbortSignal): Promise<void> { return this.request<void>(this.config.nexusUrl, "/tuples", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tuples: tuples.map(toWireTuple) }), signal }); }
+  async writeTuples(tuples: RelationTuple[], signal?: AbortSignal): Promise<void> { await this.request<void>(this.config.nexusUrl, "/tuples", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tuples: tuples.map(toWireTuple) }), signal }); this.cache.clear(); }
+  async deleteTuples(tuples: RelationTuple[], signal?: AbortSignal): Promise<void> { await this.request<void>(this.config.nexusUrl, "/tuples", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tuples: tuples.map(toWireTuple) }), signal }); this.cache.clear(); }
   async expand(namespace: string, object: string, relation: string, signal?: AbortSignal): Promise<Record<string, unknown>> { return this.request(this.config.nexusUrl, "/expand", { signal }, { namespace, object, relation }); }
   async lookupSubjects(namespace: string, object: string, relation: string, signal?: AbortSignal): Promise<RelationTuple[]> { const result = await this.request<{ subjects: RelationTuple[] }>(this.config.nexusUrl, "/lookup/subjects", { signal }, { namespace, object, relation }); return result.subjects; }
   async lookupResources(namespace: string, relation: string, subject: string, subjectNamespace = "user", signal?: AbortSignal): Promise<string[]> { const result = await this.request<{ resources: string[] }>(this.config.nexusUrl, "/lookup/resources", { signal }, { namespace, relation, subject_id: subject, subject_namespace: subjectNamespace }); return result.resources; }
@@ -185,7 +211,7 @@ export class AutorixClient {
   createAuthorizationUrl(options: { clientId: string; redirectUri: string; state: string; codeChallenge: string; scope?: string; nonce?: string; }): string { return this.url(this.config.janusUrl, "/oauth2/auth", { client_id: options.clientId, redirect_uri: options.redirectUri, response_type: "code", state: options.state, code_challenge: options.codeChallenge, code_challenge_method: "S256", scope: options.scope ?? "openid", nonce: options.nonce }); }
   async exchangeAuthorizationCode(options: { code: string; redirectUri: string; clientId: string; codeVerifier: string; clientSecret?: string }, signal?: AbortSignal): Promise<TokenResponse> { return this.token({ grant_type: "authorization_code", code: options.code, redirect_uri: options.redirectUri, client_id: options.clientId, code_verifier: options.codeVerifier, client_secret: options.clientSecret }, signal); }
   async refreshToken(refreshToken: string, clientId: string, clientSecret?: string, signal?: AbortSignal): Promise<TokenResponse> { return this.token({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: clientId, client_secret: clientSecret }, signal); }
-  private async token(params: Record<string, string | undefined>, signal?: AbortSignal): Promise<TokenResponse> { const body = new URLSearchParams(); for (const [key, value] of Object.entries(params)) if (value !== undefined) body.set(key, value); return this.request(this.config.janusUrl, "/oauth2/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body, signal }); }
+  private async token(params: Record<string, string | undefined>, signal?: AbortSignal): Promise<TokenResponse> { const body = new URLSearchParams(); for (const [key, value] of Object.entries(params)) if (value !== undefined) body.set(key, value); return this.request(this.config.janusUrl, "/oauth2/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body, signal, includeApiKey: false }); }
   async introspectToken(token: string, signal?: AbortSignal): Promise<TokenIntrospectionResponse> { return this.request(this.config.janusUrl, "/oauth2/introspect", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ token }), signal }); }
   async revokeToken(token: string, signal?: AbortSignal): Promise<void> { return this.request<void>(this.config.janusUrl, "/oauth2/revoke", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ token }), signal }); }
 

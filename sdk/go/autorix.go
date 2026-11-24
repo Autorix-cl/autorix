@@ -10,9 +10,11 @@ import (
 type contextKey string
 
 const (
-	userCtxKey         contextKey = "autorix_user"
-	requestIDCtxKey    contextKey = "autorix_request_id"
+	userCtxKey          contextKey = "autorix_user"
+	requestIDCtxKey     contextKey = "autorix_request_id"
 	correlationIDCtxKey contextKey = "autorix_correlation_id"
+
+	defaultMaxCacheEntries = 10000
 )
 
 // Config contains comprehensive connection parameters for all Autorix engines.
@@ -32,10 +34,11 @@ type Config struct {
 	SessionToken string // Argus Operator / Ego Session Token ("ast_...")
 
 	// Resilience & Performance
-	RetryConfig RetryConfig   // Exponential backoff and full jitter configuration
-	EnableCache bool          // In-memory cache for authorization decisions
-	CacheTTL    time.Duration // Cache lifespan (default: 10s)
-	HTTPClient  *http.Client  // Underlying HTTP client
+	RetryConfig     RetryConfig   // Exponential backoff and full jitter configuration
+	EnableCache     bool          // In-memory cache for authorization decisions
+	CacheTTL        time.Duration // Cache lifespan (default: 10s)
+	MaxCacheEntries int           // Maximum cached permission decisions (default: 10000)
+	HTTPClient      *http.Client  // Underlying HTTP client
 }
 
 // User represents an authenticated identity propagated from Aegis or Ego.
@@ -62,13 +65,72 @@ type Client struct {
 }
 
 type cacheStore struct {
-	mu    sync.RWMutex
-	items map[string]cacheItem
+	mu         sync.RWMutex
+	items      map[string]cacheItem
+	maxEntries int
+	seq        uint64
 }
 
 type cacheItem struct {
 	allowed   bool
 	expiresAt time.Time
+	seq       uint64
+}
+
+func (cs *cacheStore) get(key string) (bool, bool) {
+	now := time.Now()
+	cs.mu.RLock()
+	item, found := cs.items[key]
+	if found && now.Before(item.expiresAt) {
+		cs.mu.RUnlock()
+		return item.allowed, true
+	}
+	cs.mu.RUnlock()
+
+	if found {
+		cs.mu.Lock()
+		if cur, ok := cs.items[key]; ok && !time.Now().Before(cur.expiresAt) {
+			delete(cs.items, key)
+		}
+		cs.mu.Unlock()
+	}
+	return false, false
+}
+
+func (cs *cacheStore) set(key string, allowed bool, ttl time.Duration) {
+	now := time.Now()
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	if _, exists := cs.items[key]; !exists && cs.maxEntries > 0 && len(cs.items) >= cs.maxEntries {
+		for k, it := range cs.items {
+			if !now.Before(it.expiresAt) {
+				delete(cs.items, k)
+			}
+		}
+		if len(cs.items) >= cs.maxEntries {
+			var oldestKey string
+			var oldestSeq uint64
+			first := true
+			for k, it := range cs.items {
+				if first || it.seq < oldestSeq {
+					oldestKey = k
+					oldestSeq = it.seq
+					first = false
+				}
+			}
+			if !first {
+				delete(cs.items, oldestKey)
+			}
+		}
+	}
+
+	cs.seq++
+	cs.items[key] = cacheItem{
+		allowed:   allowed,
+		expiresAt: now.Add(ttl),
+		seq:       cs.seq,
+	}
 }
 
 // Option configures the Autorix Client using functional options.
@@ -131,6 +193,9 @@ func NewClient(cfg Config, opts ...Option) *Client {
 	if cfg.CacheTTL == 0 {
 		cfg.CacheTTL = 10 * time.Second
 	}
+	if cfg.MaxCacheEntries <= 0 {
+		cfg.MaxCacheEntries = defaultMaxCacheEntries
+	}
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = &http.Client{Timeout: 10 * time.Second}
 	}
@@ -141,7 +206,8 @@ func NewClient(cfg Config, opts ...Option) *Client {
 	c := &Client{
 		config: cfg,
 		cache: &cacheStore{
-			items: make(map[string]cacheItem),
+			items:      make(map[string]cacheItem),
+			maxEntries: cfg.MaxCacheEntries,
 		},
 	}
 
@@ -168,12 +234,17 @@ func WithUser(ctx context.Context, u *User) context.Context {
 
 // prepareRequest attaches authentication headers and W3C distributed tracing context.
 func (c *Client) prepareRequest(ctx context.Context, req *http.Request) {
-	req.Header.Set("User-Agent", "Autorix-Go-SDK/1.0.0")
+	c.preparePublicRequest(ctx, req)
 
 	// Inject API Key if present
 	if c.config.APIKey != "" && req.Header.Get("Authorization") == "" {
 		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
 	}
+}
+
+// preparePublicRequest attaches user agent and tracing headers without injecting APIKey.
+func (c *Client) preparePublicRequest(ctx context.Context, req *http.Request) {
+	req.Header.Set("User-Agent", "Autorix-Go-SDK/1.0.0")
 
 	// Propagate Correlation / Request IDs
 	if reqID, ok := ctx.Value(requestIDCtxKey).(string); ok && reqID != "" {

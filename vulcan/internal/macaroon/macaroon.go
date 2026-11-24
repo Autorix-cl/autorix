@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
@@ -58,6 +59,10 @@ func Attenuate(m *core.Macaroon, predicate string) (*core.Macaroon, error) {
 
 // Verify validates both the chained cryptographic signature and all caveats
 func Verify(m *core.Macaroon, rootSignatureKey string, vCtx *core.VerificationContext) (bool, error) {
+	if m == nil || rootSignatureKey == "" {
+		return false, ErrInvalidSignature
+	}
+
 	// 1. Reconstruct Chained Signature from Root Key
 	h := hmac.New(sha256.New, []byte(rootSignatureKey))
 	h.Write([]byte(m.KeyID))
@@ -76,8 +81,11 @@ func Verify(m *core.Macaroon, rootSignatureKey string, vCtx *core.VerificationCo
 		return false, ErrInvalidSignature
 	}
 
-	// 2. Evaluate all Caveats against Context
-	if vCtx != nil {
+	// 2. Evaluate all Caveats against Context (fail-closed if caveats exist without context)
+	if len(m.Caveats) > 0 {
+		if vCtx == nil {
+			return false, fmt.Errorf("%w: verification context is required when caveats are present", ErrCaveatFailed)
+		}
 		for _, c := range m.Caveats {
 			if err := evaluateCaveat(c.Predicate, vCtx); err != nil {
 				return false, fmt.Errorf("%w: %v", ErrCaveatFailed, err)
@@ -99,6 +107,9 @@ func evaluateCaveat(predicate string, vCtx *core.VerificationContext) error {
 
 	switch key {
 	case "time_before":
+		if vCtx.Now.IsZero() {
+			return errors.New("verification time context is required for time_before caveat")
+		}
 		t, err := time.Parse(time.RFC3339, val)
 		if err != nil {
 			return fmt.Errorf("invalid time format: %w", err)
@@ -108,20 +119,59 @@ func evaluateCaveat(predicate string, vCtx *core.VerificationContext) error {
 		}
 
 	case "ip":
-		if vCtx.IPAddress != "" && vCtx.IPAddress != val {
+		if val == "" {
+			return errors.New("ip caveat value cannot be empty")
+		}
+		if vCtx.IPAddress == "" {
+			return errors.New("request IP is required for ip caveat")
+		}
+		if vCtx.IPAddress != val {
 			return fmt.Errorf("request IP %s does not match allowed IP %s", vCtx.IPAddress, val)
 		}
 
 	case "method":
-		if vCtx.Method != "" && !strings.EqualFold(vCtx.Method, val) {
+		if val == "" {
+			return errors.New("method caveat value cannot be empty")
+		}
+		if vCtx.Method == "" {
+			return errors.New("request method is required for method caveat")
+		}
+		if !strings.EqualFold(vCtx.Method, val) {
 			return fmt.Errorf("request method %s not allowed (expected %s)", vCtx.Method, val)
 		}
 
 	case "path_prefix":
-		if vCtx.Path != "" && !strings.HasPrefix(vCtx.Path, val) {
+		if val == "" {
+			return errors.New("path_prefix caveat value cannot be empty")
+		}
+		if vCtx.Path == "" {
+			return errors.New("request path is required for path_prefix caveat")
+		}
+		if !matchPathPrefix(vCtx.Path, val) {
 			return fmt.Errorf("request path %s does not match prefix %s", vCtx.Path, val)
 		}
+
+	default:
+		return fmt.Errorf("unknown caveat predicate: %s", key)
 	}
 
 	return nil
+}
+
+// matchPathPrefix normalizes both paths via path.Clean and enforces path
+// segment boundaries so traversal payloads (e.g. /public/../admin) or sibling
+// prefixes (e.g. /public-secret for /public) are rejected.
+func matchPathPrefix(reqPath, prefix string) bool {
+	if strings.Contains(reqPath, "\\") || strings.Contains(prefix, "\\") {
+		return false
+	}
+	if !strings.HasPrefix(reqPath, "/") || !strings.HasPrefix(prefix, "/") {
+		return false
+	}
+	cleanPath := path.Clean(reqPath)
+	cleanPrefix := path.Clean(prefix)
+	if cleanPrefix == "/" {
+		return strings.HasPrefix(cleanPath, "/")
+	}
+	return cleanPath == cleanPrefix || strings.HasPrefix(cleanPath, cleanPrefix+"/")
 }

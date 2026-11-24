@@ -2,7 +2,6 @@ package apl
 
 import (
 	"testing"
-
 )
 
 func TestParseNamespace(t *testing.T) {
@@ -71,7 +70,7 @@ func TestParseNamespace(t *testing.T) {
 
 func TestSimpleParse(t *testing.T) {
 	input := `class Document implements Namespace { related: { owner: User[] }; permits = { edit: (ctx) => this.related.owner } }`
-	
+
 	ns, err := Parse(input)
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)

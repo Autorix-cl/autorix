@@ -634,4 +634,3 @@ func TestScopesCatalogue_CRUD(t *testing.T) {
 		t.Errorf("ListScopes() after delete: %v", scopes)
 	}
 }
-

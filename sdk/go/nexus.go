@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
-	"time"
 )
 
 // NexusClient provides fine-grained ReBAC and Zanzibar relation operations.
@@ -29,13 +29,15 @@ type CheckRequest struct {
 	SubjectRelation  string                 `json:"subject_relation,omitempty"`
 	RequestContext   map[string]interface{} `json:"request_context,omitempty"`
 	Explain          bool                   `json:"explain,omitempty"`
+	SnapToken        string                 `json:"snap_token,omitempty"`
 }
 
 // CheckResponse returns the authorization evaluation decision.
 type CheckResponse struct {
-	Allowed bool                   `json:"allowed"`
-	Reason  string                 `json:"reason,omitempty"`
-	Trace   map[string]interface{} `json:"trace,omitempty"`
+	Allowed   bool                   `json:"allowed"`
+	Reason    string                 `json:"reason,omitempty"`
+	Trace     map[string]interface{} `json:"trace,omitempty"`
+	SnapToken string                 `json:"snap_token,omitempty"`
 }
 
 // Check evaluates whether a subject has a relation on a namespace:object (Fail-Closed).
@@ -48,18 +50,21 @@ func (n *NexusClient) Check(ctx context.Context, req CheckRequest) (bool, error)
 		req.SubjectNamespace = "user"
 	}
 
-	cacheKey := fmt.Sprintf("%s:%s#%s@%s:%s", req.Namespace, req.Object, req.Relation, req.SubjectNamespace, req.SubjectID)
+	cacheable := n.client.config.EnableCache && len(req.RequestContext) == 0 && req.SnapToken == "" && !req.Explain
+	cacheKey := fmt.Sprintf("%s:%s#%s@%s:%s#%s",
+		url.QueryEscape(req.Namespace),
+		url.QueryEscape(req.Object),
+		url.QueryEscape(req.Relation),
+		url.QueryEscape(req.SubjectNamespace),
+		url.QueryEscape(req.SubjectID),
+		url.QueryEscape(req.SubjectRelation),
+	)
 
 	// 1. In-Memory Cache Lookup
-	if n.client.config.EnableCache {
-		n.client.cache.mu.RLock()
-		if item, found := n.client.cache.items[cacheKey]; found {
-			if time.Now().Before(item.expiresAt) {
-				n.client.cache.mu.RUnlock()
-				return item.allowed, nil
-			}
+	if cacheable {
+		if allowed, found := n.client.cache.get(cacheKey); found {
+			return allowed, nil
 		}
-		n.client.cache.mu.RUnlock()
 	}
 
 	// 2. HTTP Evaluation with Exponential Backoff & Jitter
@@ -68,10 +73,10 @@ func (n *NexusClient) Check(ctx context.Context, req CheckRequest) (bool, error)
 		return false, fmt.Errorf("failed to marshal check payload: %w", err)
 	}
 
-	url := strings.TrimRight(n.client.config.NexusURL, "/") + "/check"
+	endpoint := strings.TrimRight(n.client.config.NexusURL, "/") + "/check"
 
 	httpResp, err := executeWithRetry(ctx, n.client.config.RetryConfig, func(opCtx context.Context) (*http.Response, error) {
-		httpReq, err := http.NewRequestWithContext(opCtx, http.MethodPost, url, bytes.NewReader(data))
+		httpReq, err := http.NewRequestWithContext(opCtx, http.MethodPost, endpoint, bytes.NewReader(data))
 		if err != nil {
 			return nil, err
 		}
@@ -95,14 +100,9 @@ func (n *NexusClient) Check(ctx context.Context, req CheckRequest) (bool, error)
 		return false, fmt.Errorf("failed to decode nexus response: %w", err)
 	}
 
-	// 3. Cache Storage
-	if n.client.config.EnableCache {
-		n.client.cache.mu.Lock()
-		n.client.cache.items[cacheKey] = cacheItem{
-			allowed:   res.Allowed,
-			expiresAt: time.Now().Add(n.client.config.CacheTTL),
-		}
-		n.client.cache.mu.Unlock()
+	// 3. Bounded Cache Storage
+	if cacheable {
+		n.client.cache.set(cacheKey, res.Allowed, n.client.config.CacheTTL)
 	}
 
 	return res.Allowed, nil
@@ -139,10 +139,14 @@ func (n *NexusClient) CheckBatch(ctx context.Context, requests []CheckRequest) (
 
 // Expand returns the relation tree hierarchy for an object relation.
 func (n *NexusClient) Expand(ctx context.Context, namespace, object, relation string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("%s/expand?namespace=%s&object=%s&relation=%s",
-		strings.TrimRight(n.client.config.NexusURL, "/"), namespace, object, relation)
+	endpoint := fmt.Sprintf("%s/expand?namespace=%s&object=%s&relation=%s",
+		strings.TrimRight(n.client.config.NexusURL, "/"),
+		url.QueryEscape(namespace),
+		url.QueryEscape(object),
+		url.QueryEscape(relation),
+	)
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -153,6 +157,10 @@ func (n *NexusClient) Expand(ctx context.Context, namespace, object, relation st
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("nexus expand returned unexpected status: %d", resp.StatusCode)
+	}
 
 	var tree map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&tree); err != nil {
@@ -173,11 +181,14 @@ func (n *NexusClient) LookupResources(ctx context.Context, namespace, relation, 
 		"subject_id":        subjectID,
 		"subject_namespace": subjectNamespace,
 	}
-	data, _ := json.Marshal(payload)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
 
-	url := strings.TrimRight(n.client.config.NexusURL, "/") + "/lookup/resources"
+	endpoint := strings.TrimRight(n.client.config.NexusURL, "/") + "/lookup/resources"
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
@@ -189,6 +200,10 @@ func (n *NexusClient) LookupResources(ctx context.Context, namespace, relation, 
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("nexus lookup resources returned unexpected status: %d", resp.StatusCode)
+	}
 
 	var result struct {
 		Resources []string `json:"resources"`

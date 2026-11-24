@@ -241,7 +241,7 @@ func NewParser(l *Lexer) *Parser {
 func (p *Parser) nextToken() {
 	p.curToken = p.peekToken
 	p.peekToken = p.l.NextToken()
-	
+
 	// Skip imports completely
 	if p.curToken.Type == TokenIdent && p.curToken.Literal == "import" {
 		for p.curToken.Type != TokenSemicolon && p.curToken.Type != TokenEOF {
@@ -358,7 +358,7 @@ func (p *Parser) parsePermits(ns *core.NamespaceSchema) error {
 	for p.curToken.Type != TokenRBrace && p.curToken.Type != TokenEOF {
 		if p.curToken.Type == TokenIdent {
 			relName := p.curToken.Literal
-			
+
 			if p.peekToken.Type == TokenColon {
 				p.nextToken()
 			}
@@ -422,7 +422,7 @@ func (p *Parser) parseOrExpr() (*core.RewriteRule, error) {
 		if err != nil {
 			return nil, err
 		}
-		
+
 		if left.Type == "union" {
 			left.Children = append(left.Children, right)
 		} else {
@@ -447,7 +447,7 @@ func (p *Parser) parseAndExpr() (*core.RewriteRule, error) {
 		if err != nil {
 			return nil, err
 		}
-		
+
 		if left.Type == "intersection" {
 			left.Children = append(left.Children, right)
 		} else {
@@ -489,14 +489,14 @@ func (p *Parser) parsePrimaryExpr() (*core.RewriteRule, error) {
 		p.nextToken()
 		// it could be a keyword used as a relation name (e.g. 'owner' might be ident, 'view' might be ident)
 		p.nextToken()
-		
+
 		relName := p.curToken.Literal
 
 		if p.peekToken.Type == TokenDot {
 			p.nextToken()
 			p.nextToken() // now on the method name
 			methodName := p.curToken.Literal
-			
+
 			if methodName == "includes" {
 				for p.curToken.Type != TokenRParen && p.curToken.Type != TokenEOF {
 					p.nextToken()
@@ -511,7 +511,7 @@ func (p *Parser) parsePrimaryExpr() (*core.RewriteRule, error) {
 					return nil, fmt.Errorf("expected '(' after traverse")
 				}
 				p.nextToken()
-				
+
 				var paramName string
 				if p.curToken.Type == TokenIdent {
 					paramName = p.curToken.Literal

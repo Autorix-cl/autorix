@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"sync"
@@ -11,7 +12,13 @@ import (
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
-const defaultCacheSize = 1024
+const (
+	defaultCacheSize                  = 1024
+	defaultCostLimit                  = uint64(100000)
+	defaultInterruptCheckFrequency    = uint(100)
+	defaultParserRecursionLimit       = 64
+	defaultMaxExpressionCodePointSize = 16384
+)
 
 // cachedProgram holds a precompiled CEL program ready for evaluation.
 type cachedProgram struct {
@@ -25,7 +32,7 @@ type CELEvaluator struct {
 	env   *cel.Env
 	mu    sync.RWMutex
 	cache map[string]*cachedProgram
-	order []string // LRU eviction order (oldest first)
+	order []string // FIFO/LRU eviction order (oldest first)
 	max   int
 }
 
@@ -36,10 +43,17 @@ func NewCELEvaluator() (*CELEvaluator, error) {
 }
 
 // NewCELEvaluatorWithSize creates a CEL evaluator with a specific cache capacity.
+// Non-positive capacities fall back to defaultCacheSize.
 func NewCELEvaluatorWithSize(maxSize int) (*CELEvaluator, error) {
-	// Build the CEL environment once. We use DynType for the payload
-	// so that expressions can reference any field dynamically.
+	if maxSize <= 0 {
+		maxSize = defaultCacheSize
+	}
+
+	// Build the CEL environment once with parser DoS limits. We use DynType
+	// for the payload so expressions can reference dynamic fields safely.
 	env, err := cel.NewEnv(
+		cel.ParserRecursionLimit(defaultParserRecursionLimit),
+		cel.ParserExpressionSizeLimit(defaultMaxExpressionCodePointSize),
 		cel.Variable("payload", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("request", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("auth", cel.MapType(cel.StringType, cel.DynType)),
@@ -66,13 +80,41 @@ func (e *CELEvaluator) Compile(expression string) error {
 
 // Evaluate compiles (or retrieves from cache) the given CEL expression
 // and evaluates it against the provided payload.
-//
-// The payload map is injected as the "payload" variable in the CEL context,
-// so expressions should be written as: payload.amount < payload.budget
 func (e *CELEvaluator) Evaluate(expression string, payload map[string]interface{}) (bool, error) {
+	return e.EvaluateContext(context.Background(), expression, payload)
+}
+
+// EvaluateContext compiles (or retrieves from cache) the given CEL expression
+// and evaluates it using ContextEval so context cancellation/deadlines halt
+// runaway evaluations.
+func (e *CELEvaluator) EvaluateContext(ctx context.Context, expression string, payload map[string]interface{}) (bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	prog, err := e.getOrCompile(expression)
 	if err != nil {
 		return false, err
+	}
+	return e.evalProgram(ctx, prog.program, payload)
+}
+
+// EvaluateUncached compiles and evaluates a one-off expression without
+// inserting it into the shared production program cache (preventing cache
+// thrashing and lock contention during DryRun calls).
+func (e *CELEvaluator) EvaluateUncached(ctx context.Context, expression string, payload map[string]interface{}) (bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	prog, err := e.compileProgram(expression)
+	if err != nil {
+		return false, err
+	}
+	return e.evalProgram(ctx, prog, payload)
+}
+
+func (e *CELEvaluator) evalProgram(ctx context.Context, prog cel.Program, payload map[string]interface{}) (bool, error) {
+	if payload == nil {
+		payload = make(map[string]interface{})
 	}
 
 	// Build activation with the payload and top-level aliases
@@ -97,7 +139,7 @@ func (e *CELEvaluator) Evaluate(expression string, payload map[string]interface{
 		"context":  payload,
 	}
 
-	out, _, err := prog.program.Eval(activation)
+	out, _, err := prog.ContextEval(ctx, activation)
 	if err != nil {
 		return false, fmt.Errorf("CEL evaluation error: %w", err)
 	}
@@ -110,20 +152,44 @@ func (e *CELEvaluator) Evaluate(expression string, payload map[string]interface{
 	return out.Value().(bool), nil
 }
 
+func (e *CELEvaluator) compileProgram(expression string) (cel.Program, error) {
+	ast, issues := e.env.Compile(expression)
+	if issues != nil && issues.Err() != nil {
+		return nil, fmt.Errorf("CEL compilation error: %w", issues.Err())
+	}
+
+	if ast.OutputType() != cel.BoolType {
+		return nil, fmt.Errorf("expression must evaluate to bool, got %s", ast.OutputType())
+	}
+
+	prog, err := e.env.Program(
+		ast,
+		cel.CostLimit(defaultCostLimit),
+		cel.InterruptCheckFrequency(defaultInterruptCheckFrequency),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("CEL program creation error: %w", err)
+	}
+	return prog, nil
+}
+
 // getOrCompile retrieves a cached program or compiles and caches a new one.
 func (e *CELEvaluator) getOrCompile(expression string) (*cachedProgram, error) {
 	// Fast path: read lock
 	e.mu.RLock()
 	if cached, ok := e.cache[expression]; ok {
 		e.mu.RUnlock()
-		// Note: we don't update LRU order on reads for simplicity;
-		// in high-traffic scenarios this still performs well because
-		// hot expressions stay cached.
 		return cached, nil
 	}
 	e.mu.RUnlock()
 
-	// Slow path: compile and cache
+	// Compile outside write lock to avoid blocking readers during compilation
+	prog, err := e.compileProgram(expression)
+	if err != nil {
+		return nil, err
+	}
+
+	// Slow path: store in cache
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -132,21 +198,10 @@ func (e *CELEvaluator) getOrCompile(expression string) (*cachedProgram, error) {
 		return cached, nil
 	}
 
-	// Compile: parse + check + program
-	ast, issues := e.env.Compile(expression)
-	if issues != nil && issues.Err() != nil {
-		return nil, fmt.Errorf("CEL compilation error: %w", issues.Err())
-	}
-
-	prog, err := e.env.Program(ast)
-	if err != nil {
-		return nil, fmt.Errorf("CEL program creation error: %w", err)
-	}
-
 	cp := &cachedProgram{program: prog}
 
 	// Evict oldest if at capacity
-	if len(e.cache) >= e.max {
+	if len(e.cache) >= e.max && len(e.order) > 0 {
 		oldest := e.order[0]
 		e.order = e.order[1:]
 		delete(e.cache, oldest)
@@ -189,7 +244,7 @@ func (e *CELEvaluator) Validate(expression string) (*core.ValidationResult, erro
 		}, nil
 	}
 
-	if ast.OutputType() != types.BoolType {
+	if ast.OutputType() != cel.BoolType {
 		return &core.ValidationResult{
 			Valid:     false,
 			Variables: []string{},

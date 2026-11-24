@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/autorix/platform/health"
@@ -12,6 +14,8 @@ import (
 	"github.com/autorix/platform/paging"
 	"github.com/autorix/themis/internal/core"
 )
+
+const maxRequestBodyBytes = 1 << 20 // 1 MiB
 
 type Server struct {
 	engine core.PolicyEngine
@@ -25,11 +29,13 @@ func NewServer(engine core.PolicyEngine, healthHandler *health.Handler) *Server 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
-	s.health.Register(mux)
-	// GET /health is a deprecated alias kept for existing callers; it now
-	// delegates to the real liveness check instead of claiming health it
-	// never measured. New callers should use /health/alive or /health/ready.
-	mux.HandleFunc("GET /health", s.health.Alive)
+	if s.health != nil {
+		s.health.Register(mux)
+		// GET /health is a deprecated alias kept for existing callers; it now
+		// delegates to the real liveness check instead of claiming health it
+		// never measured. New callers should use /health/alive or /health/ready.
+		mux.HandleFunc("GET /health", s.health.Alive)
+	}
 	mux.Handle("GET /metrics", metrics.Handler())
 	mux.Handle("/metrics", metrics.Handler())
 	mux.HandleFunc("GET /policies", s.handleListPolicies)
@@ -66,6 +72,32 @@ func (s *Server) Routes() http.Handler {
 	return mux
 }
 
+func parseLabelQueryParams(q url.Values) map[string]string {
+	rawLabels := q["label"]
+	if len(rawLabels) == 0 {
+		return nil
+	}
+	labels := make(map[string]string, len(rawLabels))
+	for _, entry := range rawLabels {
+		var k, v string
+		if idx := strings.IndexByte(entry, '='); idx > 0 {
+			k, v = entry[:idx], entry[idx+1:]
+		} else if idx := strings.IndexByte(entry, ':'); idx > 0 {
+			k, v = entry[:idx], entry[idx+1:]
+		} else {
+			continue
+		}
+		k = strings.TrimSpace(k)
+		if k != "" {
+			labels[k] = strings.TrimSpace(v)
+		}
+	}
+	if len(labels) == 0 {
+		return nil
+	}
+	return labels
+}
+
 func (s *Server) handleListPolicies(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.URL.Query().Get("tenant_id")
 	if tenantID == "" {
@@ -74,15 +106,20 @@ func (s *Server) handleListPolicies(w http.ResponseWriter, r *http.Request) {
 
 	enabledOnlyStr := r.URL.Query().Get("enabled_only")
 	enabledOnly := enabledOnlyStr == "true" || enabledOnlyStr == "1"
+	labels := parseLabelQueryParams(r.URL.Query())
 
 	pageReq := paging.ParseRequest(r)
 	policies, hasMore, err := s.engine.ListPoliciesPage(r.Context(), core.ListFilter{
 		TenantID:    tenantID,
 		EnabledOnly: enabledOnly,
+		Labels:      labels,
 	}, pageReq.Limit, pageReq.Cursor)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if policies == nil {
+		policies = make([]core.Policy, 0)
 	}
 
 	var nextCursor string
@@ -110,6 +147,7 @@ func (s *Server) handleGetPolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreatePolicy(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var req struct {
 		TenantID    string            `json:"tenant_id"`
 		Name        string            `json:"name"`
@@ -128,7 +166,7 @@ func (s *Server) handleCreatePolicy(w http.ResponseWriter, r *http.Request) {
 	if req.TenantID == "" {
 		req.TenantID = "default"
 	}
-	if req.Name == "" || req.Expression == "" {
+	if strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Expression) == "" {
 		writeError(w, http.StatusBadRequest, "name and expression are required")
 		return
 	}
@@ -157,6 +195,7 @@ func (s *Server) handleCreatePolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdatePolicy(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	policyID := r.PathValue("id")
 	var req struct {
 		TenantID    string            `json:"tenant_id"`
@@ -176,8 +215,18 @@ func (s *Server) handleUpdatePolicy(w http.ResponseWriter, r *http.Request) {
 	if req.TenantID == "" {
 		req.TenantID = "default"
 	}
+	if strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Expression) == "" {
+		writeError(w, http.StatusBadRequest, "name and expression are required")
+		return
+	}
 
-	enabled := true
+	existing, err := s.engine.GetPolicy(r.Context(), req.TenantID, policyID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "Policy not found: "+err.Error())
+		return
+	}
+
+	enabled := existing.Enabled
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
@@ -191,10 +240,16 @@ func (s *Server) handleUpdatePolicy(w http.ResponseWriter, r *http.Request) {
 		Priority:    req.Priority,
 		Enabled:     enabled,
 		Labels:      req.Labels,
+		CreatedAt:   existing.CreatedAt,
 	}
 
 	if err := s.engine.UpdatePolicy(r.Context(), policy); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if updated, err := s.engine.GetPolicy(r.Context(), req.TenantID, policyID); err == nil && updated != nil && !updated.UpdatedAt.IsZero() {
+		writeJSON(w, http.StatusOK, updated)
 		return
 	}
 
@@ -217,6 +272,7 @@ func (s *Server) handleDeletePolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleEvaluate(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var req struct {
 		TenantID    string                 `json:"tenant_id"`
 		PolicyID    string                 `json:"policy_id"`
@@ -261,6 +317,9 @@ func (s *Server) handleListVersions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if versions == nil {
+		versions = make([]core.PolicyVersion, 0)
+	}
 
 	writeJSON(w, http.StatusOK, versions)
 }
@@ -289,6 +348,7 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var req struct {
 		Expression string `json:"expression"`
 	}
@@ -313,6 +373,7 @@ func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDryRun(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var req core.DryRunRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -350,11 +411,15 @@ func (s *Server) handleListFixtures(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if fixtures == nil {
+		fixtures = make([]core.PolicyFixture, 0)
+	}
 
 	writeJSON(w, http.StatusOK, fixtures)
 }
 
 func (s *Server) handleCreateFixture(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	policyID := r.PathValue("id")
 	tenantID := r.URL.Query().Get("tenant_id")
 	if tenantID == "" {

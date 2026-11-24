@@ -1,7 +1,10 @@
 package autorix
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -178,6 +181,16 @@ func TestThemis_Evaluate(t *testing.T) {
 		if r.URL.Path != "/policies/evaluate" {
 			t.Fatalf("expected public evaluation route, got %s", r.URL.Path)
 		}
+		var wire map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&wire); err != nil {
+			t.Fatalf("decode wire body: %v", err)
+		}
+		if _, hasPayload := wire["payload"]; !hasPayload {
+			t.Fatalf("expected wire JSON key 'payload', got %+v", wire)
+		}
+		if _, hasContext := wire["context"]; hasContext {
+			t.Fatalf("unexpected legacy JSON key 'context' on wire: %+v", wire)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{
 			"all_passed": true,
@@ -272,4 +285,209 @@ func TestJanus_PublicOAuthOperations(t *testing.T) {
 	if err := client.Janus.Revoke(context.Background(), "service", "secret", "access", "access_token"); err != nil {
 		t.Fatal(err)
 	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+func jsonResponse(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewBufferString(body)),
+	}
+}
+
+func TestGoSDK_Hardening_NoSocketRequired(t *testing.T) {
+	t.Run("Themis Evaluate sends payload JSON field", func(t *testing.T) {
+		c := NewClient(Config{
+			ThemisURL: "https://themis.test",
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				var body map[string]interface{}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
+				if _, ok := body["payload"]; !ok {
+					t.Fatalf("expected 'payload' key, got %+v", body)
+				}
+				return jsonResponse(http.StatusOK, `{"all_passed":true,"total_evaluated":1,"results":[]}`), nil
+			})},
+		})
+		resp, err := c.Themis.Evaluate(context.Background(), EvaluatePolicyRequest{
+			Context: map[string]interface{}{"amount": 10},
+		})
+		if err != nil || !resp.AllPassed {
+			t.Fatalf("Evaluate failed: resp=%+v err=%v", resp, err)
+		}
+	})
+
+	t.Run("Nexus cache bypasses context/snap_token/explain, isolates SubjectRelation, bounds size", func(t *testing.T) {
+		var calls int32
+		c := NewClient(Config{
+			NexusURL:        "https://nexus.test",
+			EnableCache:     true,
+			CacheTTL:        time.Minute,
+			MaxCacheEntries: 2,
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				atomic.AddInt32(&calls, 1)
+				return jsonResponse(http.StatusOK, `{"allowed":true}`), nil
+			})},
+		})
+		ctx := context.Background()
+		_, _ = c.Nexus.Check(ctx, CheckRequest{Namespace: "doc", Object: "1", Relation: "view", SubjectID: "u1"})
+		_, _ = c.Nexus.Check(ctx, CheckRequest{Namespace: "doc", Object: "1", Relation: "view", SubjectID: "u1"}) // hit
+		if atomic.LoadInt32(&calls) != 1 {
+			t.Fatalf("expected 1 call after cache hit, got %d", calls)
+		}
+		_, _ = c.Nexus.Check(ctx, CheckRequest{Namespace: "doc", Object: "1", Relation: "view", SubjectID: "u1", RequestContext: map[string]interface{}{"ip": "1.2.3.4"}})
+		_, _ = c.Nexus.Check(ctx, CheckRequest{Namespace: "doc", Object: "1", Relation: "view", SubjectID: "u1", SnapToken: "zk1"})
+		_, _ = c.Nexus.Check(ctx, CheckRequest{Namespace: "doc", Object: "1", Relation: "view", SubjectID: "u1", Explain: true})
+		_, _ = c.Nexus.Check(ctx, CheckRequest{Namespace: "doc", Object: "1", Relation: "view", SubjectID: "u1", SubjectRelation: "member"})
+		if atomic.LoadInt32(&calls) != 5 {
+			t.Fatalf("expected 5 calls with bypasses and distinct SubjectRelation, got %d", calls)
+		}
+		// Exceed MaxCacheEntries=2
+		_, _ = c.Nexus.Check(ctx, CheckRequest{Namespace: "doc", Object: "2", Relation: "view", SubjectID: "u2"})
+		c.cache.mu.RLock()
+		n := len(c.cache.items)
+		c.cache.mu.RUnlock()
+		if n > 2 {
+			t.Fatalf("expected cache bounded to 2 entries, got %d", n)
+		}
+	})
+
+	t.Run("Nexus Expand escapes query params and checks HTTP status", func(t *testing.T) {
+		var rawQuery string
+		c := NewClient(Config{
+			NexusURL: "https://nexus.test",
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				rawQuery = r.URL.RawQuery
+				return jsonResponse(http.StatusBadGateway, `{"error":"down"}`), nil
+			})},
+		})
+		_, err := c.Nexus.Expand(context.Background(), "doc&x=1", "obj/2", "view#3")
+		if err == nil {
+			t.Fatalf("expected error on 502 status from Expand")
+		}
+		if !strings.Contains(rawQuery, "namespace=doc%26x%3D1") {
+			t.Fatalf("expected escaped namespace query param, got %q", rawQuery)
+		}
+	})
+
+	t.Run("Nexus LookupResources checks HTTP status", func(t *testing.T) {
+		c := NewClient(Config{
+			NexusURL: "https://nexus.test",
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusInternalServerError, `{"error":"boom"}`), nil
+			})},
+		})
+		if _, err := c.Nexus.LookupResources(context.Background(), "doc", "view", "u1", "user"); err == nil {
+			t.Fatalf("expected error on 500 from LookupResources")
+		}
+	})
+
+	t.Run("Vulcan VerifyMacaroon & AttenuateMacaroon wire contract and status check", func(t *testing.T) {
+		c := NewClient(Config{
+			VulcanURL:   "https://vulcan.test",
+			RetryConfig: RetryConfig{MaxRetries: 0},
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				switch r.URL.Path {
+				case "/keys/verify":
+					var body map[string]interface{}
+					_ = json.NewDecoder(r.Body).Decode(&body)
+					if _, ok := body["macaroon"]; !ok {
+						return jsonResponse(http.StatusBadRequest, `{"error":"macaroon is required"}`), nil
+					}
+					return jsonResponse(http.StatusOK, `{"valid":true,"api_key":{"id":"k-9","name":"prod","scopes":["read"]}}`), nil
+				case "/keys/attenuate":
+					var body map[string]interface{}
+					_ = json.NewDecoder(r.Body).Decode(&body)
+					if body["caveat"] != "method = GET" {
+						return jsonResponse(http.StatusBadRequest, `{"error":"missing caveat"}`), nil
+					}
+					return jsonResponse(http.StatusOK, `{"location":"https://api.test","key_id":"k-9","caveats":[{"predicate":"method = GET"}],"signature":"sig2"}`), nil
+				}
+				return jsonResponse(http.StatusNotFound, `{}`), nil
+			})},
+		})
+		mac := &Macaroon{Location: "https://api.test", KeyID: "k-9", Signature: "sig1"}
+		ver, err := c.Vulcan.VerifyMacaroon(context.Background(), mac, nil)
+		if err != nil || !ver.Valid || ver.KeyID != "k-9" || ver.Name != "prod" {
+			t.Fatalf("VerifyMacaroon failed: ver=%+v err=%v", ver, err)
+		}
+		att, err := c.Vulcan.AttenuateMacaroon(context.Background(), mac, "method = GET")
+		if err != nil || len(att.Caveats) != 1 || att.Signature != "sig2" {
+			t.Fatalf("AttenuateMacaroon failed: att=%+v err=%v", att, err)
+		}
+
+		// Status 500 must return an error
+		cErr := NewClient(Config{
+			VulcanURL:   "https://vulcan.test",
+			RetryConfig: RetryConfig{MaxRetries: 0},
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusInternalServerError, `{"error":"db down"}`), nil
+			})},
+		})
+		if _, err := cErr.Vulcan.VerifyMacaroon(context.Background(), mac, nil); err == nil {
+			t.Fatalf("expected error on 500 from Vulcan Verify")
+		}
+	})
+
+	t.Run("Janus GetJWKS checks status and returns defensive copy, ExchangeToken omits APIKey", func(t *testing.T) {
+		var jwksCalls int32
+		c := NewClient(Config{
+			JanusURL: "https://janus.test",
+			APIKey:   "av_live_secret",
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path == "/.well-known/jwks.json" {
+					atomic.AddInt32(&jwksCalls, 1)
+					return jsonResponse(http.StatusOK, `{"keys":[{"kid":"k1"}]}`), nil
+				}
+				if r.URL.Path == "/oauth2/token" {
+					if r.Header.Get("Authorization") != "" {
+						t.Errorf("expected no Authorization header on public PKCE call, got %q", r.Header.Get("Authorization"))
+					}
+					return jsonResponse(http.StatusOK, `{"access_token":"at","token_type":"Bearer","expires_in":60}`), nil
+				}
+				return jsonResponse(http.StatusInternalServerError, `{}`), nil
+			})},
+		})
+
+		jwks1, err := c.Janus.GetJWKS(context.Background())
+		if err != nil {
+			t.Fatalf("GetJWKS 1: %v", err)
+		}
+		// Mutate returned map; cached copy must remain intact
+		jwks1["poison"] = true
+		jwks2, err := c.Janus.GetJWKS(context.Background())
+		if err != nil {
+			t.Fatalf("GetJWKS 2: %v", err)
+		}
+		if _, leaked := jwks2["poison"]; leaked {
+			t.Fatalf("mutation of returned JWKS map leaked into cache")
+		}
+		if atomic.LoadInt32(&jwksCalls) != 1 {
+			t.Fatalf("expected 1 JWKS network call, got %d", jwksCalls)
+		}
+
+		if _, err := c.Janus.ExchangeToken(context.Background(), TokenRequest{
+			GrantType: "authorization_code", ClientID: "spa", Code: "c", CodeVerifier: "v",
+		}); err != nil {
+			t.Fatalf("ExchangeToken: %v", err)
+		}
+
+		// Non-200 JWKS must return error
+		cBad := NewClient(Config{
+			JanusURL: "https://janus.test",
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusServiceUnavailable, `{}`), nil
+			})},
+		})
+		if _, err := cBad.Janus.GetJWKS(context.Background()); err == nil {
+			t.Fatalf("expected error on 503 from GetJWKS")
+		}
+	})
 }

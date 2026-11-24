@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	pb "github.com/autorix/themis/api/autorix/themis/v1"
@@ -111,6 +112,14 @@ func main() {
 	// 4. Initialize Transport Layer (REST admin API). The shared httpx
 	// middleware chain wraps only this REST server — the gRPC server below
 	// is HTTP-only in transport, not an httpx.Handler.
+	rawOrigins := strings.Split(c.CORSOrigins, ",")
+	allowedOrigins := make([]string, 0, len(rawOrigins))
+	for _, o := range rawOrigins {
+		if trimmed := strings.TrimSpace(o); trimmed != "" {
+			allowedOrigins = append(allowedOrigins, trimmed)
+		}
+	}
+
 	httpServerHandler := httphandler.NewServer(service, healthHandler)
 	restHandler := httpx.Chain(httpServerHandler.Routes(),
 		httpx.RequestID,
@@ -118,16 +127,16 @@ func main() {
 		metrics.HTTPMiddleware("themis"),
 		httpx.AccessLog(logger),
 		httpx.Timeout(c.RequestTimeout),
-		httpx.CORS(httpx.CORSConfig{AllowedOrigins: []string{c.CORSOrigins}}),
+		httpx.CORS(httpx.CORSConfig{AllowedOrigins: allowedOrigins}),
 	)
 
 	httpServer := &http.Server{
-		Addr:    ":" + c.HTTPPort,
-		Handler: restHandler,
-		// Bounds how long the server waits to read request headers, so a
-		// client that trickles bytes in (Slowloris) can't tie up a
-		// connection indefinitely.
+		Addr:              ":" + c.HTTPPort,
+		Handler:           restHandler,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	// 5. Initialize Transport Layer (gRPC Server)

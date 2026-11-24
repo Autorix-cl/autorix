@@ -40,3 +40,56 @@ test("permission failures remain fail-closed", async () => {
   const decision = await client.check({ namespace: "document", object: "1", relation: "view", subject: "user-1" });
   assert.equal(decision.allowed, false);
 });
+
+test("preserves base URL subpaths when joining paths", async () => {
+  const seenUrls = [];
+  const client = new AutorixClient({
+    nexusUrl: "https://gateway.example/api/v1",
+    janusUrl: "https://auth.example/oauth/",
+    fetch: async (url) => {
+      seenUrls.push(String(url));
+      return json({ allowed: true });
+    },
+  });
+  await client.check({ namespace: "doc", object: "1", relation: "view", subject: "alice" });
+  assert.equal(seenUrls[0], "https://gateway.example/api/v1/check");
+  const authUrl = client.createAuthorizationUrl({ clientId: "spa", redirectUri: "https://app.test/cb", state: "s", codeChallenge: "c" });
+  assert.ok(authUrl.startsWith("https://auth.example/oauth/oauth2/auth?"), `unexpected authUrl: ${authUrl}`);
+});
+
+test("check cache bypasses context, snapToken, explain, isolates subjectRelation, and bounds size", async () => {
+  let calls = 0;
+  const client = new AutorixClient({
+    nexusUrl: "https://nexus.example",
+    enableCache: true,
+    maxCacheSize: 2,
+    fetch: async () => {
+      calls++;
+      return json({ allowed: true, reason: "ok", trace: { call: calls } });
+    },
+  });
+  await client.check({ namespace: "doc", object: "1", relation: "view", subject: "u1" });
+  await client.check({ namespace: "doc", object: "1", relation: "view", subject: "u1" }); // hit
+  assert.equal(calls, 1);
+  await client.check({ namespace: "doc", object: "1", relation: "view", subject: "u1", context: { ip: "1.2.3.4" } });
+  await client.check({ namespace: "doc", object: "1", relation: "view", subject: "u1", snapToken: "zk1" });
+  await client.check({ namespace: "doc", object: "1", relation: "view", subject: "u1", explain: true });
+  await client.check({ namespace: "doc", object: "1", relation: "view", subject: "u1", subjectRelation: "member" });
+  assert.equal(calls, 5);
+  await client.check({ namespace: "doc", object: "2", relation: "view", subject: "u2" }); // triggers eviction for maxCacheSize=2
+  assert.equal(calls, 6);
+});
+
+test("OAuth token endpoint does not leak API key Authorization header", async () => {
+  let authHeader = null;
+  const client = new AutorixClient({
+    janusUrl: "https://janus.example",
+    apiKey: "av_live_secret",
+    fetch: async (_url, init) => {
+      authHeader = new Headers(init?.headers).get("authorization");
+      return json({ access_token: "at", token_type: "Bearer", expires_in: 60 });
+    },
+  });
+  await client.exchangeAuthorizationCode({ code: "c", redirectUri: "https://app.test/cb", clientId: "spa", codeVerifier: "v" });
+  assert.equal(authHeader, null);
+});

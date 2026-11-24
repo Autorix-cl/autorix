@@ -30,9 +30,14 @@ export function AutorixProvider({ children, config }: AutorixProviderProps) {
 
   const refreshSession = async () => {
     setLoading(true);
-    const s = await client.whoami();
-    setSession(s);
-    setLoading(false);
+    try {
+      const s = await client.whoami();
+      setSession(s);
+    } catch {
+      setSession(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -82,6 +87,7 @@ export function usePermission(
   const { client, session } = useAutorix();
   const [allowed, setAllowed] = useState<boolean>(false);
   const [checking, setChecking] = useState<boolean>(true);
+  const serializedContext = context ? JSON.stringify(context) : "";
 
   useEffect(() => {
     let active = true;
@@ -116,7 +122,7 @@ export function usePermission(
     return () => {
       active = false;
     };
-  }, [namespace, object, relation, session?.identity?.id]);
+  }, [client, namespace, object, relation, session?.identity?.id, serializedContext]);
 
   return { allowed, checking };
 }

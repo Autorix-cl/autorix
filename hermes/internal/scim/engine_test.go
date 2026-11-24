@@ -54,4 +54,3 @@ func TestSCIMEngine(t *testing.T) {
 		t.Errorf("expected ServiceProviderConfig schema %s", ServiceProviderURN)
 	}
 }
-

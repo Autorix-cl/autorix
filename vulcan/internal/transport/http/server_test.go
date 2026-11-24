@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/autorix/vulcan/internal/core"
 	"github.com/autorix/vulcan/internal/macaroon"
 	"github.com/autorix/vulcan/internal/storage/postgres"
+	"github.com/google/uuid"
 )
 
 func newTestHealthHandler(failing bool) *health.Handler {
@@ -372,4 +374,278 @@ func TestVerify_WithCache(t *testing.T) {
 	}
 }
 
+type mockKeyRepo struct {
+	mu      sync.Mutex
+	keys    map[uuid.UUID]*core.APIKey
+	getHits int
+	lastIP  string
+}
 
+func newMockKeyRepo() *mockKeyRepo {
+	return &mockKeyRepo{keys: make(map[uuid.UUID]*core.APIKey)}
+}
+
+func (m *mockKeyRepo) CreateKey(_ context.Context, k *core.APIKey) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := *k
+	m.keys[k.ID] = &cp
+	return nil
+}
+
+func (m *mockKeyRepo) GetKeyByID(_ context.Context, id uuid.UUID) (*core.APIKey, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.getHits++
+	k, ok := m.keys[id]
+	if !ok {
+		return nil, postgres.ErrNotFound
+	}
+	cp := *k
+	return &cp, nil
+}
+
+func (m *mockKeyRepo) UpdateKey(_ context.Context, id uuid.UUID, req core.UpdateKeyRequest) (*core.APIKey, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k, ok := m.keys[id]
+	if !ok {
+		return nil, postgres.ErrNotFound
+	}
+	if k.State == "revoked" {
+		return nil, postgres.ErrKeyRevoked
+	}
+	if req.Name != nil {
+		k.Name = *req.Name
+	}
+	cp := *k
+	return &cp, nil
+}
+
+func (m *mockKeyRepo) RotateKey(_ context.Context, id uuid.UUID, newHash, newHint, newRootKey string, gracePeriodExpiresAt *time.Time) (*core.APIKey, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k, ok := m.keys[id]
+	if !ok {
+		return nil, postgres.ErrNotFound
+	}
+	k.PrevKeyHash = k.KeyHash
+	k.PrevRootSignatureKey = k.RootSignatureKey
+	k.KeyHash = newHash
+	k.KeyHint = newHint
+	k.RootSignatureKey = newRootKey
+	k.GracePeriodExpiresAt = gracePeriodExpiresAt
+	cp := *k
+	return &cp, nil
+}
+
+func (m *mockKeyRepo) RevokeKey(_ context.Context, id uuid.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k, ok := m.keys[id]
+	if !ok {
+		return postgres.ErrNotFound
+	}
+	k.State = "revoked"
+	return nil
+}
+
+func (m *mockKeyRepo) RecordUsage(_ context.Context, id uuid.UUID, sourceIP string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if k, ok := m.keys[id]; ok {
+		k.CallCount++
+		k.LastSourceIP = sourceIP
+		m.lastIP = sourceIP
+	}
+	return nil
+}
+
+func (m *mockKeyRepo) ListKeys(_ context.Context, _ int, _ string) ([]core.APIKey, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]core.APIKey, 0, len(m.keys))
+	for _, k := range m.keys {
+		out = append(out, *k)
+	}
+	return out, false, nil
+}
+
+func (m *mockKeyRepo) ListScopes(_ context.Context) ([]core.Scope, error) {
+	return make([]core.Scope, 0), nil
+}
+
+func (m *mockKeyRepo) CreateScope(_ context.Context, _ *core.Scope) error { return nil }
+func (m *mockKeyRepo) DeleteScope(_ context.Context, _ string) error      { return nil }
+
+func TestHandleVerify_CacheHitPreservesSecretAndRejectsEmptyKeyForgery(t *testing.T) {
+	repo := newMockKeyRepo()
+	keyID := uuid.New()
+	rootSecret := "super-secret-root-signing-key-xyz"
+	repo.keys[keyID] = &core.APIKey{
+		ID:               keyID,
+		KeyPrefix:        "av_live",
+		KeyHint:          "1234",
+		RootSignatureKey: rootSecret,
+		Name:             "cached-key",
+		OwnerID:          "owner-1",
+		Scopes:           []string{"read"},
+		State:            "active",
+	}
+
+	server := NewServer(nil, "https://api.autorix.io", newTestHealthHandler(false))
+	server.repo = repo
+	c := cache.NewMemoryCache()
+	defer c.Close()
+	server.SetCache(c)
+	router := server.Routes()
+
+	validMac := macaroon.New("https://api.autorix.io", keyID.String(), rootSecret)
+	validBody, _ := json.Marshal(map[string]interface{}{"macaroon": validMac})
+
+	// 1st verify: cache miss -> loads from repo and populates cache
+	rec1 := httptest.NewRecorder()
+	router.ServeHTTP(rec1, httptest.NewRequest("POST", "/keys/verify", bytes.NewReader(validBody)))
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("first verify failed: %d %s", rec1.Code, rec1.Body.String())
+	}
+	if strings.Contains(rec1.Body.String(), rootSecret) {
+		t.Fatalf("HTTP response leaked root_signature_key secret")
+	}
+
+	// 2nd verify: cache hit -> MUST succeed with preserved RootSignatureKey
+	rec2 := httptest.NewRecorder()
+	router.ServeHTTP(rec2, httptest.NewRequest("POST", "/keys/verify", bytes.NewReader(validBody)))
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("second (cached) verify failed: %d %s", rec2.Code, rec2.Body.String())
+	}
+	if strings.Contains(rec2.Body.String(), rootSecret) {
+		t.Fatalf("second HTTP response leaked root_signature_key secret")
+	}
+	repo.mu.Lock()
+	hits := repo.getHits
+	repo.mu.Unlock()
+	if hits != 1 {
+		t.Fatalf("expected exactly 1 repo GetKeyByID call (2nd call served from cache), got %d", hits)
+	}
+
+	// 3rd verify: forged macaroon signed with empty key "" MUST be rejected on cache hit
+	forgedMac := macaroon.New("https://api.autorix.io", keyID.String(), "")
+	forgedBody, _ := json.Marshal(map[string]interface{}{"macaroon": forgedMac})
+	rec3 := httptest.NewRecorder()
+	router.ServeHTTP(rec3, httptest.NewRequest("POST", "/keys/verify", bytes.NewReader(forgedBody)))
+	if rec3.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for empty-key forged macaroon on cache hit, got %d %s", rec3.Code, rec3.Body.String())
+	}
+}
+
+func TestHandleVerify_EnforcesServerClockAndNoPrevKeyFallbackOnCaveatFailure(t *testing.T) {
+	repo := newMockKeyRepo()
+	keyID := uuid.New()
+	rootSecret := "current-secret"
+	prevSecret := "previous-secret"
+	graceEnd := time.Now().Add(time.Hour)
+	repo.keys[keyID] = &core.APIKey{
+		ID:                   keyID,
+		KeyPrefix:            "av_live",
+		RootSignatureKey:     rootSecret,
+		PrevRootSignatureKey: prevSecret,
+		GracePeriodExpiresAt: &graceEnd,
+		State:                "active",
+	}
+
+	server := NewServer(nil, "https://api.autorix.io", newTestHealthHandler(false))
+	server.repo = repo
+	router := server.Routes()
+
+	// Expired macaroon: client attempts to bypass by sending backdated context.now
+	base := macaroon.New("https://api.autorix.io", keyID.String(), rootSecret)
+	expiredAt := time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339)
+	expiredMac, err := macaroon.Attenuate(base, "time_before = "+expiredAt)
+	if err != nil {
+		t.Fatalf("Attenuate failed: %v", err)
+	}
+
+	backdatedBody, _ := json.Marshal(map[string]interface{}{
+		"macaroon": expiredMac,
+		"context": core.VerificationContext{
+			Now: time.Now().Add(-1 * time.Hour).UTC(),
+		},
+	})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest("POST", "/keys/verify", bytes.NewReader(backdatedBody)))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 when client backdates context.now for expired macaroon, got %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "caveat") && !strings.Contains(rec.Body.String(), "expired") {
+		t.Fatalf("expected caveat/expired error (not signature error from prev key fallback), got: %s", rec.Body.String())
+	}
+}
+
+func TestHandleAdminRotateAndUpdate_Validation(t *testing.T) {
+	repo := newMockKeyRepo()
+	activeID := uuid.New()
+	revokedID := uuid.New()
+	expiredID := uuid.New()
+	past := time.Now().Add(-time.Hour)
+
+	repo.keys[activeID] = &core.APIKey{ID: activeID, KeyPrefix: "av_live", RootSignatureKey: "root", State: "active"}
+	repo.keys[revokedID] = &core.APIKey{ID: revokedID, KeyPrefix: "av_live", RootSignatureKey: "root", State: "revoked"}
+	repo.keys[expiredID] = &core.APIKey{ID: expiredID, KeyPrefix: "av_live", RootSignatureKey: "root", State: "active", ExpiresAt: &past}
+
+	server := NewServer(nil, "https://api.autorix.io", newTestHealthHandler(false))
+	server.repo = repo
+	router := server.Routes()
+
+	// 1. Chunked request (ContentLength = -1) with valid grace_period succeeds
+	req := httptest.NewRequest("POST", "/admin/keys/"+activeID.String()+"/rotate", strings.NewReader(`{"grace_period":"2h"}`))
+	req.ContentLength = -1
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("chunked rotate failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// 2. Grace period > 168h rejected
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest("POST", "/admin/keys/"+activeID.String()+"/rotate", strings.NewReader(`{"grace_period":"200h"}`)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for grace_period > 168h, got %d", rec.Code)
+	}
+
+	// 3. Negative grace period rejected
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest("POST", "/admin/keys/"+activeID.String()+"/rotate", strings.NewReader(`{"grace_period":"-1h"}`)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for negative grace_period, got %d", rec.Code)
+	}
+
+	// 4. Rotate expired key rejected
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest("POST", "/admin/keys/"+expiredID.String()+"/rotate", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for rotating expired key, got %d", rec.Code)
+	}
+
+	// 5. Update revoked key rejected
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest("PATCH", "/admin/keys/"+revokedID.String(), strings.NewReader(`{"name":"hack"}`)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for updating revoked key, got %d", rec.Code)
+	}
+}
+
+func TestHandleListKeys_EmptyArrayNotNull(t *testing.T) {
+	server := NewServer(nil, "https://api.autorix.io", newTestHealthHandler(false))
+	server.repo = newMockKeyRepo()
+	router := server.Routes()
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest("GET", "/keys", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"data":[]`) {
+		t.Fatalf("expected JSON empty array data:[], got %s", rec.Body.String())
+	}
+}

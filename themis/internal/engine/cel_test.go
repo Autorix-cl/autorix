@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"context"
+	"strings"
 	"testing"
 )
 
@@ -220,4 +222,86 @@ func BenchmarkCELEvaluator_CachedEval(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _ = evaluator.Evaluate(expression, payload)
 	}
+}
+
+func TestCELEvaluator_HardeningAndSafety(t *testing.T) {
+	t.Run("non-positive cache size does not panic", func(t *testing.T) {
+		for _, sz := range []int{0, -10} {
+			ev, err := NewCELEvaluatorWithSize(sz)
+			if err != nil {
+				t.Fatalf("NewCELEvaluatorWithSize(%d): %v", sz, err)
+			}
+			ok, err := ev.Evaluate(`payload.x == 1`, map[string]interface{}{"x": 1})
+			if err != nil || !ok {
+				t.Fatalf("Evaluate failed for size %d: ok=%v err=%v", sz, ok, err)
+			}
+		}
+	})
+
+	t.Run("Compile rejects non-bool expression", func(t *testing.T) {
+		ev, err := NewCELEvaluator()
+		if err != nil {
+			t.Fatalf("NewCELEvaluator: %v", err)
+		}
+		if err := ev.Compile(`payload.amount + 1`); err == nil {
+			t.Fatalf("expected Compile to reject non-bool expression")
+		}
+	})
+
+	t.Run("EvaluateUncached does not populate shared cache", func(t *testing.T) {
+		ev, err := NewCELEvaluator()
+		if err != nil {
+			t.Fatalf("NewCELEvaluator: %v", err)
+		}
+		ok, err := ev.EvaluateUncached(context.Background(), `payload.a == "ok"`, map[string]interface{}{"a": "ok"})
+		if err != nil || !ok {
+			t.Fatalf("EvaluateUncached failed: ok=%v err=%v", ok, err)
+		}
+		if ev.CacheSize() != 0 {
+			t.Fatalf("expected CacheSize() == 0 after EvaluateUncached, got %d", ev.CacheSize())
+		}
+	})
+
+	t.Run("cost limit stops expensive nested comprehensions", func(t *testing.T) {
+		ev, err := NewCELEvaluator()
+		if err != nil {
+			t.Fatalf("NewCELEvaluator: %v", err)
+		}
+		nums := make([]int64, 500)
+		for i := range nums {
+			nums[i] = int64(i)
+		}
+		// 500 * 500 = 250,000 iterations >> CostLimit(100000)
+		expr := `payload.nums.all(x, payload.nums.all(y, x + y >= 0))`
+		_, err = ev.EvaluateContext(context.Background(), expr, map[string]interface{}{"nums": nums})
+		if err == nil {
+			t.Fatalf("expected cost limit error for quadratic comprehension, got nil")
+		}
+	})
+
+	t.Run("cancelled context interrupts comprehension", func(t *testing.T) {
+		ev, err := NewCELEvaluator()
+		if err != nil {
+			t.Fatalf("NewCELEvaluator: %v", err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		nums := make([]int64, 500)
+		expr := `payload.nums.all(x, x >= 0)`
+		_, err = ev.EvaluateContext(ctx, expr, map[string]interface{}{"nums": nums})
+		if err == nil {
+			t.Fatalf("expected error on cancelled context, got nil")
+		}
+	})
+
+	t.Run("oversized expression rejected", func(t *testing.T) {
+		ev, err := NewCELEvaluator()
+		if err != nil {
+			t.Fatalf("NewCELEvaluator: %v", err)
+		}
+		huge := "true" + strings.Repeat(" && true", 3000)
+		if err := ev.Compile(huge); err == nil {
+			t.Fatalf("expected oversized expression (>16384 code points) to fail compilation")
+		}
+	})
 }

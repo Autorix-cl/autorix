@@ -2,12 +2,24 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	pb "github.com/autorix/nexus/api/autorix/nexus/v1"
 	"github.com/autorix/nexus/internal/core"
+	"github.com/autorix/nexus/internal/engine/graph"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 )
+
+type cacheInvalidator interface {
+	InvalidateCache(ctx context.Context)
+}
+
+type caveatInvalidator interface {
+	Invalidate(name string)
+}
 
 // Repository defines tuple and caveat storage required by gRPC operations
 type Repository interface {
@@ -51,6 +63,18 @@ func NewServer(engine core.GraphEngine, opts ...Option) *Server {
 	return s
 }
 
+func (s *Server) invalidateCache(ctx context.Context) {
+	if ci, ok := s.engine.(cacheInvalidator); ok {
+		ci.InvalidateCache(ctx)
+	}
+}
+
+func (s *Server) invalidateCaveat(name string) {
+	if ci, ok := s.caveatEvaluator.(caveatInvalidator); ok {
+		ci.Invalidate(name)
+	}
+}
+
 // Check maps the gRPC request to the domain layer and executes graph resolution
 func (s *Server) Check(ctx context.Context, req *pb.CheckRequest) (*pb.CheckResponse, error) {
 	var reqCtx map[string]interface{}
@@ -72,6 +96,9 @@ func (s *Server) Check(ctx context.Context, req *pb.CheckRequest) (*pb.CheckResp
 
 	res, err := s.engine.Check(ctx, domainReq)
 	if err != nil {
+		if errors.Is(err, graph.ErrInvalidSnapToken) {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
 		return nil, err
 	}
 
@@ -111,6 +138,7 @@ func (s *Server) WriteTuples(ctx context.Context, req *pb.WriteTuplesRequest) (*
 		}
 	}
 
+	s.invalidateCache(ctx)
 	return &pb.WriteTuplesResponse{}, nil
 }
 
@@ -138,6 +166,7 @@ func (s *Server) DeleteTuples(ctx context.Context, req *pb.DeleteTuplesRequest) 
 		}
 	}
 
+	s.invalidateCache(ctx)
 	return &pb.DeleteTuplesResponse{}, nil
 }
 
@@ -158,8 +187,11 @@ func (s *Server) WriteCaveats(ctx context.Context, req *pb.WriteCaveatsRequest) 
 				return nil, fmt.Errorf("failed to write caveat %q: %w", c.Name, err)
 			}
 		}
+
+		s.invalidateCaveat(c.Name)
 	}
 
+	s.invalidateCache(ctx)
 	return &pb.WriteCaveatsResponse{}, nil
 }
 

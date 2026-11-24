@@ -17,12 +17,19 @@ import (
 )
 
 type stubPolicyEngine struct {
-	policies []core.Policy
+	policies     []core.Policy
+	lastFilter   *core.ListFilter
+	storedPolicy *core.Policy
+	updated      *core.Policy
 }
 
 func (stubPolicyEngine) CreatePolicy(ctx context.Context, policy *core.Policy) error { return nil }
-func (stubPolicyEngine) GetPolicy(ctx context.Context, tenantID, policyID string) (*core.Policy, error) {
-	return &core.Policy{}, nil
+func (s stubPolicyEngine) GetPolicy(ctx context.Context, tenantID, policyID string) (*core.Policy, error) {
+	if s.storedPolicy != nil {
+		cp := *s.storedPolicy
+		return &cp, nil
+	}
+	return &core.Policy{ID: policyID, TenantID: tenantID}, nil
 }
 func (stubPolicyEngine) ListPolicies(ctx context.Context, filter core.ListFilter) ([]core.Policy, error) {
 	return nil, nil
@@ -33,6 +40,9 @@ func (stubPolicyEngine) ListPolicies(ctx context.Context, filter core.ListFilter
 // repository's cursor contract (cursor wraps the last policy's ID) closely
 // enough to exercise the HTTP handler without a real database.
 func (s stubPolicyEngine) ListPoliciesPage(ctx context.Context, filter core.ListFilter, limit int, cursor string) ([]core.Policy, bool, error) {
+	if s.lastFilter != nil {
+		*s.lastFilter = filter
+	}
 	start := 0
 	if cursor != "" {
 		decoded, err := paging.DecodeCursor(cursor)
@@ -67,12 +77,28 @@ func (s stubPolicyEngine) ListPoliciesPage(ctx context.Context, filter core.List
 	copy(out, s.policies[start:end])
 	return out, hasMore, nil
 }
-func (stubPolicyEngine) UpdatePolicy(ctx context.Context, policy *core.Policy) error { return nil }
+func (s stubPolicyEngine) UpdatePolicy(ctx context.Context, policy *core.Policy) error {
+	policy.UpdatedAt = time.Now().UTC()
+	if s.updated != nil {
+		*s.updated = *policy
+	}
+	if s.storedPolicy != nil {
+		*s.storedPolicy = *policy
+	}
+	return nil
+}
 func (stubPolicyEngine) DeletePolicy(ctx context.Context, tenantID, policyID string) error {
 	return nil
 }
 func (stubPolicyEngine) Evaluate(ctx context.Context, req core.EvaluateRequest) (*core.EvaluateResponse, error) {
 	return &core.EvaluateResponse{}, nil
+}
+func (stubPolicyEngine) EvaluateBatch(ctx context.Context, tenantID string, labelFilter map[string]string, payloads []map[string]interface{}) ([]*core.EvaluateResponse, error) {
+	out := make([]*core.EvaluateResponse, len(payloads))
+	for i := range payloads {
+		out[i] = &core.EvaluateResponse{AllPassed: true}
+	}
+	return out, nil
 }
 func (stubPolicyEngine) ListPolicyVersions(ctx context.Context, tenantID, policyID string) ([]core.PolicyVersion, error) {
 	return []core.PolicyVersion{
@@ -407,3 +433,66 @@ func TestMetricsEndpoint(t *testing.T) {
 	}
 }
 
+func TestServer_NilHealthDoesNotPanic(t *testing.T) {
+	srv := NewServer(stubPolicyEngine{}, nil)
+	router := srv.Routes()
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/policies", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 with nil health handler, got %d", rec.Code)
+	}
+}
+
+func TestHandleListPolicies_LabelQueryFilter(t *testing.T) {
+	var captured core.ListFilter
+	srv := NewServer(stubPolicyEngine{lastFilter: &captured}, nil)
+	router := srv.Routes()
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/policies?label=env:prod&label=app.kubernetes.io/part-of=billing", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if captured.Labels["env"] != "prod" || captured.Labels["app.kubernetes.io/part-of"] != "billing" {
+		t.Fatalf("expected label filter parsed into ListFilter, got %+v", captured.Labels)
+	}
+}
+
+func TestHandleUpdatePolicy_ValidatesAndPreservesEnabledAndTimestamps(t *testing.T) {
+	createdAt := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	stored := &core.Policy{
+		ID:         "pol-1",
+		TenantID:   "default",
+		Name:       "existing",
+		Expression: "true",
+		Enabled:    false,
+		CreatedAt:  createdAt,
+	}
+	var updated core.Policy
+	srv := NewServer(stubPolicyEngine{storedPolicy: stored, updated: &updated}, nil)
+	router := srv.Routes()
+
+	// Empty name/expression rejected
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/policies/pol-1", strings.NewReader(`{"name":"","expression":"true"}`)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty name, got %d", rec.Code)
+	}
+
+	// Omitting enabled preserves existing Enabled=false and returns actual timestamps
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/policies/pol-1", strings.NewReader(`{"name":"renamed","expression":"payload.ok == true"}`)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp core.Policy
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Enabled {
+		t.Fatalf("expected Enabled=false to be preserved when omitted")
+	}
+	if !resp.CreatedAt.Equal(createdAt) || resp.UpdatedAt.IsZero() {
+		t.Fatalf("expected real CreatedAt/UpdatedAt timestamps, got created=%v updated=%v", resp.CreatedAt, resp.UpdatedAt)
+	}
+}

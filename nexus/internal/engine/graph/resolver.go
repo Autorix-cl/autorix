@@ -2,15 +2,32 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/autorix/nexus/internal/core"
 	"github.com/autorix/platform/cache"
 	"github.com/autorix/platform/zookie"
+)
+
+const (
+	maxCheckDepth            = 25
+	maxExpandDepth           = 20
+	maxLookupWorkers         = 16
+	maxLookupResourceObjects = 1000
+	cacheEpochKey            = "nexus:cache:epoch"
+)
+
+var (
+	ErrInvalidSnapToken = errors.New("invalid snap_token")
+	ErrMaxDepthExceeded = errors.New("maximum graph traversal depth exceeded")
 )
 
 // Repository is the interface required by the graph engine to fetch and query tuples
@@ -46,12 +63,13 @@ func WithCache(c cache.Cache) Option {
 	}
 }
 
-// Resolver implements core.GraphEngine using concurrent graph traversal
+// Resolver implements core.GraphEngine using bounded graph traversal
 type Resolver struct {
 	repo            Repository
 	caveatEvaluator core.CaveatEvaluator
 	namespaceGetter NamespaceGetter
 	cache           cache.Cache
+	epoch           atomic.Uint64
 }
 
 // NewResolver initializes a Resolver with options
@@ -66,25 +84,62 @@ func NewResolver(repo Repository, ce core.CaveatEvaluator, opts ...Option) *Reso
 	return r
 }
 
+// InvalidateCache advances the cache generation epoch so all previously cached
+// Check decisions (including transitive/rewritten paths) are bypassed immediately.
+func (r *Resolver) InvalidateCache(ctx context.Context) {
+	next := r.epoch.Add(1)
+	if r.cache != nil {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		_ = r.cache.Set(ctx, cacheEpochKey, []byte(strconv.FormatUint(next, 10)), 24*time.Hour)
+		_ = r.cache.PublishInvalidation(ctx, "nexus:invalidate", cacheEpochKey)
+	}
+}
+
+func (r *Resolver) currentEpoch(ctx context.Context) uint64 {
+	local := r.epoch.Load()
+	if r.cache == nil {
+		return local
+	}
+	val, err := r.cache.Get(ctx, cacheEpochKey)
+	if err != nil {
+		return local
+	}
+	remote, parseErr := strconv.ParseUint(strings.TrimSpace(string(val)), 10, 64)
+	if parseErr != nil {
+		return local
+	}
+	if remote > local {
+		r.epoch.Store(remote)
+		return remote
+	}
+	return local
+}
+
 // Check evaluates whether a subject has a relation to an object
 func (r *Resolver) Check(ctx context.Context, req core.CheckRequest) (core.CheckResult, error) {
 	start := time.Now()
 
-	// Parse requested consistency snapshot token (Zookie) if provided
+	// Validate requested consistency snapshot token (Zookie) strictly
 	var requestedZk *zookie.Token
 	if req.SnapToken != "" {
-		if parsed, err := zookie.Parse(req.SnapToken); err == nil {
-			requestedZk = &parsed
+		parsed, err := zookie.Parse(req.SnapToken)
+		if err != nil {
+			return core.CheckResult{}, fmt.Errorf("%w: %v", ErrInvalidSnapToken, err)
 		}
+		requestedZk = &parsed
 	}
 
-	// 1. Fast path: In-memory/Redis distributed cache lookup (for requests without dynamic caveats)
-	// Sanitize delimiter characters to prevent delimiter injection (JD-05)
-	cacheKey := fmt.Sprintf("chk:%s:%s#%s@%s:%s#%s",
+	// 1. Fast path: In-memory/Redis distributed cache lookup
+	// Skip cache when Explain is requested or dynamic RequestContext is supplied.
+	epoch := r.currentEpoch(ctx)
+	cacheKey := fmt.Sprintf("chk:e%d:%s:%s#%s@%s:%s#%s",
+		epoch,
 		url.QueryEscape(req.Namespace), url.QueryEscape(req.Object), url.QueryEscape(req.Relation),
 		url.QueryEscape(req.Subject.Namespace), url.QueryEscape(req.Subject.Object), url.QueryEscape(req.Subject.Relation))
 
-	if r.cache != nil && len(req.RequestContext) == 0 {
+	if r.cache != nil && len(req.RequestContext) == 0 && !req.Explain {
 		if val, err := r.cache.Get(ctx, cacheKey); err == nil {
 			strVal := string(val)
 			parts := strings.SplitN(strVal, ":", 2)
@@ -116,15 +171,20 @@ func (r *Resolver) Check(ctx context.Context, req core.CheckRequest) (core.Check
 	}
 
 	visited := make(map[string]bool)
-	res, err := r.checkInternal(ctx, req, visited)
+	caveatEvaluated := false
+	res, err := r.checkInternal(ctx, req, visited, 0, &caveatEvaluated)
 	duration := time.Since(start).Seconds()
 
 	nexusCheckDuration.Observe(duration)
 	decision := "deny"
-	if res.Allowed {
+	if err == nil && res.Allowed {
 		decision = "allow"
 	}
 	nexusCheckTotal.WithLabelValues(decision).Inc()
+
+	if err != nil {
+		return core.CheckResult{}, err
+	}
 
 	// Mint evaluated snapshot Zookie: use database LSN if repository supports it (JD-01)
 	var evalToken zookie.Token
@@ -142,8 +202,8 @@ func (r *Resolver) Check(ctx context.Context, req core.CheckRequest) (core.Check
 	}
 	res.SnapToken = evalToken.String()
 
-	// 2. Cache successful evaluation with serialized Zookie token for causal consistency tracking
-	if r.cache != nil && len(req.RequestContext) == 0 && err == nil {
+	// 2. Cache successful non-caveat, non-explain evaluation with serialized Zookie token
+	if r.cache != nil && len(req.RequestContext) == 0 && !req.Explain && !caveatEvaluated {
 		decisionCode := "0"
 		if res.Allowed {
 			decisionCode = "1"
@@ -152,10 +212,20 @@ func (r *Resolver) Check(ctx context.Context, req core.CheckRequest) (core.Check
 		_ = r.cache.Set(ctx, cacheKey, val, 30*time.Second)
 	}
 
-	return res, err
+	return res, nil
 }
 
-func (r *Resolver) checkInternal(ctx context.Context, req core.CheckRequest, visited map[string]bool) (core.CheckResult, error) {
+func (r *Resolver) checkInternal(ctx context.Context, req core.CheckRequest, visited map[string]bool, depth int, caveatEvaluated *bool) (core.CheckResult, error) {
+	if err := ctx.Err(); err != nil {
+		return core.CheckResult{}, err
+	}
+	if depth > maxCheckDepth {
+		return core.CheckResult{
+			Allowed: false,
+			Reason:  "maximum traversal depth exceeded",
+		}, ErrMaxDepthExceeded
+	}
+
 	key := fmt.Sprintf("%s:%s#%s@%s:%s#%s",
 		req.Namespace, req.Object, req.Relation,
 		req.Subject.Namespace, req.Subject.Object, req.Subject.Relation)
@@ -186,7 +256,10 @@ func (r *Resolver) checkInternal(ctx context.Context, req core.CheckRequest, vis
 	var rewrite *core.RewriteRule
 	if r.namespaceGetter != nil {
 		schema, err := r.namespaceGetter.GetNamespace(ctx, req.Namespace)
-		if err == nil && schema != nil {
+		if err != nil {
+			return core.CheckResult{}, fmt.Errorf("failed to get namespace %q: %w", req.Namespace, err)
+		}
+		if schema != nil {
 			if relDef, ok := schema.Relations[req.Relation]; ok {
 				rewrite = relDef.Rewrite
 			}
@@ -194,14 +267,24 @@ func (r *Resolver) checkInternal(ctx context.Context, req core.CheckRequest, vis
 	}
 
 	if rewrite != nil {
-		return r.evaluateRewrite(ctx, req, rewrite, visitedCopy)
+		return r.evaluateRewrite(ctx, req, rewrite, visitedCopy, depth, caveatEvaluated)
 	}
 
 	// Default to direct tuple matching ("this")
-	return r.evaluateThis(ctx, req, visitedCopy)
+	return r.evaluateThis(ctx, req, visitedCopy, depth, caveatEvaluated)
 }
 
-func (r *Resolver) evaluateRewrite(ctx context.Context, req core.CheckRequest, rule *core.RewriteRule, visited map[string]bool) (core.CheckResult, error) {
+func (r *Resolver) evaluateRewrite(ctx context.Context, req core.CheckRequest, rule *core.RewriteRule, visited map[string]bool, depth int, caveatEvaluated *bool) (core.CheckResult, error) {
+	if err := ctx.Err(); err != nil {
+		return core.CheckResult{}, err
+	}
+	if depth > maxCheckDepth {
+		return core.CheckResult{
+			Allowed: false,
+			Reason:  "maximum traversal depth exceeded",
+		}, ErrMaxDepthExceeded
+	}
+
 	traceNode := &core.DecisionNode{
 		Namespace:   req.Namespace,
 		Object:      req.Object,
@@ -212,9 +295,9 @@ func (r *Resolver) evaluateRewrite(ctx context.Context, req core.CheckRequest, r
 
 	switch rule.Type {
 	case "this", "":
-		res, err := r.evaluateThis(ctx, req, visited)
+		res, err := r.evaluateThis(ctx, req, visited, depth, caveatEvaluated)
 		if err != nil {
-			return res, err
+			return core.CheckResult{}, err
 		}
 		if req.Explain {
 			traceNode.Allowed = res.Allowed
@@ -230,9 +313,9 @@ func (r *Resolver) evaluateRewrite(ctx context.Context, req core.CheckRequest, r
 	case "computed_userset":
 		subReq := req
 		subReq.Relation = rule.Relation
-		res, err := r.checkInternal(ctx, subReq, visited)
+		res, err := r.checkInternal(ctx, subReq, visited, depth+1, caveatEvaluated)
 		if err != nil {
-			return res, err
+			return core.CheckResult{}, err
 		}
 		if req.Explain {
 			traceNode.Allowed = res.Allowed
@@ -255,6 +338,14 @@ func (r *Resolver) evaluateRewrite(ctx context.Context, req core.CheckRequest, r
 		}
 
 		for _, t := range tuples {
+			if t.CaveatName != "" {
+				*caveatEvaluated = true
+				allowed, cavErr := r.evalCaveat(ctx, t.CaveatName, req.RequestContext, t.CaveatContext)
+				if cavErr != nil || !allowed {
+					continue
+				}
+			}
+
 			subReq := core.CheckRequest{
 				Namespace:      t.SubjectNamespace,
 				Object:         t.SubjectObject,
@@ -263,20 +354,21 @@ func (r *Resolver) evaluateRewrite(ctx context.Context, req core.CheckRequest, r
 				RequestContext: req.RequestContext,
 				Explain:        req.Explain,
 			}
-			subRes, err := r.checkInternal(ctx, subReq, visited)
-			if err == nil {
-				if req.Explain && subRes.Trace != nil {
-					traceNode.Children = append(traceNode.Children, subRes.Trace)
-				}
-				if subRes.Allowed {
-					traceNode.Allowed = true
-					traceNode.Reason = "tuple_to_userset match"
-					return core.CheckResult{
-						Allowed: true,
-						Reason:  "tuple_to_userset match",
-						Trace:   traceNode,
-					}, nil
-				}
+			subRes, err := r.checkInternal(ctx, subReq, visited, depth+1, caveatEvaluated)
+			if err != nil {
+				return core.CheckResult{}, err
+			}
+			if req.Explain && subRes.Trace != nil {
+				traceNode.Children = append(traceNode.Children, subRes.Trace)
+			}
+			if subRes.Allowed {
+				traceNode.Allowed = true
+				traceNode.Reason = "tuple_to_userset match"
+				return core.CheckResult{
+					Allowed: true,
+					Reason:  "tuple_to_userset match",
+					Trace:   traceNode,
+				}, nil
 			}
 		}
 
@@ -290,18 +382,19 @@ func (r *Resolver) evaluateRewrite(ctx context.Context, req core.CheckRequest, r
 
 	case "union":
 		var anyAllowed bool
-		var reasons []string
 		for _, child := range rule.Children {
-			childRes, err := r.evaluateRewrite(ctx, req, child, visited)
+			childRes, err := r.evaluateRewrite(ctx, req, child, visited, depth+1, caveatEvaluated)
 			if err != nil {
-				continue
+				return core.CheckResult{}, err
 			}
 			if req.Explain && childRes.Trace != nil {
 				traceNode.Children = append(traceNode.Children, childRes.Trace)
 			}
 			if childRes.Allowed {
 				anyAllowed = true
-				reasons = append(reasons, childRes.Reason)
+				if !req.Explain {
+					break
+				}
 			}
 		}
 
@@ -325,12 +418,18 @@ func (r *Resolver) evaluateRewrite(ctx context.Context, req core.CheckRequest, r
 	case "intersection":
 		allAllowed := len(rule.Children) > 0
 		for _, child := range rule.Children {
-			childRes, err := r.evaluateRewrite(ctx, req, child, visited)
-			if err != nil || !childRes.Allowed {
+			childRes, err := r.evaluateRewrite(ctx, req, child, visited, depth+1, caveatEvaluated)
+			if err != nil {
+				return core.CheckResult{}, err
+			}
+			if !childRes.Allowed {
 				allAllowed = false
 			}
 			if req.Explain && childRes.Trace != nil {
 				traceNode.Children = append(traceNode.Children, childRes.Trace)
+			}
+			if !allAllowed && !req.Explain {
+				break
 			}
 		}
 
@@ -356,7 +455,11 @@ func (r *Resolver) evaluateRewrite(ctx context.Context, req core.CheckRequest, r
 	}
 }
 
-func (r *Resolver) evaluateThis(ctx context.Context, req core.CheckRequest, visited map[string]bool) (core.CheckResult, error) {
+func (r *Resolver) evaluateThis(ctx context.Context, req core.CheckRequest, visited map[string]bool, depth int, caveatEvaluated *bool) (core.CheckResult, error) {
+	if err := ctx.Err(); err != nil {
+		return core.CheckResult{}, err
+	}
+
 	filter := core.Tuple{
 		Namespace: req.Namespace,
 		Object:    req.Object,
@@ -376,6 +479,10 @@ func (r *Resolver) evaluateThis(ctx context.Context, req core.CheckRequest, visi
 	}
 
 	for _, tuple := range tuples {
+		if err := ctx.Err(); err != nil {
+			return core.CheckResult{}, err
+		}
+
 		childTrace := &core.DecisionNode{
 			Namespace: tuple.SubjectNamespace,
 			Object:    tuple.SubjectObject,
@@ -385,6 +492,7 @@ func (r *Resolver) evaluateThis(ctx context.Context, req core.CheckRequest, visi
 
 		// 1. Evaluate Caveat if present
 		if tuple.CaveatName != "" {
+			*caveatEvaluated = true
 			allowed, err := r.evalCaveat(ctx, tuple.CaveatName, req.RequestContext, tuple.CaveatContext)
 			caveatRes := &core.CaveatResult{
 				CaveatName: tuple.CaveatName,
@@ -437,25 +545,26 @@ func (r *Resolver) evaluateThis(ctx context.Context, req core.CheckRequest, visi
 				Explain:        req.Explain,
 			}
 
-			subRes, err := r.checkInternal(ctx, subReq, visited)
-			if err == nil {
-				if req.Explain && subRes.Trace != nil {
-					childTrace.Children = append(childTrace.Children, subRes.Trace)
+			subRes, err := r.checkInternal(ctx, subReq, visited, depth+1, caveatEvaluated)
+			if err != nil {
+				return core.CheckResult{}, err
+			}
+			if req.Explain && subRes.Trace != nil {
+				childTrace.Children = append(childTrace.Children, subRes.Trace)
+			}
+			if subRes.Allowed {
+				childTrace.Allowed = true
+				childTrace.Reason = "indirect match"
+				rootTrace.Allowed = true
+				rootTrace.Reason = "indirect match"
+				if req.Explain {
+					rootTrace.Children = append(rootTrace.Children, childTrace)
 				}
-				if subRes.Allowed {
-					childTrace.Allowed = true
-					childTrace.Reason = "indirect match"
-					rootTrace.Allowed = true
-					rootTrace.Reason = "indirect match"
-					if req.Explain {
-						rootTrace.Children = append(rootTrace.Children, childTrace)
-					}
-					return core.CheckResult{
-						Allowed: true,
-						Reason:  "indirect match",
-						Trace:   rootTrace,
-					}, nil
-				}
+				return core.CheckResult{
+					Allowed: true,
+					Reason:  "indirect match",
+					Trace:   rootTrace,
+				}, nil
 			}
 		}
 
@@ -487,7 +596,10 @@ func (r *Resolver) Expand(ctx context.Context, req core.ExpandRequest) (*core.Ex
 }
 
 func (r *Resolver) expandInternal(ctx context.Context, req core.ExpandRequest, visited map[string]bool, depth int) (*core.ExpandTree, error) {
-	if depth > 20 {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if depth > maxExpandDepth {
 		return &core.ExpandTree{Type: "max_depth_reached"}, nil
 	}
 
@@ -505,7 +617,10 @@ func (r *Resolver) expandInternal(ctx context.Context, req core.ExpandRequest, v
 	var rewrite *core.RewriteRule
 	if r.namespaceGetter != nil {
 		schema, err := r.namespaceGetter.GetNamespace(ctx, req.Namespace)
-		if err == nil && schema != nil {
+		if err != nil {
+			return nil, fmt.Errorf("failed to get namespace %q: %w", req.Namespace, err)
+		}
+		if schema != nil {
 			if relDef, ok := schema.Relations[req.Relation]; ok {
 				rewrite = relDef.Rewrite
 			}
@@ -520,6 +635,10 @@ func (r *Resolver) expandInternal(ctx context.Context, req core.ExpandRequest, v
 }
 
 func (r *Resolver) expandRewrite(ctx context.Context, req core.ExpandRequest, rule *core.RewriteRule, visited map[string]bool, depth int) (*core.ExpandTree, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	switch rule.Type {
 	case "this", "":
 		return r.expandThis(ctx, req, visited, depth)
@@ -538,14 +657,26 @@ func (r *Resolver) expandRewrite(ctx context.Context, req core.ExpandRequest, ru
 		}
 		node := &core.ExpandTree{Type: "userset"}
 		for _, t := range tuples {
+			tCopy := t
 			subReq := core.ExpandRequest{
 				Namespace: t.SubjectNamespace,
 				Object:    t.SubjectObject,
 				Relation:  rule.ComputedRelation,
 			}
 			child, err := r.expandInternal(ctx, subReq, visited, depth+1)
-			if err == nil && child != nil {
-				node.Children = append(node.Children, child)
+			if err != nil {
+				return nil, err
+			}
+			if child != nil {
+				if tCopy.CaveatName != "" {
+					node.Children = append(node.Children, &core.ExpandTree{
+						Type:     "userset",
+						Tuple:    &tCopy,
+						Children: []*core.ExpandTree{child},
+					})
+				} else {
+					node.Children = append(node.Children, child)
+				}
 			}
 		}
 		return node, nil
@@ -553,7 +684,10 @@ func (r *Resolver) expandRewrite(ctx context.Context, req core.ExpandRequest, ru
 		node := &core.ExpandTree{Type: "union"}
 		for _, child := range rule.Children {
 			ch, err := r.expandRewrite(ctx, req, child, visited, depth+1)
-			if err == nil && ch != nil {
+			if err != nil {
+				return nil, err
+			}
+			if ch != nil {
 				node.Children = append(node.Children, ch)
 			}
 		}
@@ -562,7 +696,10 @@ func (r *Resolver) expandRewrite(ctx context.Context, req core.ExpandRequest, ru
 		node := &core.ExpandTree{Type: "intersection"}
 		for _, child := range rule.Children {
 			ch, err := r.expandRewrite(ctx, req, child, visited, depth+1)
-			if err == nil && ch != nil {
+			if err != nil {
+				return nil, err
+			}
+			if ch != nil {
 				node.Children = append(node.Children, ch)
 			}
 		}
@@ -573,6 +710,10 @@ func (r *Resolver) expandRewrite(ctx context.Context, req core.ExpandRequest, ru
 }
 
 func (r *Resolver) expandThis(ctx context.Context, req core.ExpandRequest, visited map[string]bool, depth int) (*core.ExpandTree, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	tuples, err := r.repo.ReadTuples(ctx, core.Tuple{
 		Namespace: req.Namespace,
 		Object:    req.Object,
@@ -592,7 +733,10 @@ func (r *Resolver) expandThis(ctx context.Context, req core.ExpandRequest, visit
 				Relation:  t.SubjectRelation,
 			}
 			child, err := r.expandInternal(ctx, subReq, visited, depth+1)
-			if err == nil && child != nil {
+			if err != nil {
+				return nil, err
+			}
+			if child != nil {
 				node.Children = append(node.Children, &core.ExpandTree{
 					Type:     "userset",
 					Tuple:    &tCopy,
@@ -609,7 +753,8 @@ func (r *Resolver) expandThis(ctx context.Context, req core.ExpandRequest, visit
 	return node, nil
 }
 
-// LookupSubjects finds all subject identities that possess relation to object
+// LookupSubjects finds all subject identities that possess relation to object,
+// accurately evaluating union/intersection set algebra and caveat restrictions.
 func (r *Resolver) LookupSubjects(ctx context.Context, req core.LookupSubjectsRequest) ([]core.Tuple, error) {
 	tree, err := r.Expand(ctx, core.ExpandRequest{
 		Namespace: req.Namespace,
@@ -620,50 +765,169 @@ func (r *Resolver) LookupSubjects(ctx context.Context, req core.LookupSubjectsRe
 		return nil, err
 	}
 
-	seen := make(map[string]bool)
-	var subjects []core.Tuple
-
-	var collect func(node *core.ExpandTree)
-	collect = func(node *core.ExpandTree) {
-		if node == nil {
-			return
-		}
-		if node.Type == "leaf" && node.Tuple != nil {
-			key := fmt.Sprintf("%s:%s#%s", node.Tuple.SubjectNamespace, node.Tuple.SubjectObject, node.Tuple.SubjectRelation)
-			if !seen[key] {
-				seen[key] = true
-				subjects = append(subjects, *node.Tuple)
-			}
-		}
-		for _, child := range node.Children {
-			collect(child)
-		}
+	subjectSet, err := r.collectSubjects(ctx, tree)
+	if err != nil {
+		return nil, err
 	}
 
-	collect(tree)
+	keys := make([]string, 0, len(subjectSet))
+	for k := range subjectSet {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	subjects := make([]core.Tuple, 0, len(keys))
+	for _, k := range keys {
+		subjects = append(subjects, subjectSet[k])
+	}
 	return subjects, nil
 }
 
-// LookupResources returns all resource IDs in a namespace that a subject can access with a given relation
+func (r *Resolver) collectSubjects(ctx context.Context, node *core.ExpandTree) (map[string]core.Tuple, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if node == nil {
+		return map[string]core.Tuple{}, nil
+	}
+
+	switch node.Type {
+	case "leaf":
+		if node.Tuple == nil {
+			return map[string]core.Tuple{}, nil
+		}
+		if node.Tuple.CaveatName != "" {
+			allowed, err := r.evalCaveat(ctx, node.Tuple.CaveatName, nil, node.Tuple.CaveatContext)
+			if err != nil || !allowed {
+				return map[string]core.Tuple{}, nil
+			}
+		}
+		key := subjectTupleKey(*node.Tuple)
+		return map[string]core.Tuple{key: *node.Tuple}, nil
+
+	case "userset":
+		if node.Tuple != nil && node.Tuple.CaveatName != "" {
+			allowed, err := r.evalCaveat(ctx, node.Tuple.CaveatName, nil, node.Tuple.CaveatContext)
+			if err != nil || !allowed {
+				return map[string]core.Tuple{}, nil
+			}
+		}
+		unionSet := make(map[string]core.Tuple)
+		for _, child := range node.Children {
+			childSet, err := r.collectSubjects(ctx, child)
+			if err != nil {
+				return nil, err
+			}
+			for k, v := range childSet {
+				if _, exists := unionSet[k]; !exists {
+					unionSet[k] = v
+				}
+			}
+		}
+		return unionSet, nil
+
+	case "union":
+		unionSet := make(map[string]core.Tuple)
+		for _, child := range node.Children {
+			childSet, err := r.collectSubjects(ctx, child)
+			if err != nil {
+				return nil, err
+			}
+			for k, v := range childSet {
+				if _, exists := unionSet[k]; !exists {
+					unionSet[k] = v
+				}
+			}
+		}
+		return unionSet, nil
+
+	case "intersection":
+		if len(node.Children) == 0 {
+			return map[string]core.Tuple{}, nil
+		}
+		acc, err := r.collectSubjects(ctx, node.Children[0])
+		if err != nil {
+			return nil, err
+		}
+		for _, child := range node.Children[1:] {
+			if len(acc) == 0 {
+				break
+			}
+			childSet, err := r.collectSubjects(ctx, child)
+			if err != nil {
+				return nil, err
+			}
+			for k := range acc {
+				if _, ok := childSet[k]; !ok {
+					delete(acc, k)
+				}
+			}
+		}
+		return acc, nil
+
+	default:
+		return map[string]core.Tuple{}, nil
+	}
+}
+
+func subjectTupleKey(t core.Tuple) string {
+	return fmt.Sprintf("%s:%s#%s", url.QueryEscape(t.SubjectNamespace), url.QueryEscape(t.SubjectObject), url.QueryEscape(t.SubjectRelation))
+}
+
+// LookupResources returns all resource IDs in a namespace that a subject can access
+// with a given relation, using a bounded worker pool and maximum candidate limit.
 func (r *Resolver) LookupResources(ctx context.Context, req core.LookupResourcesRequest) ([]string, error) {
 	allTuples, err := r.repo.QueryTuples(ctx, core.Tuple{Namespace: req.Namespace})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query tuples for namespace %q: %w", req.Namespace, err)
 	}
 
-	uniqueObjects := make(map[string]bool)
+	uniqueObjects := make(map[string]struct{})
 	for _, t := range allTuples {
-		uniqueObjects[t.Object] = true
+		uniqueObjects[t.Object] = struct{}{}
 	}
 
-	var results []string
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
+	objects := make([]string, 0, len(uniqueObjects))
 	for obj := range uniqueObjects {
+		objects = append(objects, obj)
+	}
+	sort.Strings(objects)
+	if len(objects) > maxLookupResourceObjects {
+		objects = objects[:maxLookupResourceObjects]
+	}
+
+	results := make([]string, 0)
+	if len(objects) == 0 {
+		return results, nil
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var (
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		errOnce  sync.Once
+		firstErr error
+	)
+	sem := make(chan struct{}, maxLookupWorkers)
+
+	for _, obj := range objects {
+		if ctx.Err() != nil {
+			errOnce.Do(func() { firstErr = ctx.Err() })
+			break
+		}
+		select {
+		case <-ctx.Done():
+			errOnce.Do(func() { firstErr = ctx.Err() })
+			continue
+		case sem <- struct{}{}:
+		}
+
 		wg.Add(1)
 		go func(objectID string) {
 			defer wg.Done()
+			defer func() { <-sem }()
 
 			checkReq := core.CheckRequest{
 				Namespace: req.Namespace,
@@ -677,7 +941,16 @@ func (r *Resolver) LookupResources(ctx context.Context, req core.LookupResources
 			}
 
 			res, err := r.Check(ctx, checkReq)
-			if err == nil && res.Allowed {
+			if err != nil {
+				if !errors.Is(err, ErrMaxDepthExceeded) {
+					errOnce.Do(func() {
+						firstErr = err
+						cancel()
+					})
+				}
+				return
+			}
+			if res.Allowed {
 				mu.Lock()
 				results = append(results, objectID)
 				mu.Unlock()
@@ -686,5 +959,9 @@ func (r *Resolver) LookupResources(ctx context.Context, req core.LookupResources
 	}
 
 	wg.Wait()
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	sort.Strings(results)
 	return results, nil
 }

@@ -2,7 +2,13 @@ package postgres_test
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"testing"
 	"time"
 
@@ -12,6 +18,28 @@ import (
 	"github.com/autorix/platform/pgtest"
 	"github.com/google/uuid"
 )
+
+func generateValidTestCertPEM(t *testing.T) string {
+	t.Helper()
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey: %v", err)
+	}
+	now := time.Now()
+	tmpl := x509.Certificate{
+		SerialNumber:          big.NewInt(now.UnixNano()),
+		Subject:               pkix.Name{CommonName: "Test IdP"},
+		NotBefore:             now.Add(-time.Hour),
+		NotAfter:              now.Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &priv.PublicKey, priv)
+	if err != nil {
+		t.Fatalf("x509.CreateCertificate: %v", err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+}
 
 func newTestRepo(t *testing.T) *postgres.Repository {
 	t.Helper()
@@ -24,11 +52,12 @@ func TestCreateAndGetSAMLProvider(t *testing.T) {
 	repo := newTestRepo(t)
 
 	p := &core.SAMLProvider{
-		ID:          "okta-corporate",
-		DisplayName: "Okta Corporate",
-		IdPEntityID: "https://okta.example.com/entity",
-		IdPSSOURL:   "https://okta.example.com/sso",
-		SPEntityID:  "https://autorix.example.com/sp",
+		ID:                "okta-corporate",
+		DisplayName:       "Okta Corporate",
+		IdPEntityID:       "https://okta.example.com/entity",
+		IdPSSOURL:         "https://okta.example.com/sso",
+		IdPCertificatePEM: generateValidTestCertPEM(t),
+		SPEntityID:        "https://autorix.example.com/sp",
 		AttributeMapping: map[string]string{
 			"email": "user.email",
 		},
@@ -41,9 +70,8 @@ func TestCreateAndGetSAMLProvider(t *testing.T) {
 	if p.CreatedAt.IsZero() || p.UpdatedAt.IsZero() {
 		t.Fatalf("expected CreatedAt/UpdatedAt to be populated, got %+v", p)
 	}
-	// Default cert should be injected because we didn't supply one.
-	if p.IdPCertificatePEM == "" {
-		t.Fatalf("expected default certificate to be populated")
+	if len(p.Certificates) != 1 {
+		t.Fatalf("expected parsed certificate metadata to be populated")
 	}
 
 	got, err := repo.GetSAMLProvider(ctx, "okta-corporate")
@@ -71,26 +99,29 @@ func TestGetSAMLProviderNotFound(t *testing.T) {
 func TestCreateSAMLProviderDuplicateID(t *testing.T) {
 	ctx := context.Background()
 	repo := newTestRepo(t)
+	certPEM := generateValidTestCertPEM(t)
 
 	p := &core.SAMLProvider{
-		ID:          "dup-provider",
-		DisplayName: "Dup Provider",
-		IdPEntityID: "https://idp.example.com/entity",
-		IdPSSOURL:   "https://idp.example.com/sso",
-		SPEntityID:  "https://autorix.example.com/sp",
-		Enabled:     true,
+		ID:                "dup-provider",
+		DisplayName:       "Dup Provider",
+		IdPEntityID:       "https://idp.example.com/entity",
+		IdPSSOURL:         "https://idp.example.com/sso",
+		IdPCertificatePEM: certPEM,
+		SPEntityID:        "https://autorix.example.com/sp",
+		Enabled:           true,
 	}
 	if err := repo.CreateSAMLProvider(ctx, p); err != nil {
 		t.Fatalf("first CreateSAMLProvider: %v", err)
 	}
 
 	dup := &core.SAMLProvider{
-		ID:          "dup-provider",
-		DisplayName: "Another Provider",
-		IdPEntityID: "https://idp2.example.com/entity",
-		IdPSSOURL:   "https://idp2.example.com/sso",
-		SPEntityID:  "https://autorix.example.com/sp",
-		Enabled:     true,
+		ID:                "dup-provider",
+		DisplayName:       "Another Provider",
+		IdPEntityID:       "https://idp2.example.com/entity",
+		IdPSSOURL:         "https://idp2.example.com/sso",
+		IdPCertificatePEM: certPEM,
+		SPEntityID:        "https://autorix.example.com/sp",
+		Enabled:           true,
 	}
 	if err := repo.CreateSAMLProvider(ctx, dup); err == nil {
 		t.Fatalf("expected duplicate primary key error, got nil")
@@ -100,6 +131,7 @@ func TestCreateSAMLProviderDuplicateID(t *testing.T) {
 func TestListSAMLProviders(t *testing.T) {
 	ctx := context.Background()
 	repo := newTestRepo(t)
+	certPEM := generateValidTestCertPEM(t)
 
 	providers, hasMore, err := repo.ListSAMLProviders(ctx, 20, "")
 	if err != nil {
@@ -114,12 +146,13 @@ func TestListSAMLProviders(t *testing.T) {
 
 	for _, id := range []string{"provider-a", "provider-b"} {
 		p := &core.SAMLProvider{
-			ID:          id,
-			DisplayName: id,
-			IdPEntityID: "https://idp.example.com/" + id,
-			IdPSSOURL:   "https://idp.example.com/sso/" + id,
-			SPEntityID:  "https://autorix.example.com/sp",
-			Enabled:     true,
+			ID:                id,
+			DisplayName:       id,
+			IdPEntityID:       "https://idp.example.com/" + id,
+			IdPSSOURL:         "https://idp.example.com/sso/" + id,
+			IdPCertificatePEM: certPEM,
+			SPEntityID:        "https://autorix.example.com/sp",
+			Enabled:           true,
 		}
 		if err := repo.CreateSAMLProvider(ctx, p); err != nil {
 			t.Fatalf("CreateSAMLProvider(%s): %v", id, err)
@@ -146,18 +179,20 @@ func TestListSAMLProviders(t *testing.T) {
 func TestListSAMLProviders_CursorPagination(t *testing.T) {
 	ctx := context.Background()
 	repo := newTestRepo(t)
+	certPEM := generateValidTestCertPEM(t)
 
 	const total = 5
 	ids := make(map[string]bool, total)
 	for i := 0; i < total; i++ {
 		id := fmt.Sprintf("cursor-provider-%d", i)
 		p := &core.SAMLProvider{
-			ID:          id,
-			DisplayName: id,
-			IdPEntityID: "https://idp.example.com/" + id,
-			IdPSSOURL:   "https://idp.example.com/sso/" + id,
-			SPEntityID:  "https://autorix.example.com/sp",
-			Enabled:     true,
+			ID:                id,
+			DisplayName:       id,
+			IdPEntityID:       "https://idp.example.com/" + id,
+			IdPSSOURL:         "https://idp.example.com/sso/" + id,
+			IdPCertificatePEM: certPEM,
+			SPEntityID:        "https://autorix.example.com/sp",
+			Enabled:           true,
 		}
 		if err := repo.CreateSAMLProvider(ctx, p); err != nil {
 			t.Fatalf("CreateSAMLProvider(%s): %v", id, err)
@@ -295,12 +330,13 @@ func TestUpdateAndDeleteSAMLProvider(t *testing.T) {
 	repo := newTestRepo(t)
 
 	p := &core.SAMLProvider{
-		ID:          "provider-lifecycle-1",
-		DisplayName: "Initial Name",
-		IdPEntityID: "https://idp.example.com/init",
-		IdPSSOURL:   "https://idp.example.com/sso",
-		SPEntityID:  "https://autorix.example.com/sp",
-		Enabled:     true,
+		ID:                "provider-lifecycle-1",
+		DisplayName:       "Initial Name",
+		IdPEntityID:       "https://idp.example.com/init",
+		IdPSSOURL:         "https://idp.example.com/sso",
+		IdPCertificatePEM: generateValidTestCertPEM(t),
+		SPEntityID:        "https://autorix.example.com/sp",
+		Enabled:           true,
 	}
 
 	if err := repo.CreateSAMLProvider(ctx, p); err != nil {
@@ -460,4 +496,3 @@ func TestSCIMSyncHistory(t *testing.T) {
 		t.Fatalf("unexpected sync record: %+v", history[0])
 	}
 }
-

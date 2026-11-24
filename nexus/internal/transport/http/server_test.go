@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/autorix/nexus/internal/core"
+	"github.com/autorix/nexus/internal/engine/graph"
 	"github.com/autorix/platform/health"
 	"github.com/autorix/platform/paging"
 )
@@ -71,16 +72,30 @@ func (s stubRepository) ListTuples(ctx context.Context, namespace string, limit 
 	copy(out, s.tuples[start:end])
 	return out, hasMore, nil
 }
-func (stubRepository) WriteTuples(ctx context.Context, tuples []core.Tuple) error  { return nil }
-func (stubRepository) WriteTuplesWithToken(ctx context.Context, tuples []core.Tuple) (string, error) { return "zk_v1_test_token", nil }
+func (stubRepository) WriteTuples(ctx context.Context, tuples []core.Tuple) error { return nil }
+func (stubRepository) WriteTuplesWithToken(ctx context.Context, tuples []core.Tuple) (string, error) {
+	return "zk_v1_test_token", nil
+}
 func (stubRepository) DeleteTuples(ctx context.Context, tuples []core.Tuple) error { return nil }
-func (stubRepository) WriteCaveat(ctx context.Context, caveat core.CaveatDefinition) error { return nil }
-func (stubRepository) GetCaveat(ctx context.Context, name string) (*core.CaveatDefinition, error) { return nil, nil }
-func (stubRepository) ListCaveats(ctx context.Context) ([]core.CaveatDefinition, error) { return nil, nil }
+func (stubRepository) WriteCaveat(ctx context.Context, caveat core.CaveatDefinition) error {
+	return nil
+}
+func (stubRepository) GetCaveat(ctx context.Context, name string) (*core.CaveatDefinition, error) {
+	return nil, nil
+}
+func (stubRepository) ListCaveats(ctx context.Context) ([]core.CaveatDefinition, error) {
+	return nil, nil
+}
 func (stubRepository) DeleteCaveat(ctx context.Context, name string) error { return nil }
-func (stubRepository) WriteNamespace(ctx context.Context, schema core.NamespaceSchema) error { return nil }
-func (stubRepository) GetNamespace(ctx context.Context, name string) (*core.NamespaceSchema, error) { return nil, nil }
-func (stubRepository) ListNamespaces(ctx context.Context) ([]core.NamespaceSchema, error) { return nil, nil }
+func (stubRepository) WriteNamespace(ctx context.Context, schema core.NamespaceSchema) error {
+	return nil
+}
+func (stubRepository) GetNamespace(ctx context.Context, name string) (*core.NamespaceSchema, error) {
+	return nil, nil
+}
+func (stubRepository) ListNamespaces(ctx context.Context) ([]core.NamespaceSchema, error) {
+	return nil, nil
+}
 func (stubRepository) DeleteNamespace(ctx context.Context, name string) error { return nil }
 
 func newTestServer(checker *health.Checker) *Server {
@@ -558,4 +573,67 @@ func TestZookie_WriteAndCheckHeaders(t *testing.T) {
 	}
 }
 
+type invalidatingEngine struct {
+	stubGraphEngine
+	invalidations int
+	snapErr       error
+}
 
+func (e *invalidatingEngine) InvalidateCache(_ context.Context) {
+	e.invalidations++
+}
+
+func (e *invalidatingEngine) Check(_ context.Context, _ core.CheckRequest) (core.CheckResult, error) {
+	if e.snapErr != nil {
+		return core.CheckResult{}, e.snapErr
+	}
+	return core.CheckResult{Allowed: true}, nil
+}
+
+type invalidatingCaveatEval struct {
+	stubCaveatEvaluator
+	invalidated []string
+}
+
+func (e *invalidatingCaveatEval) Invalidate(name string) {
+	e.invalidated = append(e.invalidated, name)
+}
+
+func TestHTTP_NilHealthMalformedSnapTokenAndInvalidation(t *testing.T) {
+	eng := &invalidatingEngine{snapErr: graph.ErrInvalidSnapToken}
+	cavEval := &invalidatingCaveatEval{}
+	repo := newFullStubRepository()
+
+	// 1. Nil health handler does not panic
+	srv := NewServer(eng, repo, nil, WithCaveatEvaluator(cavEval))
+	router := srv.Routes()
+
+	// 2. Malformed snap_token returns 400 Bad Request
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/check", strings.NewReader(`{"namespace":"doc","object":"1","relation":"viewer","subject_id":"alice","snap_token":"bad"}`)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for malformed snap_token, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// 3. Mutations invalidate engine cache and caveat evaluator
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/admin/caveats", strings.NewReader(`{"name":"office_ip","cel_expression":"ctx.ip == '1.2.3.4'"}`)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for write caveat, got %d", rec.Code)
+	}
+	if len(cavEval.invalidated) != 1 || cavEval.invalidated[0] != "office_ip" {
+		t.Fatalf("expected caveat evaluator Invalidate('office_ip'), got %v", cavEval.invalidated)
+	}
+	if eng.invalidations != 1 {
+		t.Fatalf("expected engine cache invalidation on WriteCaveat, got %d", eng.invalidations)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/admin/caveats/office_ip", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for delete caveat, got %d", rec.Code)
+	}
+	if len(cavEval.invalidated) != 2 || eng.invalidations != 2 {
+		t.Fatalf("expected caveat and cache invalidation on DeleteCaveat, got cav=%v cache=%d", cavEval.invalidated, eng.invalidations)
+	}
+}

@@ -134,7 +134,7 @@ func (m *mockCaveatGetter) GetCaveatExpression(ctx context.Context, name string)
 func TestCELEvaluator_EvaluateByName(t *testing.T) {
 	getter := &mockCaveatGetter{
 		caveats: map[string]string{
-			"is_admin_ip": `ctx.ip == "10.0.0.1"`,
+			"is_admin_ip":   `ctx.ip == "10.0.0.1"`,
 			"within_budget": `ctx.cost <= caveat.budget`,
 		},
 	}
@@ -160,5 +160,64 @@ func TestCELEvaluator_EvaluateByName(t *testing.T) {
 	_, err = evaluator.EvaluateByName(context.Background(), "nonexistent", nil, nil)
 	if err == nil {
 		t.Errorf("expected error for nonexistent caveat")
+	}
+}
+
+func TestCELEvaluator_InvalidateAndSafety(t *testing.T) {
+	getter := &mockCaveatGetter{
+		caveats: map[string]string{
+			"env_check": `ctx.env == "staging"`,
+		},
+	}
+
+	ev, err := NewCELEvaluator(WithCaveatGetter(getter))
+	if err != nil {
+		t.Fatalf("NewCELEvaluator: %v", err)
+	}
+
+	// 1. Initial caveat evaluates against "staging"
+	ok, err := ev.EvaluateByName(context.Background(), "env_check", map[string]interface{}{"env": "staging"}, nil)
+	if err != nil || !ok {
+		t.Fatalf("expected true for staging, got ok=%v err=%v", ok, err)
+	}
+
+	// 2. Update underlying caveat expression and call Invalidate
+	getter.caveats["env_check"] = `ctx.env == "prod"`
+	ev.Invalidate("env_check")
+
+	ok, err = ev.EvaluateByName(context.Background(), "env_check", map[string]interface{}{"env": "staging"}, nil)
+	if err != nil || ok {
+		t.Fatalf("expected false for staging after Invalidate, got ok=%v err=%v", ok, err)
+	}
+	ok, err = ev.EvaluateByName(context.Background(), "env_check", map[string]interface{}{"env": "prod"}, nil)
+	if err != nil || !ok {
+		t.Fatalf("expected true for prod after Invalidate, got ok=%v err=%v", ok, err)
+	}
+
+	// 3. Compile expression does not collide with named cache
+	if err := ev.Compile(`ctx.env == "prod"`); err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if _, err := ev.EvaluateByName(context.Background(), `ctx.env == "prod"`, map[string]interface{}{"env": "prod"}, nil); err == nil {
+		t.Fatalf("expected named lookup for raw expression string to miss separate named cache")
+	}
+
+	// 4. Cost limit stops expensive comprehension
+	nums := make([]int64, 500)
+	if err := ev.Compile(`ctx.nums.all(x, ctx.nums.all(y, x + y >= 0))`); err != nil {
+		t.Fatalf("Compile expensive expr: %v", err)
+	}
+	if _, err := ev.Evaluate(map[string]interface{}{"nums": nums}, nil); err == nil {
+		t.Fatalf("expected cost limit error for quadratic comprehension")
+	}
+
+	// 5. Context cancellation stops evaluation
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := ev.Compile(`ctx.nums.all(x, x >= 0)`); err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if _, err := ev.EvaluateContext(ctx, map[string]interface{}{"nums": nums}, nil); err == nil {
+		t.Fatalf("expected error on cancelled context")
 	}
 }

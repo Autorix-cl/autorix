@@ -24,9 +24,10 @@ func (m *mockEvaluator) Validate(expression string) (*core.ValidationResult, err
 }
 
 type mockRepo struct {
-	policies []core.Policy
-	versions []core.PolicyVersion
-	fixtures []core.PolicyFixture
+	policies  []core.Policy
+	versions  []core.PolicyVersion
+	fixtures  []core.PolicyFixture
+	listCalls int
 }
 
 func (m *mockRepo) Create(ctx context.Context, policy *core.Policy) error {
@@ -42,13 +43,14 @@ func (m *mockRepo) GetByID(ctx context.Context, tenantID, policyID string) (*cor
 	return nil, nil
 }
 func (m *mockRepo) List(ctx context.Context, filter core.ListFilter) ([]core.Policy, error) {
+	m.listCalls++
 	return m.policies, nil
 }
 func (m *mockRepo) ListPage(ctx context.Context, filter core.ListFilter, limit int, cursor string) ([]core.Policy, bool, error) {
 	return m.policies, false, nil
 }
-func (m *mockRepo) Update(ctx context.Context, policy *core.Policy) error { return nil }
-func (m *mockRepo) Delete(ctx context.Context, tenantID, policyID string) error  { return nil }
+func (m *mockRepo) Update(ctx context.Context, policy *core.Policy) error       { return nil }
+func (m *mockRepo) Delete(ctx context.Context, tenantID, policyID string) error { return nil }
 func (m *mockRepo) ListVersions(ctx context.Context, tenantID, policyID string) ([]core.PolicyVersion, error) {
 	return m.versions, nil
 }
@@ -114,5 +116,32 @@ func TestService_RunTestSuite(t *testing.T) {
 	}
 	if res.TotalTests != 1 || res.PassedTests != 1 {
 		t.Fatalf("unexpected test counts: %+v", res)
+	}
+}
+
+func TestService_EvaluateBatchLoadsOnce(t *testing.T) {
+	ctx := context.Background()
+	eval := &mockEvaluator{evalResult: true}
+	repo := &mockRepo{
+		policies: []core.Policy{
+			{ID: "pol-1", TenantID: "t1", Name: "p1", Expression: "true", Enabled: true},
+		},
+	}
+	svc := core.NewService(repo, eval)
+
+	payloads := []map[string]interface{}{
+		{"a": 1},
+		{"a": 2},
+		{"a": 3},
+	}
+	results, err := svc.EvaluateBatch(ctx, "t1", nil, payloads)
+	if err != nil {
+		t.Fatalf("EvaluateBatch unexpected error: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+	if repo.listCalls != 1 {
+		t.Fatalf("expected policies loaded exactly once outside loop, got %d List calls", repo.listCalls)
 	}
 }

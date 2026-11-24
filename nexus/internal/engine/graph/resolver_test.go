@@ -2,12 +2,14 @@ package graph
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/autorix/nexus/internal/core"
 	"github.com/autorix/platform/cache"
 	"github.com/autorix/platform/zookie"
-	"time"
 )
 
 // mockRepository implements graph.Repository in-memory for testing
@@ -653,4 +655,162 @@ func (m *countingMockRepo) ReadTuples(ctx context.Context, filter core.Tuple) ([
 func (m *countingMockRepo) QueryTuples(ctx context.Context, filter core.Tuple) ([]core.Tuple, error) {
 	m.queries++
 	return m.tuples, nil
+}
+
+func TestResolver_MaxDepthAndCancellation(t *testing.T) {
+	// Build a chain of 30 nested groups (> maxCheckDepth = 25)
+	var tuples []core.Tuple
+	for i := 0; i < 30; i++ {
+		tuples = append(tuples, core.Tuple{
+			Namespace: "group", Object: fmt.Sprintf("g%d", i), Relation: "member",
+			SubjectNamespace: "group", SubjectObject: fmt.Sprintf("g%d", i+1), SubjectRelation: "member",
+		})
+	}
+	tuples = append(tuples, core.Tuple{
+		Namespace: "group", Object: "g30", Relation: "member",
+		SubjectNamespace: "user", SubjectObject: "alice",
+	})
+
+	resolver := NewResolver(&mockRepository{tuples: tuples}, &mockCaveatEvaluator{allowed: true})
+
+	_, err := resolver.Check(context.Background(), core.CheckRequest{
+		Namespace: "group", Object: "g0", Relation: "member",
+		Subject: core.Tuple{Namespace: "user", Object: "alice"},
+	})
+	if !errors.Is(err, ErrMaxDepthExceeded) {
+		t.Fatalf("expected ErrMaxDepthExceeded for depth > 25, got %v", err)
+	}
+
+	// Cancelled context must fail immediately
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = resolver.Check(ctx, core.CheckRequest{
+		Namespace: "group", Object: "g0", Relation: "member",
+		Subject: core.Tuple{Namespace: "user", Object: "alice"},
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestResolver_LookupSubjects_IntersectionAndCaveats(t *testing.T) {
+	schemas := map[string]core.NamespaceSchema{
+		"document": {
+			Name: "document",
+			Relations: map[string]core.RelationDefinition{
+				"auditor": {
+					Rewrite: &core.RewriteRule{
+						Type: "intersection",
+						Children: []*core.RewriteRule{
+							{Type: "computed_userset", Relation: "editor"},
+							{Type: "computed_userset", Relation: "compliance"},
+						},
+					},
+				},
+				"editor":     {Rewrite: &core.RewriteRule{Type: "this"}},
+				"compliance": {Rewrite: &core.RewriteRule{Type: "this"}},
+			},
+		},
+	}
+
+	tuples := []core.Tuple{
+		{Namespace: "document", Object: "doc-4", Relation: "editor", SubjectNamespace: "user", SubjectObject: "charlie"},
+		{Namespace: "document", Object: "doc-4", Relation: "compliance", SubjectNamespace: "user", SubjectObject: "eve"},
+		{Namespace: "document", Object: "doc-4", Relation: "editor", SubjectNamespace: "user", SubjectObject: "dave"},
+		{Namespace: "document", Object: "doc-4", Relation: "compliance", SubjectNamespace: "user", SubjectObject: "dave"},
+		{Namespace: "document", Object: "doc-4", Relation: "editor", SubjectNamespace: "user", SubjectObject: "frank", CaveatName: "deny_caveat"},
+		{Namespace: "document", Object: "doc-4", Relation: "compliance", SubjectNamespace: "user", SubjectObject: "frank"},
+	}
+
+	resolver := NewResolver(
+		&mockRepository{tuples: tuples},
+		&mockCaveatEvaluator{allowed: false},
+		WithNamespaceGetter(&mockNamespaceGetter{schemas: schemas}),
+	)
+
+	subjects, err := resolver.LookupSubjects(context.Background(), core.LookupSubjectsRequest{
+		Namespace: "document", Object: "doc-4", Relation: "auditor",
+	})
+	if err != nil {
+		t.Fatalf("LookupSubjects failed: %v", err)
+	}
+	if len(subjects) != 1 || subjects[0].SubjectObject != "dave" {
+		t.Fatalf("expected ONLY user:dave in intersection (and caveated frank excluded), got %+v", subjects)
+	}
+}
+
+func TestResolver_CacheBypassForExplainCaveatsAndInvalidation(t *testing.T) {
+	c := cache.NewMemoryCache()
+	defer c.Close()
+
+	// 1. Malformed SnapToken rejected
+	repo := &countingMockRepo{tuples: []core.Tuple{
+		{Namespace: "doc", Object: "1", Relation: "viewer", SubjectNamespace: "user", SubjectObject: "alice"},
+	}}
+	resolver := NewResolver(repo, &mockCaveatEvaluator{allowed: true}, WithCache(c))
+
+	_, err := resolver.Check(context.Background(), core.CheckRequest{
+		Namespace: "doc", Object: "1", Relation: "viewer",
+		Subject:   core.Tuple{Namespace: "user", Object: "alice"},
+		SnapToken: "not-a-valid-zookie!!!",
+	})
+	if !errors.Is(err, ErrInvalidSnapToken) {
+		t.Fatalf("expected ErrInvalidSnapToken for malformed SnapToken, got %v", err)
+	}
+
+	// 2. Normal check populates cache; Explain=true MUST bypass cache and return Trace
+	req := core.CheckRequest{
+		Namespace: "doc", Object: "1", Relation: "viewer",
+		Subject: core.Tuple{Namespace: "user", Object: "alice"},
+	}
+	res1, err := resolver.Check(context.Background(), req)
+	if err != nil || !res1.Allowed {
+		t.Fatalf("first check failed: %v", err)
+	}
+	explainReq := req
+	explainReq.Explain = true
+	resExplain, err := resolver.Check(context.Background(), explainReq)
+	if err != nil || resExplain.Trace == nil {
+		t.Fatalf("expected Explain=true to bypass cache and include Trace, got trace=%v err=%v", resExplain.Trace, err)
+	}
+	if repo.queries != 2 {
+		t.Fatalf("expected Explain=true to hit repo (queries=2), got %d", repo.queries)
+	}
+
+	// 3. InvalidateCache forces next check to bypass cached entry
+	resolver.InvalidateCache(context.Background())
+	_, err = resolver.Check(context.Background(), req)
+	if err != nil {
+		t.Fatalf("check after invalidation failed: %v", err)
+	}
+	if repo.queries != 3 {
+		t.Fatalf("expected queries=3 after InvalidateCache, got %d", repo.queries)
+	}
+
+	// 4. Caveated tuple MUST NOT be cached even when RequestContext is empty
+	cavRepo := &countingMockRepo{tuples: []core.Tuple{
+		{Namespace: "doc", Object: "2", Relation: "viewer", SubjectNamespace: "user", SubjectObject: "bob", CaveatName: "time_window"},
+	}}
+	cavEval := &mockCaveatEvaluator{allowed: true}
+	cavResolver := NewResolver(cavRepo, cavEval, WithCache(c))
+
+	cavReq := core.CheckRequest{
+		Namespace: "doc", Object: "2", Relation: "viewer",
+		Subject: core.Tuple{Namespace: "user", Object: "bob"},
+	}
+	r1, err := cavResolver.Check(context.Background(), cavReq)
+	if err != nil || !r1.Allowed {
+		t.Fatalf("first caveated check failed: %v", err)
+	}
+	cavEval.allowed = false
+	r2, err := cavResolver.Check(context.Background(), cavReq)
+	if err != nil {
+		t.Fatalf("second caveated check failed: %v", err)
+	}
+	if r2.Allowed {
+		t.Fatalf("expected second caveated check to NOT serve stale cached allow")
+	}
+	if cavRepo.queries != 2 {
+		t.Fatalf("expected caveated check to never be cached (queries=2), got %d", cavRepo.queries)
+	}
 }

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -18,6 +19,30 @@ import (
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+const (
+	maxRequestBodyBytes = 1 << 20 // 1 MiB
+	maxSyncHistoryLimit = 200
+)
+
+type hermesRepository interface {
+	CreateSAMLProvider(ctx context.Context, p *core.SAMLProvider) error
+	UpdateSAMLProvider(ctx context.Context, p *core.SAMLProvider) error
+	SetSAMLProviderEnabled(ctx context.Context, id string, enabled bool) error
+	DeleteSAMLProvider(ctx context.Context, id string) error
+	ListSAMLProviders(ctx context.Context, limit int, cursor string) ([]core.SAMLProvider, bool, error)
+	GetSAMLProvider(ctx context.Context, id string) (*core.SAMLProvider, error)
+	GetSAMLProviderByEntityID(ctx context.Context, entityID string) (*core.SAMLProvider, error)
+	CreateSCIMUser(ctx context.Context, u *core.SCIMUser) error
+	ListSCIMUsers(ctx context.Context) ([]core.SCIMUser, error)
+	CreateSCIMGroup(ctx context.Context, g *core.SCIMGroup) error
+	GetSCIMGroup(ctx context.Context, id uuid.UUID) (*core.SCIMGroup, error)
+	ListSCIMGroups(ctx context.Context) ([]core.SCIMGroup, error)
+	UpdateSCIMGroup(ctx context.Context, g *core.SCIMGroup) error
+	DeleteSCIMGroup(ctx context.Context, id uuid.UUID) error
+	RecordSCIMSync(ctx context.Context, s *core.SCIMSyncHistory) error
+	ListSCIMSyncHistory(ctx context.Context, limit int) ([]core.SCIMSyncHistory, error)
+}
 
 var (
 	hermesSAMLLoginsTotal = prometheus.NewCounter(
@@ -50,7 +75,7 @@ func init() {
 }
 
 type Server struct {
-	repo          *postgres.Repository
+	repo          hermesRepository
 	samlSP        *saml.ServiceProvider
 	scimEngine    *scim.Engine
 	spEntityID    string
@@ -58,8 +83,12 @@ type Server struct {
 }
 
 func NewServer(repo *postgres.Repository, baseURL, spEntityID string, healthHandler *health.Handler) *Server {
+	var r hermesRepository
+	if repo != nil {
+		r = repo
+	}
 	return &Server{
-		repo:          repo,
+		repo:          r,
 		samlSP:        saml.NewServiceProvider(baseURL),
 		scimEngine:    scim.NewEngine(baseURL),
 		spEntityID:    spEntityID,
@@ -124,6 +153,9 @@ func (s *Server) handleListSAMLProviders(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if providers == nil {
+		providers = make([]core.SAMLProvider, 0)
+	}
 
 	var nextCursor string
 	if hasMore && len(providers) > 0 {
@@ -154,6 +186,7 @@ func (s *Server) handleGetSAMLProvider(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateSAMLProvider(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	id := r.PathValue("id")
 	if id == "" {
 		writeError(w, http.StatusBadRequest, "Missing provider id")
@@ -207,7 +240,24 @@ func (s *Server) handleUpdateSAMLProvider(w http.ResponseWriter, r *http.Request
 		provider.Enabled = *updates.Enabled
 	}
 
+	if err := saml.ValidateSSOURL(provider.IdPSSOURL); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if _, _, _, err := saml.ValidateCertificatesPEM(provider.IdPCertificatePEM); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := s.repo.UpdateSAMLProvider(r.Context(), provider); err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "Provider not found")
+			return
+		}
+		if errors.Is(err, postgres.ErrInvalidCertificate) || errors.Is(err, postgres.ErrInvalidProvider) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -300,7 +350,21 @@ func (s *Server) handleSAMLLogin(w http.ResponseWriter, r *http.Request) {
 
 	provider, err := s.repo.GetSAMLProvider(r.Context(), providerID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "SAML Provider not found")
+		if errors.Is(err, postgres.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "SAML Provider not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Database error")
+		return
+	}
+
+	if !provider.Enabled {
+		writeError(w, http.StatusForbidden, "SAML provider is disabled")
+		return
+	}
+
+	if err := saml.ValidateSSOURL(provider.IdPSSOURL); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid IdP SSO URL")
 		return
 	}
 
@@ -314,6 +378,7 @@ func (s *Server) handleSAMLLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSAMLACS(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	if err := r.ParseForm(); err != nil {
 		writeError(w, http.StatusBadRequest, "Failed to parse form")
 		return
@@ -325,9 +390,48 @@ func (s *Server) handleSAMLACS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	assertion, err := s.samlSP.ParseAssertion(samlResponse, nil)
+	issuer, err := s.samlSP.ExtractIssuer(samlResponse)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid SAML Assertion: "+err.Error())
+		writeError(w, http.StatusBadRequest, "Invalid SAML Response: "+err.Error())
+		return
+	}
+
+	if s.repo == nil {
+		writeError(w, http.StatusUnauthorized, "SAML provider repository unavailable")
+		return
+	}
+
+	provider, err := s.repo.GetSAMLProviderByEntityID(r.Context(), issuer)
+	if err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			writeError(w, http.StatusUnauthorized, "Unknown SAML issuer")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Failed to resolve SAML provider")
+		return
+	}
+
+	if !provider.Enabled {
+		writeError(w, http.StatusForbidden, "SAML provider is disabled")
+		return
+	}
+
+	assertion, err := s.samlSP.ParseAssertion(samlResponse, provider)
+	if err != nil {
+		switch {
+		case errors.Is(err, saml.ErrProviderDisabled):
+			writeError(w, http.StatusForbidden, err.Error())
+		case errors.Is(err, saml.ErrSignatureInvalid),
+			errors.Is(err, saml.ErrInvalidCertificate),
+			errors.Is(err, saml.ErrAssertionReplay),
+			errors.Is(err, saml.ErrIssuerMismatch),
+			errors.Is(err, saml.ErrInvalidStatus),
+			errors.Is(err, saml.ErrMultipleAssertions),
+			errors.Is(err, saml.ErrConditionsInvalid):
+			writeError(w, http.StatusUnauthorized, "SAML verification failed: "+err.Error())
+		default:
+			writeError(w, http.StatusBadRequest, "Invalid SAML Assertion: "+err.Error())
+		}
 		return
 	}
 
@@ -340,15 +444,36 @@ func (s *Server) handleSAMLACS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateSAMLProvider(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var p core.SAMLProvider
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid JSON payload")
 		return
 	}
 
+	if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.IdPEntityID) == "" {
+		writeError(w, http.StatusBadRequest, "id and idp_entity_id are required")
+		return
+	}
+	if err := saml.ValidateSSOURL(p.IdPSSOURL); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if _, _, _, err := saml.ValidateCertificatesPEM(p.IdPCertificatePEM); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	p.SPEntityID = s.spEntityID
 	if err := s.repo.CreateSAMLProvider(r.Context(), &p); err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+		switch {
+		case errors.Is(err, postgres.ErrConflict):
+			writeError(w, http.StatusConflict, err.Error())
+		case errors.Is(err, postgres.ErrInvalidCertificate), errors.Is(err, postgres.ErrInvalidProvider):
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 
@@ -368,7 +493,7 @@ func (s *Server) handleListSCIMUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var formatted []interface{}
+	formatted := make([]interface{}, 0, len(users))
 	for i := range users {
 		formatted = append(formatted, s.scimEngine.FormatUser(&users[i]))
 	}
@@ -386,6 +511,7 @@ func (s *Server) handleListSCIMUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateSCIMUser(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var u core.SCIMUser
 	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid SCIM JSON payload")
@@ -398,7 +524,11 @@ func (s *Server) handleCreateSCIMUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.repo.CreateSCIMUser(r.Context(), &u); err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+		if errors.Is(err, postgres.ErrConflict) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -414,7 +544,7 @@ func (s *Server) handleListSCIMGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var formatted []interface{}
+	formatted := make([]interface{}, 0, len(groups))
 	for i := range groups {
 		formatted = append(formatted, s.scimEngine.FormatGroup(&groups[i]))
 	}
@@ -432,6 +562,7 @@ func (s *Server) handleListSCIMGroups(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateSCIMGroup(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var g core.SCIMGroup
 	if err := json.NewDecoder(r.Body).Decode(&g); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid SCIM JSON payload: "+err.Error())
@@ -444,7 +575,11 @@ func (s *Server) handleCreateSCIMGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.repo.CreateSCIMGroup(r.Context(), &g); err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+		if errors.Is(err, postgres.ErrConflict) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -477,6 +612,7 @@ func (s *Server) handleGetSCIMGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateSCIMGroup(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	idStr := r.PathValue("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -547,17 +683,24 @@ func (s *Server) handleListSCIMSyncHistory(w http.ResponseWriter, r *http.Reques
 			limit = l
 		}
 	}
+	if limit > maxSyncHistoryLimit {
+		limit = maxSyncHistoryLimit
+	}
 
 	history, err := s.repo.ListSCIMSyncHistory(r.Context(), limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if history == nil {
+		history = make([]core.SCIMSyncHistory, 0)
+	}
 
 	writeJSON(w, http.StatusOK, history)
 }
 
 func (s *Server) handleRecordSCIMSync(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var sync core.SCIMSyncHistory
 	if err := json.NewDecoder(r.Body).Decode(&sync); err != nil {
 		hermesSCIMSyncTotal.WithLabelValues("failure").Inc()
@@ -581,6 +724,9 @@ func (s *Server) handleRecordSCIMSync(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
+	}
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
 }
@@ -590,4 +736,3 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
-

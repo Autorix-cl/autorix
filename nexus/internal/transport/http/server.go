@@ -9,11 +9,22 @@ import (
 	"time"
 
 	"github.com/autorix/nexus/internal/core"
+	"github.com/autorix/nexus/internal/engine/graph"
 	"github.com/autorix/platform/health"
 	"github.com/autorix/platform/metrics"
 	"github.com/autorix/platform/paging"
 	"github.com/autorix/platform/zookie"
 )
+
+const maxRequestBodyBytes = 1 << 20 // 1 MiB
+
+type cacheInvalidator interface {
+	InvalidateCache(ctx context.Context)
+}
+
+type caveatInvalidator interface {
+	Invalidate(name string)
+}
 
 var (
 	errNoTuples     = errors.New("at least one tuple is required")
@@ -61,14 +72,28 @@ func NewServer(engine core.GraphEngine, repo Repository, healthHandler *health.H
 	return s
 }
 
+func (s *Server) invalidateCache(ctx context.Context) {
+	if ci, ok := s.engine.(cacheInvalidator); ok {
+		ci.InvalidateCache(ctx)
+	}
+}
+
+func (s *Server) invalidateCaveat(name string) {
+	if ci, ok := s.caveatEvaluator.(caveatInvalidator); ok {
+		ci.Invalidate(name)
+	}
+}
+
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
-	s.health.Register(mux)
-	// GET /health is a deprecated alias kept for existing callers; it now
-	// delegates to the real liveness check instead of claiming health it
-	// never measured. New callers should use /health/alive or /health/ready.
-	mux.HandleFunc("GET /health", s.health.Alive)
+	if s.health != nil {
+		s.health.Register(mux)
+		// GET /health is a deprecated alias kept for existing callers; it now
+		// delegates to the real liveness check instead of claiming health it
+		// never measured. New callers should use /health/alive or /health/ready.
+		mux.HandleFunc("GET /health", s.health.Alive)
+	}
 	mux.Handle("GET /metrics", metrics.Handler())
 	mux.Handle("/metrics", metrics.Handler())
 	mux.HandleFunc("POST /check", s.handleCheck)
@@ -101,6 +126,7 @@ func (s *Server) Routes() http.Handler {
 
 // handleCheck evaluates whether a subject has a relation on a namespace:object
 func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var req struct {
 		Namespace        string                 `json:"namespace"`
 		Object           string                 `json:"object"`
@@ -158,6 +184,10 @@ func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 
 	res, err := s.engine.Check(r.Context(), domainReq)
 	if err != nil {
+		if errors.Is(err, graph.ErrInvalidSnapToken) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "Check failed: "+err.Error())
 		return
 	}
@@ -219,6 +249,7 @@ func encodeTupleCursor(t core.Tuple) string {
 
 // handleWriteTuples creates one or more relation tuples
 func (s *Server) handleWriteTuples(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	tuples, err := decodeAPITuples(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -231,6 +262,8 @@ func (s *Server) handleWriteTuples(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.invalidateCache(r.Context())
+
 	w.Header().Set("X-Autorix-Snap-Token", snapToken)
 	w.Header().Set("X-Autorix-Zookie", snapToken)
 	writeJSON(w, http.StatusCreated, toAPITuples(tuples))
@@ -238,6 +271,7 @@ func (s *Server) handleWriteTuples(w http.ResponseWriter, r *http.Request) {
 
 // handleDeleteTuples removes one or more relation tuples
 func (s *Server) handleDeleteTuples(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	tuples, err := decodeAPITuples(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -248,6 +282,8 @@ func (s *Server) handleDeleteTuples(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	s.invalidateCache(r.Context())
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
@@ -267,6 +303,7 @@ func (s *Server) handleListNamespaces(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWriteNamespace(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var schema core.NamespaceSchema
 	if err := json.NewDecoder(r.Body).Decode(&schema); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid JSON payload: "+err.Error())
@@ -282,6 +319,8 @@ func (s *Server) handleWriteNamespace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	s.invalidateCache(r.Context())
 
 	writeJSON(w, http.StatusCreated, schema)
 }
@@ -318,6 +357,8 @@ func (s *Server) handleDeleteNamespace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.invalidateCache(r.Context())
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
@@ -336,6 +377,7 @@ func (s *Server) handleListCaveats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWriteCaveat(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var caveat core.CaveatDefinition
 	if err := json.NewDecoder(r.Body).Decode(&caveat); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid JSON payload: "+err.Error())
@@ -359,6 +401,9 @@ func (s *Server) handleWriteCaveat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	s.invalidateCaveat(caveat.Name)
+	s.invalidateCache(r.Context())
 
 	writeJSON(w, http.StatusCreated, caveat)
 }
@@ -395,6 +440,9 @@ func (s *Server) handleDeleteCaveat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.invalidateCaveat(name)
+	s.invalidateCache(r.Context())
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
@@ -403,7 +451,11 @@ func (s *Server) handleDeleteCaveat(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleExpand(w http.ResponseWriter, r *http.Request) {
 	var req core.ExpandRequest
 	if r.Method == http.MethodPost {
-		_ = json.NewDecoder(r.Body).Decode(&req)
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid JSON payload")
+			return
+		}
 	} else {
 		req.Namespace = r.URL.Query().Get("namespace")
 		req.Object = r.URL.Query().Get("object")
@@ -427,7 +479,11 @@ func (s *Server) handleExpand(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLookupSubjects(w http.ResponseWriter, r *http.Request) {
 	var req core.LookupSubjectsRequest
 	if r.Method == http.MethodPost {
-		_ = json.NewDecoder(r.Body).Decode(&req)
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid JSON payload")
+			return
+		}
 	} else {
 		req.Namespace = r.URL.Query().Get("namespace")
 		req.Object = r.URL.Query().Get("object")
@@ -444,6 +500,9 @@ func (s *Server) handleLookupSubjects(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "LookupSubjects failed: "+err.Error())
 		return
 	}
+	if subjects == nil {
+		subjects = make([]core.Tuple, 0)
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"subjects": subjects})
 }
@@ -458,7 +517,11 @@ func (s *Server) handleLookupResources(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodPost {
-		_ = json.NewDecoder(r.Body).Decode(&req)
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid JSON payload")
+			return
+		}
 	} else {
 		req.Namespace = r.URL.Query().Get("namespace")
 		req.Relation = r.URL.Query().Get("relation")
@@ -486,6 +549,9 @@ func (s *Server) handleLookupResources(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "LookupResources failed: "+err.Error())
 		return
+	}
+	if resources == nil {
+		resources = make([]string, 0)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"resources": resources})

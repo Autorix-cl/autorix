@@ -27,23 +27,21 @@ type UserSession struct {
 
 // WhoAmI validates a session token or cookie and returns the active identity.
 func (e *EgoClient) WhoAmI(ctx context.Context, sessionToken string) (*UserSession, error) {
-	url := strings.TrimRight(e.client.config.EgoURL, "/") + "/sessions/whoami"
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	if sessionToken != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+sessionToken)
-		httpReq.AddCookie(&http.Cookie{
-			Name:  "autorix_session_token",
-			Value: sessionToken,
-		})
-	}
-	e.client.prepareRequest(ctx, httpReq)
+	endpoint := strings.TrimRight(e.client.config.EgoURL, "/") + "/sessions/whoami"
 
 	httpResp, err := executeWithRetry(ctx, e.client.config.RetryConfig, func(opCtx context.Context) (*http.Response, error) {
+		httpReq, err := http.NewRequestWithContext(opCtx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+		if sessionToken != "" {
+			httpReq.Header.Set("Authorization", "Bearer "+sessionToken)
+			httpReq.AddCookie(&http.Cookie{
+				Name:  "autorix_session_token",
+				Value: sessionToken,
+			})
+		}
+		e.client.prepareRequest(opCtx, httpReq)
 		return e.client.config.HTTPClient.Do(httpReq)
 	})
 

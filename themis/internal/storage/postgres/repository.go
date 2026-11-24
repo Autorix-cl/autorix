@@ -11,6 +11,7 @@ import (
 
 	"github.com/autorix/platform/paging"
 	"github.com/autorix/themis/internal/core"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -113,10 +114,14 @@ func (r *Repository) List(ctx context.Context, filter core.ListFilter) ([]core.P
 		argIdx++
 	}
 
-	// Label filtering: each label must match (AND semantics)
-	for k, v := range filter.Labels {
-		query += fmt.Sprintf(" AND labels->>'%s' = $%d", sanitizeKey(k), argIdx)
-		args = append(args, v)
+	// Label filtering via parameterized JSONB containment (supports keys with '-', '.', '/', etc.)
+	if len(filter.Labels) > 0 {
+		labelsJSON, err := json.Marshal(filter.Labels)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal label filter: %w", err)
+		}
+		query += fmt.Sprintf(" AND labels @> $%d::jsonb", argIdx)
+		args = append(args, labelsJSON)
 		argIdx++
 	}
 
@@ -128,7 +133,7 @@ func (r *Repository) List(ctx context.Context, filter core.ListFilter) ([]core.P
 	}
 	defer rows.Close()
 
-	var policies []core.Policy
+	policies := make([]core.Policy, 0)
 	for rows.Next() {
 		var p core.Policy
 		var labelsJSON []byte
@@ -147,6 +152,9 @@ func (r *Repository) List(ctx context.Context, filter core.ListFilter) ([]core.P
 		}
 
 		policies = append(policies, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate policies: %w", err)
 	}
 
 	return policies, nil
@@ -197,9 +205,13 @@ func (r *Repository) ListPage(ctx context.Context, filter core.ListFilter, limit
 		argIdx++
 	}
 
-	for k, v := range filter.Labels {
-		query += fmt.Sprintf(" AND labels->>'%s' = $%d", sanitizeKey(k), argIdx)
-		args = append(args, v)
+	if len(filter.Labels) > 0 {
+		labelsJSON, err := json.Marshal(filter.Labels)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to marshal label filter: %w", err)
+		}
+		query += fmt.Sprintf(" AND labels @> $%d::jsonb", argIdx)
+		args = append(args, labelsJSON)
 		argIdx++
 	}
 
@@ -222,7 +234,7 @@ func (r *Repository) ListPage(ctx context.Context, filter core.ListFilter, limit
 	}
 	defer rows.Close()
 
-	var policies []core.Policy
+	policies := make([]core.Policy, 0)
 	for rows.Next() {
 		var p core.Policy
 		var labelsJSON []byte
@@ -241,6 +253,9 @@ func (r *Repository) ListPage(ctx context.Context, filter core.ListFilter, limit
 		}
 
 		policies = append(policies, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("failed to iterate policies: %w", err)
 	}
 
 	hasMore := len(policies) > limit
@@ -263,20 +278,20 @@ func (r *Repository) Update(ctx context.Context, policy *core.Policy) error {
 	}
 	defer tx.Rollback(ctx)
 
-	tag, err := tx.Exec(ctx, `
+	err = tx.QueryRow(ctx, `
 		UPDATE policies
 		SET name = $3, description = $4, expression = $5, priority = $6,
 		    enabled = $7, labels = $8, updated_at = NOW()
 		WHERE tenant_id = $1 AND id = $2
+		RETURNING created_at, updated_at
 	`, policy.TenantID, policy.ID, policy.Name, policy.Description,
 		policy.Expression, policy.Priority, policy.Enabled, labelsJSON,
-	)
+	).Scan(&policy.CreatedAt, &policy.UpdatedAt)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("policy not found")
+		}
 		return fmt.Errorf("failed to update policy: %w", err)
-	}
-
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("policy not found")
 	}
 
 	var nextVersion int32
@@ -334,7 +349,7 @@ func (r *Repository) ListVersions(ctx context.Context, tenantID, policyID string
 	}
 	defer rows.Close()
 
-	var versions []core.PolicyVersion
+	versions := make([]core.PolicyVersion, 0)
 	for rows.Next() {
 		var v core.PolicyVersion
 		var labelsJSON []byte
@@ -351,6 +366,9 @@ func (r *Repository) ListVersions(ctx context.Context, tenantID, policyID string
 			}
 		}
 		versions = append(versions, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate policy versions: %w", err)
 	}
 
 	return versions, nil
@@ -380,11 +398,33 @@ func (r *Repository) GetVersion(ctx context.Context, tenantID, policyID string, 
 	return &v, nil
 }
 
-// Rollback restores a policy's state to a previous version and creates a new revision record.
+// Rollback restores a policy's state to a previous version and creates a new
+// revision record inside a single atomic transaction.
 func (r *Repository) Rollback(ctx context.Context, tenantID, policyID string, version int32) (*core.Policy, error) {
-	v, err := r.GetVersion(ctx, tenantID, policyID, version)
+	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to begin rollback tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var v core.PolicyVersion
+	var labelsJSON []byte
+	err = tx.QueryRow(ctx, `
+		SELECT id, policy_id, tenant_id, version, name, description, expression, priority, enabled, labels, created_at
+		FROM policy_versions
+		WHERE tenant_id = $1 AND policy_id = $2 AND version = $3
+	`, tenantID, policyID, version).Scan(
+		&v.ID, &v.PolicyID, &v.TenantID, &v.Version, &v.Name,
+		&v.Description, &v.Expression, &v.Priority, &v.Enabled,
+		&labelsJSON, &v.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("policy version not found: %w", err)
+	}
+	if labelsJSON != nil {
+		if err := json.Unmarshal(labelsJSON, &v.Labels); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal labels: %w", err)
+		}
 	}
 
 	p := &core.Policy{
@@ -398,11 +438,51 @@ func (r *Repository) Rollback(ctx context.Context, tenantID, policyID string, ve
 		Labels:      v.Labels,
 	}
 
-	if err := r.Update(ctx, p); err != nil {
+	reMarshaledLabels, err := json.Marshal(p.Labels)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal labels: %w", err)
+	}
+
+	err = tx.QueryRow(ctx, `
+		UPDATE policies
+		SET name = $3, description = $4, expression = $5, priority = $6,
+		    enabled = $7, labels = $8, updated_at = NOW()
+		WHERE tenant_id = $1 AND id = $2
+		RETURNING created_at, updated_at
+	`, p.TenantID, p.ID, p.Name, p.Description,
+		p.Expression, p.Priority, p.Enabled, reMarshaledLabels,
+	).Scan(&p.CreatedAt, &p.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("policy not found")
+		}
 		return nil, fmt.Errorf("failed to apply rollback: %w", err)
 	}
 
-	return r.GetByID(ctx, tenantID, policyID)
+	var nextVersion int32
+	err = tx.QueryRow(ctx, `
+		SELECT COALESCE(MAX(version), 0) + 1
+		FROM policy_versions
+		WHERE tenant_id = $1 AND policy_id = $2
+	`, p.TenantID, p.ID).Scan(&nextVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute next version: %w", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO policy_versions (policy_id, tenant_id, version, name, description, expression, priority, enabled, labels, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+	`, p.ID, p.TenantID, nextVersion, p.Name, p.Description,
+		p.Expression, p.Priority, p.Enabled, reMarshaledLabels)
+	if err != nil {
+		return nil, fmt.Errorf("failed to insert rollback policy version: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit rollback tx: %w", err)
+	}
+
+	return p, nil
 }
 
 // CreateFixture inserts a new test fixture attached to a policy.
@@ -437,7 +517,7 @@ func (r *Repository) ListFixtures(ctx context.Context, tenantID, policyID string
 	}
 	defer rows.Close()
 
-	var fixtures []core.PolicyFixture
+	fixtures := make([]core.PolicyFixture, 0)
 	for rows.Next() {
 		var f core.PolicyFixture
 		var payloadJSON []byte
@@ -453,6 +533,9 @@ func (r *Repository) ListFixtures(ctx context.Context, tenantID, policyID string
 			}
 		}
 		fixtures = append(fixtures, f)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate policy fixtures: %w", err)
 	}
 	return fixtures, nil
 }
@@ -470,16 +553,4 @@ func (r *Repository) DeleteFixture(ctx context.Context, tenantID, policyID, fixt
 		return fmt.Errorf("policy fixture not found")
 	}
 	return nil
-}
-
-// sanitizeKey prevents SQL injection in JSONB key access.
-// Only allows alphanumeric characters and underscores.
-func sanitizeKey(key string) string {
-	var b strings.Builder
-	for _, r := range key {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
 }

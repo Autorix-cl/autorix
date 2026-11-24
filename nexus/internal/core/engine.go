@@ -7,12 +7,12 @@ import (
 
 // Tuple represents a Zanzibar relationship tuple with ABAC integration
 type Tuple struct {
-	Namespace        string                 `json:"namespace"`
-	Object           string                 `json:"object"`
-	Relation         string                 `json:"relation"`
-	SubjectNamespace string                 `json:"subject_namespace"`
-	SubjectObject    string                 `json:"subject_object"`
-	SubjectRelation  string                 `json:"subject_relation,omitempty"`
+	Namespace        string `json:"namespace"`
+	Object           string `json:"object"`
+	Relation         string `json:"relation"`
+	SubjectNamespace string `json:"subject_namespace"`
+	SubjectObject    string `json:"subject_object"`
+	SubjectRelation  string `json:"subject_relation,omitempty"`
 
 	CaveatName    string                 `json:"caveat_name,omitempty"`
 	CaveatContext map[string]interface{} `json:"caveat_context,omitempty"`
@@ -53,7 +53,7 @@ type DecisionNode struct {
 
 // RewriteRule defines rewrite operations on relations
 type RewriteRule struct {
-	Type             string         `json:"type"` // "this", "computed_userset", "tuple_to_userset", "union", "intersection"
+	Type             string         `json:"type"`                        // "this", "computed_userset", "tuple_to_userset", "union", "intersection"
 	Relation         string         `json:"relation,omitempty"`          // for computed_userset
 	TuplesetRelation string         `json:"tupleset_relation,omitempty"` // for tuple_to_userset
 	ComputedRelation string         `json:"computed_relation,omitempty"` // for tuple_to_userset

@@ -18,10 +18,12 @@ func newThemisClient(c *Client) *ThemisClient {
 	return &ThemisClient{client: c}
 }
 
-// EvaluatePolicyRequest specifies the context for CEL policy evaluation.
+// EvaluatePolicyRequest specifies the payload for CEL policy evaluation.
 type EvaluatePolicyRequest struct {
-	TenantID string                 `json:"tenant_id,omitempty"`
-	Context  map[string]interface{} `json:"context"`
+	TenantID    string                 `json:"tenant_id,omitempty"`
+	PolicyID    string                 `json:"policy_id,omitempty"`
+	Context     map[string]interface{} `json:"payload"`
+	LabelFilter map[string]string      `json:"label_filter,omitempty"`
 }
 
 // PolicyEvaluationResult details the decision for an individual policy.

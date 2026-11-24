@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	pb "github.com/autorix/nexus/api/autorix/nexus/v1"
@@ -138,6 +139,14 @@ func main() {
 	// Enable reflection for tools like grpcurl
 	reflection.Register(grpcServer)
 
+	rawOrigins := strings.Split(c.CORSOrigins, ",")
+	allowedOrigins := make([]string, 0, len(rawOrigins))
+	for _, o := range rawOrigins {
+		if trimmed := strings.TrimSpace(o); trimmed != "" {
+			allowedOrigins = append(allowedOrigins, trimmed)
+		}
+	}
+
 	// 5. Initialize Transport Layer (REST admin API)
 	restServer := httpTransport.NewServer(resolver, repo, healthHandler,
 		httpTransport.WithCaveatEvaluator(celEvaluator),
@@ -148,16 +157,16 @@ func main() {
 		metrics.HTTPMiddleware("nexus"),
 		httpx.AccessLog(logger),
 		httpx.Timeout(c.RequestTimeout),
-		httpx.CORS(httpx.CORSConfig{AllowedOrigins: []string{c.CORSOrigins}}),
+		httpx.CORS(httpx.CORSConfig{AllowedOrigins: allowedOrigins}),
 	)
 
 	httpServer := &http.Server{
-		Addr:    ":" + c.HTTPPort,
-		Handler: restHandler,
-		// Bounds how long the server waits to read request headers, so a
-		// client that trickles bytes in (Slowloris) can't tie up a
-		// connection indefinitely.
+		Addr:              ":" + c.HTTPPort,
+		Handler:           restHandler,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	if _, err := autortls.ConfigureHTTPServer(httpServer, logger, "nexus"); err != nil {

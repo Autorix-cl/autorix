@@ -123,7 +123,7 @@ func (r *Repository) ReadTuples(ctx context.Context, filter core.Tuple) ([]core.
 	}
 	defer rows.Close()
 
-	var result []core.Tuple
+	result := make([]core.Tuple, 0)
 	for rows.Next() {
 		var t core.Tuple
 		var caveatName *string
@@ -147,6 +147,9 @@ func (r *Repository) ReadTuples(ctx context.Context, filter core.Tuple) ([]core.
 			}
 		}
 		result = append(result, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate tuples: %w", err)
 	}
 
 	return result, nil
@@ -231,7 +234,7 @@ func (r *Repository) ListTuples(ctx context.Context, namespace string, limit int
 	}
 	defer rows.Close()
 
-	var result []core.Tuple
+	result := make([]core.Tuple, 0)
 	for rows.Next() {
 		var t core.Tuple
 		var caveatName *string
@@ -255,6 +258,9 @@ func (r *Repository) ListTuples(ctx context.Context, namespace string, limit int
 			}
 		}
 		result = append(result, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("failed to iterate tuples: %w", err)
 	}
 
 	hasMore := len(result) > limit
@@ -335,7 +341,7 @@ func (r *Repository) QueryTuples(ctx context.Context, filter core.Tuple) ([]core
 	}
 	defer rows.Close()
 
-	var result []core.Tuple
+	result := make([]core.Tuple, 0)
 	for rows.Next() {
 		var t core.Tuple
 		var caveatName *string
@@ -359,6 +365,9 @@ func (r *Repository) QueryTuples(ctx context.Context, filter core.Tuple) ([]core
 			}
 		}
 		result = append(result, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate tuples: %w", err)
 	}
 
 	return result, nil
@@ -411,13 +420,16 @@ func (r *Repository) ListCaveats(ctx context.Context) ([]core.CaveatDefinition, 
 	}
 	defer rows.Close()
 
-	var result []core.CaveatDefinition
+	result := make([]core.CaveatDefinition, 0)
 	for rows.Next() {
 		var c core.CaveatDefinition
 		if err := rows.Scan(&c.Name, &c.CELExpression, &c.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan caveat: %w", err)
 		}
 		result = append(result, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate caveats: %w", err)
 	}
 	return result, nil
 }
@@ -479,7 +491,7 @@ func (r *Repository) ListNamespaces(ctx context.Context) ([]core.NamespaceSchema
 	}
 	defer rows.Close()
 
-	var result []core.NamespaceSchema
+	result := make([]core.NamespaceSchema, 0)
 	for rows.Next() {
 		var raw []byte
 		var createdAt, updatedAt time.Time
@@ -493,6 +505,9 @@ func (r *Repository) ListNamespaces(ctx context.Context) ([]core.NamespaceSchema
 		schema.CreatedAt = createdAt
 		schema.UpdatedAt = updatedAt
 		result = append(result, schema)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate namespace schemas: %w", err)
 	}
 	return result, nil
 }

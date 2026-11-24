@@ -176,6 +176,7 @@ type PolicyEngine interface {
 	UpdatePolicy(ctx context.Context, policy *Policy) error
 	DeletePolicy(ctx context.Context, tenantID, policyID string) error
 	Evaluate(ctx context.Context, req EvaluateRequest) (*EvaluateResponse, error)
+	EvaluateBatch(ctx context.Context, tenantID string, labelFilter map[string]string, payloads []map[string]interface{}) ([]*EvaluateResponse, error)
 
 	// Versioning
 	ListPolicyVersions(ctx context.Context, tenantID, policyID string) ([]PolicyVersion, error)

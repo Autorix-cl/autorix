@@ -102,12 +102,15 @@ func (j *JanusClient) AuthorizationURL(clientID, redirectURI, state, scope, code
 // Discovery retrieves OIDC discovery metadata. It is safe to retry because it
 // is an idempotent GET operation.
 func (j *JanusClient) Discovery(ctx context.Context) (*DiscoveryDocument, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(j.client.config.JanusURL, "/")+"/.well-known/openid-configuration", nil)
-	if err != nil {
-		return nil, err
-	}
-	j.client.prepareRequest(ctx, req)
-	resp, err := executeWithRetry(ctx, j.client.config.RetryConfig, func(context.Context) (*http.Response, error) { return j.client.config.HTTPClient.Do(req) })
+	endpoint := strings.TrimRight(j.client.config.JanusURL, "/") + "/.well-known/openid-configuration"
+	resp, err := executeWithRetry(ctx, j.client.config.RetryConfig, func(opCtx context.Context) (*http.Response, error) {
+		req, err := http.NewRequestWithContext(opCtx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+		j.client.preparePublicRequest(opCtx, req)
+		return j.client.config.HTTPClient.Do(req)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +145,7 @@ func (j *JanusClient) ExchangeToken(ctx context.Context, input TokenRequest) (*T
 	if input.ClientSecret != "" {
 		req.SetBasicAuth(input.ClientID, input.ClientSecret)
 	}
-	j.client.prepareRequest(ctx, req)
+	j.client.preparePublicRequest(ctx, req)
 	resp, err := j.client.config.HTTPClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -175,7 +178,7 @@ func (j *JanusClient) Revoke(ctx context.Context, clientID, clientSecret, token,
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(clientID, clientSecret)
-	j.client.prepareRequest(ctx, req)
+	j.client.preparePublicRequest(ctx, req)
 	resp, err := j.client.config.HTTPClient.Do(req)
 	if err != nil {
 		return err
@@ -220,12 +223,14 @@ func (j *JanusClient) Introspect(ctx context.Context, token string) (*TokenIntro
 	return &res, nil
 }
 
-// GetJWKS retrieves the public JWKS keys with Stale-While-Revalidate caching.
+// GetJWKS retrieves the public JWKS keys with caching, returning a defensive copy
+// so caller mutations cannot corrupt the cached map.
 func (j *JanusClient) GetJWKS(ctx context.Context) (map[string]interface{}, error) {
 	j.jwksMu.RLock()
 	if j.jwksCache != nil && time.Now().Before(j.jwksExp) {
-		defer j.jwksMu.RUnlock()
-		return j.jwksCache, nil
+		copied := cloneMap(j.jwksCache)
+		j.jwksMu.RUnlock()
+		return copied, nil
 	}
 	j.jwksMu.RUnlock()
 
@@ -235,7 +240,7 @@ func (j *JanusClient) GetJWKS(ctx context.Context) (map[string]interface{}, erro
 	if err != nil {
 		return nil, err
 	}
-	j.client.prepareRequest(ctx, httpReq)
+	j.client.preparePublicRequest(ctx, httpReq)
 
 	resp, err := j.client.config.HTTPClient.Do(httpReq)
 	if err != nil {
@@ -243,15 +248,45 @@ func (j *JanusClient) GetJWKS(ctx context.Context) (map[string]interface{}, erro
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("janus jwks returned unexpected status: %d", resp.StatusCode)
+	}
+
 	var jwks map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&jwks); err != nil {
 		return nil, err
 	}
 
 	j.jwksMu.Lock()
-	j.jwksCache = jwks
+	j.jwksCache = cloneMap(jwks)
 	j.jwksExp = time.Now().Add(5 * time.Minute) // 5 min cache
 	j.jwksMu.Unlock()
 
 	return jwks, nil
+}
+
+func cloneMap(src map[string]interface{}) map[string]interface{} {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]interface{}, len(src))
+	for k, v := range src {
+		dst[k] = cloneValue(v)
+	}
+	return dst
+}
+
+func cloneValue(v interface{}) interface{} {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		return cloneMap(val)
+	case []interface{}:
+		out := make([]interface{}, len(val))
+		for i, item := range val {
+			out[i] = cloneValue(item)
+		}
+		return out
+	default:
+		return val
+	}
 }

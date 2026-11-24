@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -19,6 +22,50 @@ import (
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+const (
+	maxRequestBodyBytes = 1 << 20 // 1 MiB
+	maxGracePeriod      = 168 * time.Hour
+	maxSourceIPLength   = 64
+	usageRecordTimeout  = 2 * time.Second
+)
+
+type keyRepository interface {
+	CreateKey(ctx context.Context, k *core.APIKey) error
+	GetKeyByID(ctx context.Context, id uuid.UUID) (*core.APIKey, error)
+	UpdateKey(ctx context.Context, id uuid.UUID, req core.UpdateKeyRequest) (*core.APIKey, error)
+	RotateKey(ctx context.Context, id uuid.UUID, newHash, newHint, newRootKey string, gracePeriodExpiresAt *time.Time) (*core.APIKey, error)
+	RevokeKey(ctx context.Context, id uuid.UUID) error
+	RecordUsage(ctx context.Context, id uuid.UUID, sourceIP string) error
+	ListKeys(ctx context.Context, limit int, cursor string) ([]core.APIKey, bool, error)
+	ListScopes(ctx context.Context) ([]core.Scope, error)
+	CreateScope(ctx context.Context, s *core.Scope) error
+	DeleteScope(ctx context.Context, name string) error
+}
+
+// cachedAPIKey is an internal cache DTO that preserves RootSignatureKey and
+// PrevRootSignatureKey across JSON serialization while core.APIKey keeps
+// json:"-" on secret fields so they are never exposed in HTTP responses.
+type cachedAPIKey struct {
+	APIKey               core.APIKey `json:"api_key"`
+	RootSignatureKey     string      `json:"root_signature_key"`
+	PrevRootSignatureKey string      `json:"prev_root_signature_key,omitempty"`
+}
+
+func toCachedAPIKey(k *core.APIKey) cachedAPIKey {
+	return cachedAPIKey{
+		APIKey:               *k,
+		RootSignatureKey:     k.RootSignatureKey,
+		PrevRootSignatureKey: k.PrevRootSignatureKey,
+	}
+}
+
+func (c *cachedAPIKey) toAPIKey() *core.APIKey {
+	k := c.APIKey
+	k.RootSignatureKey = c.RootSignatureKey
+	k.PrevRootSignatureKey = c.PrevRootSignatureKey
+	return &k
+}
 
 var (
 	vulcanKeysVerifiedTotal = prometheus.NewCounterVec(
@@ -39,15 +86,19 @@ func init() {
 }
 
 type Server struct {
-	repo          *postgres.Repository
+	repo          keyRepository
 	location      string
 	healthHandler *health.Handler
 	cache         cache.Cache
 }
 
 func NewServer(repo *postgres.Repository, location string, healthHandler *health.Handler) *Server {
+	var r keyRepository
+	if repo != nil {
+		r = repo
+	}
 	return &Server{
-		repo:          repo,
+		repo:          r,
 		location:      location,
 		healthHandler: healthHandler,
 	}
@@ -93,6 +144,9 @@ func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if keys == nil {
+		keys = make([]core.APIKey, 0)
+	}
 
 	var nextCursor string
 	if hasMore && len(keys) > 0 {
@@ -103,6 +157,7 @@ func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var req core.CreateKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid JSON payload")
@@ -153,6 +208,7 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAttenuate(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var req struct {
 		Macaroon *core.Macaroon `json:"macaroon"`
 		Caveat   string         `json:"caveat"` // e.g. "time_before = 2026-08-17T00:00:00Z"
@@ -173,6 +229,7 @@ func (s *Server) handleAttenuate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var req struct {
 		Macaroon *core.Macaroon            `json:"macaroon"`
 		Context  *core.VerificationContext `json:"context,omitempty"`
@@ -197,9 +254,9 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 
 	if s.cache != nil {
 		if cachedBytes, err := s.cache.Get(r.Context(), cacheKey); err == nil {
-			var cachedKey core.APIKey
-			if json.Unmarshal(cachedBytes, &cachedKey) == nil {
-				apiKey = &cachedKey
+			var cached cachedAPIKey
+			if json.Unmarshal(cachedBytes, &cached) == nil && cached.RootSignatureKey != "" {
+				apiKey = cached.toAPIKey()
 			}
 		}
 	}
@@ -216,14 +273,15 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "Database error")
 			return
 		}
-		if s.cache != nil && apiKey.State == "active" {
-			if data, err := json.Marshal(apiKey); err == nil {
+		if s.cache != nil && apiKey.State == "active" && apiKey.RootSignatureKey != "" {
+			if data, err := json.Marshal(toCachedAPIKey(apiKey)); err == nil {
 				_ = s.cache.Set(r.Context(), cacheKey, data, 2*time.Minute)
 			}
 		}
 	}
 
-	if apiKey.State == "expired" || (apiKey.ExpiresAt != nil && time.Now().After(*apiKey.ExpiresAt)) {
+	now := time.Now()
+	if apiKey.State == "expired" || (apiKey.ExpiresAt != nil && now.After(*apiKey.ExpiresAt)) {
 		vulcanKeysVerifiedTotal.WithLabelValues("expired").Inc()
 		writeError(w, http.StatusForbidden, "API key is expired")
 		return
@@ -235,17 +293,21 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Set default time context if not provided
-	if req.Context == nil {
-		req.Context = &core.VerificationContext{Now: time.Now()}
-	} else if req.Context.Now.IsZero() {
-		req.Context.Now = time.Now()
+	// 2. Always enforce server clock for time_before caveats; ignore client-supplied context.now.
+	verifyCtx := &core.VerificationContext{Now: now}
+	if req.Context != nil {
+		verifyCtx.IPAddress = req.Context.IPAddress
+		verifyCtx.Method = req.Context.Method
+		verifyCtx.Path = req.Context.Path
 	}
 
-	// 3. Verify Chained Signature and Caveats
-	valid, err := macaroon.Verify(req.Macaroon, apiKey.RootSignatureKey, req.Context)
-	if (err != nil || !valid) && apiKey.PrevRootSignatureKey != "" && apiKey.GracePeriodExpiresAt != nil && time.Now().Before(*apiKey.GracePeriodExpiresAt) {
-		valid, err = macaroon.Verify(req.Macaroon, apiKey.PrevRootSignatureKey, req.Context)
+	// 3. Verify Chained Signature and Caveats; fall back to previous root key only on signature mismatch.
+	valid, err := macaroon.Verify(req.Macaroon, apiKey.RootSignatureKey, verifyCtx)
+	if errors.Is(err, macaroon.ErrInvalidSignature) &&
+		apiKey.PrevRootSignatureKey != "" &&
+		apiKey.GracePeriodExpiresAt != nil &&
+		now.Before(*apiKey.GracePeriodExpiresAt) {
+		valid, err = macaroon.Verify(req.Macaroon, apiKey.PrevRootSignatureKey, verifyCtx)
 	}
 
 	if err != nil || !valid {
@@ -260,16 +322,15 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 
 	vulcanKeysVerifiedTotal.WithLabelValues("valid").Inc()
 
-	// Usage tracking (P6-S6-T2): record last used timestamp, call count, and source IP
-	sourceIP := req.Context.IPAddress
-	if sourceIP == "" {
-		sourceIP = r.Header.Get("X-Forwarded-For")
-		if sourceIP == "" {
-			sourceIP = r.RemoteAddr
-		}
+	// Usage tracking (P6-S6-T2): record last used timestamp, call count, and validated source IP
+	sourceIP := extractSourceIP(verifyCtx.IPAddress, r)
+	if s.repo != nil {
+		go func(keyID uuid.UUID, ip string) {
+			ctx, cancel := context.WithTimeout(context.Background(), usageRecordTimeout)
+			defer cancel()
+			_ = s.repo.RecordUsage(ctx, keyID, ip)
+		}(apiKey.ID, sourceIP)
 	}
-
-	go s.repo.RecordUsage(context.Background(), apiKey.ID, sourceIP) // #nosec G118 -- deliberate background goroutine
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"valid":   true,
@@ -325,6 +386,7 @@ func (s *Server) handleAdminGetKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminUpdateKey(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	idStr := r.PathValue("id")
 	keyUUID, err := uuid.Parse(idStr)
 	if err != nil {
@@ -338,10 +400,28 @@ func (s *Server) handleAdminUpdateKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	existing, err := s.repo.GetKeyByID(r.Context(), keyUUID)
+	if err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "API key not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if existing.State == "revoked" {
+		writeError(w, http.StatusBadRequest, "Cannot update revoked key")
+		return
+	}
+
 	apiKey, err := s.repo.UpdateKey(r.Context(), keyUUID, req)
 	if err != nil {
 		if errors.Is(err, postgres.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "API key not found")
+			return
+		}
+		if errors.Is(err, postgres.ErrKeyRevoked) {
+			writeError(w, http.StatusBadRequest, "Cannot update revoked key")
 			return
 		}
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -356,6 +436,7 @@ func (s *Server) handleAdminUpdateKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminRotateKey(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	idStr := r.PathValue("id")
 	keyUUID, err := uuid.Parse(idStr)
 	if err != nil {
@@ -364,8 +445,8 @@ func (s *Server) handleAdminRotateKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req core.RotateKeyRequest
-	if r.Body != nil && r.ContentLength > 0 {
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
 			writeError(w, http.StatusBadRequest, "Invalid JSON payload")
 			return
 		}
@@ -374,8 +455,8 @@ func (s *Server) handleAdminRotateKey(w http.ResponseWriter, r *http.Request) {
 	graceDuration := 24 * time.Hour
 	if req.GracePeriod != "" {
 		parsed, err := time.ParseDuration(req.GracePeriod)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "Invalid grace_period duration")
+		if err != nil || parsed < 0 || parsed > maxGracePeriod {
+			writeError(w, http.StatusBadRequest, "Invalid grace_period duration (must be between 0s and 168h)")
 			return
 		}
 		graceDuration = parsed
@@ -391,8 +472,8 @@ func (s *Server) handleAdminRotateKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if existing.State != "active" {
-		writeError(w, http.StatusBadRequest, "Cannot rotate inactive key")
+	if existing.State != "active" || (existing.ExpiresAt != nil && time.Now().After(*existing.ExpiresAt)) {
+		writeError(w, http.StatusBadRequest, "Cannot rotate inactive or expired key")
 		return
 	}
 
@@ -431,11 +512,15 @@ func (s *Server) handleAdminListScopes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if scopes == nil {
+		scopes = make([]core.Scope, 0)
+	}
 
 	writeJSON(w, http.StatusOK, scopes)
 }
 
 func (s *Server) handleAdminCreateScope(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var req core.CreateScopeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid JSON payload")
@@ -477,6 +562,38 @@ func (s *Server) handleAdminDeleteScope(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// extractSourceIP selects and validates a client IP from the verification
+// context, X-Forwarded-For, or RemoteAddr, returning a canonical IP string
+// capped at maxSourceIPLength (or "" if no valid IP is present).
+func extractSourceIP(ctxIP string, r *http.Request) string {
+	candidates := []string{ctxIP}
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		first := strings.TrimSpace(strings.Split(xff, ",")[0])
+		candidates = append(candidates, first)
+	}
+	candidates = append(candidates, r.RemoteAddr)
+
+	for _, raw := range candidates {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		host := raw
+		if h, _, err := net.SplitHostPort(raw); err == nil {
+			host = h
+		}
+		host = strings.Trim(host, "[]")
+		if addr, err := netip.ParseAddr(host); err == nil {
+			clean := addr.WithZone("").String()
+			if len(clean) > maxSourceIPLength {
+				return clean[:maxSourceIPLength]
+			}
+			return clean
+		}
+	}
+	return ""
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {

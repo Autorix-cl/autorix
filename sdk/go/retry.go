@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -36,7 +37,7 @@ func isRetryableStatus(statusCode int) bool {
 		http.StatusInternalServerError, // 500
 		http.StatusBadGateway,          // 502 Bad Gateway
 		http.StatusServiceUnavailable,  // 503 Overloaded
-		http.StatusGatewayTimeout:       // 504 Gateway Timeout
+		http.StatusGatewayTimeout:      // 504 Gateway Timeout
 		return true
 	default:
 		return false
@@ -116,6 +117,7 @@ func executeWithRetry(
 		}
 
 		// Drain and close response body before retrying
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 		_ = resp.Body.Close()
 		lastResp = resp
 	}

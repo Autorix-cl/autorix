@@ -15,7 +15,8 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("record not found")
+	ErrNotFound   = errors.New("record not found")
+	ErrKeyRevoked = errors.New("cannot modify revoked key")
 )
 
 type Repository struct {
@@ -87,6 +88,9 @@ func scanKey(row pgx.Row, k *core.APIKey) error {
 	if prevRootSig != nil {
 		k.PrevRootSignatureKey = *prevRootSig
 	}
+	if k.Scopes == nil {
+		k.Scopes = []string{}
+	}
 	return nil
 }
 
@@ -134,6 +138,9 @@ func (r *Repository) UpdateKey(ctx context.Context, id uuid.UUID, req core.Updat
 	if err != nil {
 		return nil, err
 	}
+	if existing.State == "revoked" {
+		return nil, ErrKeyRevoked
+	}
 
 	if req.Name != nil {
 		existing.Name = *req.Name
@@ -151,13 +158,13 @@ func (r *Repository) UpdateKey(ctx context.Context, id uuid.UUID, req core.Updat
 	query := `
 		UPDATE api_keys
 		SET name = $1, description = $2, scopes = $3, expires_at = $4, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $5
+		WHERE id = $5 AND state != 'revoked'
 		RETURNING updated_at
 	`
 	err = r.pool.QueryRow(ctx, query, existing.Name, existing.Description, existing.Scopes, existing.ExpiresAt, id).Scan(&existing.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrNotFound
+			return nil, ErrKeyRevoked
 		}
 		return nil, fmt.Errorf("failed to update api key: %w", err)
 	}
@@ -260,13 +267,16 @@ func (r *Repository) ListKeys(ctx context.Context, limit int, cursor string) ([]
 	}
 	defer rows.Close()
 
-	var keys []core.APIKey
+	keys := make([]core.APIKey, 0)
 	for rows.Next() {
 		var k core.APIKey
 		if err := scanKey(rows, &k); err != nil {
 			return nil, false, err
 		}
 		keys = append(keys, k)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("failed to iterate keys: %w", err)
 	}
 
 	hasMore := len(keys) > limit
@@ -285,7 +295,7 @@ func (r *Repository) ListScopes(ctx context.Context) ([]core.Scope, error) {
 	}
 	defer rows.Close()
 
-	var scopes []core.Scope
+	scopes := make([]core.Scope, 0)
 	for rows.Next() {
 		var s core.Scope
 		if err := rows.Scan(&s.Name, &s.Description, &s.CreatedAt); err != nil {
@@ -293,8 +303,8 @@ func (r *Repository) ListScopes(ctx context.Context) ([]core.Scope, error) {
 		}
 		scopes = append(scopes, s)
 	}
-	if scopes == nil {
-		scopes = []core.Scope{}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate scopes: %w", err)
 	}
 	return scopes, nil
 }

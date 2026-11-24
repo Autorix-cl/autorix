@@ -159,6 +159,8 @@ func (s *Server) EvaluatePolicy(ctx context.Context, req *pb.EvaluatePolicyReque
 	return evalResponseToPb(resp), nil
 }
 
+const maxBatchEvaluateSize = 100
+
 func (s *Server) BatchEvaluate(ctx context.Context, req *pb.BatchEvaluateRequest) (*pb.BatchEvaluateResponse, error) {
 	if req.TenantId == "" {
 		return nil, status.Error(codes.InvalidArgument, "tenant_id is required")
@@ -166,22 +168,27 @@ func (s *Server) BatchEvaluate(ctx context.Context, req *pb.BatchEvaluateRequest
 	if len(req.Payloads) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "at least one payload is required")
 	}
+	if len(req.Payloads) > maxBatchEvaluateSize {
+		return nil, status.Errorf(codes.InvalidArgument, "batch size %d exceeds maximum allowed (%d)", len(req.Payloads), maxBatchEvaluateSize)
+	}
 
-	var evaluations []*pb.EvaluatePolicyResponse
-
-	for _, payload := range req.Payloads {
-		evalReq := core.EvaluateRequest{
-			TenantID:    req.TenantId,
-			Payload:     payload.AsMap(),
-			LabelFilter: req.LabelFilter,
+	payloads := make([]map[string]interface{}, len(req.Payloads))
+	for i, p := range req.Payloads {
+		if p != nil {
+			payloads[i] = p.AsMap()
+		} else {
+			payloads[i] = map[string]interface{}{}
 		}
+	}
 
-		resp, err := s.engine.Evaluate(ctx, evalReq)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "batch evaluation failed: %v", err)
-		}
+	responses, err := s.engine.EvaluateBatch(ctx, req.TenantId, req.LabelFilter, payloads)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "batch evaluation failed: %v", err)
+	}
 
-		evaluations = append(evaluations, evalResponseToPb(resp))
+	evaluations := make([]*pb.EvaluatePolicyResponse, len(responses))
+	for i, resp := range responses {
+		evaluations[i] = evalResponseToPb(resp)
 	}
 
 	return &pb.BatchEvaluateResponse{
