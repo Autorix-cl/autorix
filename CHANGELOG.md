@@ -8,6 +8,17 @@ structure.
 
 ## [Unreleased]
 
+## [v0.2.2] - 2026-11-24
+
+### Fixed
+
+- Added `@types/node` to `sdk/typescript` `devDependencies` so clean TypeScript
+  SDK builds resolve Node `crypto`, `Buffer`, and `process` declarations.
+- Fixed Compose v2 service name filtering (`{{.Service}} != "console"`) in the
+  `e2e-console` health-wait loop in `.github/workflows/ci.yml`.
+- Installed `httpx` in `.github/workflows/release-supply-chain.yml` so Python
+  SDK unit tests run cleanly during release validation.
+
 ## [v0.2.1] - 2026-11-24
 
 ### Fixed
@@ -75,7 +86,8 @@ structure.
 - Console UX, accessibility, RBAC gating, and real-backend wiring across
   Explorer, Diagnostics, Fleet, Audit, Policies, and Vulcan screens.
 
-[Unreleased]: https://github.com/Autorix-cl/autorix/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Autorix-cl/autorix/compare/v0.2.2...HEAD
+[v0.2.2]: https://github.com/Autorix-cl/autorix/compare/v0.2.1...v0.2.2
 [v0.2.1]: https://github.com/Autorix-cl/autorix/compare/v0.2.0...v0.2.1
 [v0.2.0]: https://github.com/Autorix-cl/autorix/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/Autorix-cl/autorix/releases/tag/v0.1.0

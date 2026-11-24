@@ -152,7 +152,7 @@ jobs:
         run: |
           deadline=$((SECONDS + 180))
           while true; do
-            unhealthy=$(docker compose --profile core ps --format '{{.Name}} {{.Health}}' | awk '$1 != "autorix-console" && $2 != "healthy" {print $1}')
+            unhealthy=$(docker compose --profile core ps --format '{{.Service}} {{.Health}}' | awk '$1 != "console" && $2 != "healthy" {print $1}')
             if [ -z "$unhealthy" ]; then
               echo "All services healthy."
               break

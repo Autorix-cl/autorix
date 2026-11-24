@@ -80,7 +80,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install release validation dependencies
-        run: pip install build pyyaml
+        run: pip install build pyyaml httpx
 
       - name: Validate Python SDK package
         run: |
