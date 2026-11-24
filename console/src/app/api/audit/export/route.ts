@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getServiceUrl } from "@/lib/api-config";
+import { buildInternalAuthHeaders } from "@/lib/api/internal-headers";
 import { requireOperator } from "@/lib/auth/session";
 
 const EXPORT_TIMEOUT_MS = 15_000;
@@ -16,14 +17,10 @@ export async function GET(request: NextRequest) {
   const queryString = searchParams.toString() ? `?${searchParams.toString()}` : "";
   const url = `${getServiceUrl("argus")}/v1/audit/export${queryString}`;
 
-  const upstreamHeaders: Record<string, string> = {
+  const upstreamHeaders = buildInternalAuthHeaders({
     "x-request-id": requestId,
     "x-correlation-id": requestId,
-    "x-autorix-caller": "console",
-  };
-  if (process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN) {
-    upstreamHeaders["x-autorix-console-token"] = process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN;
-  }
+  });
 
   let res: Response;
   try {

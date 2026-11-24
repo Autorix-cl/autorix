@@ -1,18 +1,15 @@
 import { NextResponse } from "next/server";
 import { getServiceUrl } from "@/lib/api-config";
+import { buildInternalAuthHeaders } from "@/lib/api/internal-headers";
 import { requireOperator } from "@/lib/auth/session";
 import type { ConsistencyFinding } from "@/lib/api/schemas/explorer";
 
 const CONSISTENCY_TIMEOUT_MS = 8_000;
 
 async function fetchEngineJson(url: string): Promise<unknown | null> {
-  const headers: Record<string, string> = { "x-autorix-caller": "console" };
-  if (process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN) {
-    headers["x-autorix-console-token"] = process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN;
-  }
   const res = await fetch(url, {
     cache: "no-store",
-    headers,
+    headers: buildInternalAuthHeaders(),
     signal: AbortSignal.timeout(CONSISTENCY_TIMEOUT_MS),
   });
   if (!res.ok) return null;
@@ -92,7 +89,10 @@ export async function GET() {
         severity: "critical",
         category: "aegis",
         title: `${rulesMissingUpstream.length} Active Proxy Rule${rulesMissingUpstream.length === 1 ? "" : "s"} Missing Upstream URL`,
-        description: `Enabled Aegis rule(s) (${rulesMissingUpstream.map((r) => String(r.name || r.id)).slice(0, 3).join(", ")}) lack a valid upstream target.`,
+        description: `Enabled Aegis rule(s) (${rulesMissingUpstream
+          .map((r) => String(r.name || r.id))
+          .slice(0, 3)
+          .join(", ")}) lack a valid upstream target.`,
         remediation: "Configure an authenticated upstream target URL or disable the incomplete rule.",
         remediation_link: "/proxy-rules",
       });
@@ -149,7 +149,10 @@ export async function GET() {
         severity: "warning",
         category: "vulcan",
         title: `${staleKeys.length} Stale API Key${staleKeys.length === 1 ? "" : "s"} Detected`,
-        description: `API keys (${staleKeys.map((k) => String(k.name)).slice(0, 3).join(", ")}) have had zero traffic in over 30 days. Unused credentials expand the attack surface.`,
+        description: `API keys (${staleKeys
+          .map((k) => String(k.name))
+          .slice(0, 3)
+          .join(", ")}) have had zero traffic in over 30 days. Unused credentials expand the attack surface.`,
         remediation: "Review key usage and revoke stale machine tokens.",
         remediation_link: "/vulcan",
       });

@@ -140,6 +140,7 @@ func main() {
 			httpx.Recover(logger),
 			httpx.AccessLog(logger),
 			httpx.Timeout(cfg.RequestTimeout),
+			httpx.InternalAuth(httpx.InternalAuthConfigFromEnv()),
 		),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,

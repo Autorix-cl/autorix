@@ -94,6 +94,7 @@ func main() {
 		httpx.AccessLog(logger),
 		httpx.Timeout(cfg.RequestTimeout),
 		httpx.CORS(httpx.CORSConfig{AllowedOrigins: strings.Split(cfg.CORSOrigins, ",")}),
+		httpx.InternalAuth(httpx.InternalAuthConfigFromEnv("/admin/", "/scim/")),
 	)
 
 	httpServer := &http.Server{

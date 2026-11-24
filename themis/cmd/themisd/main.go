@@ -24,6 +24,7 @@ import (
 	platformpg "github.com/autorix/platform/postgres"
 	"github.com/autorix/platform/registry"
 	"github.com/autorix/platform/run"
+	autortls "github.com/autorix/platform/tls"
 	"github.com/autorix/platform/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -128,6 +129,7 @@ func main() {
 		httpx.AccessLog(logger),
 		httpx.Timeout(c.RequestTimeout),
 		httpx.CORS(httpx.CORSConfig{AllowedOrigins: allowedOrigins}),
+		httpx.InternalAuth(httpx.InternalAuthConfigFromEnv("/policies", "/admin/")),
 	)
 
 	httpServer := &http.Server{
@@ -141,7 +143,10 @@ func main() {
 
 	// 5. Initialize Transport Layer (gRPC Server)
 	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(metrics.UnaryServerInterceptor("themis")),
+		grpc.ChainUnaryInterceptor(
+			metrics.UnaryServerInterceptor("themis"),
+			autortls.UnaryInternalAuthInterceptor(autortls.GRPCInternalAuthConfigFromEnv()),
+		),
 		grpc.StreamInterceptor(metrics.StreamServerInterceptor("themis")),
 	)
 	themisServer := grpchandler.NewServer(service)

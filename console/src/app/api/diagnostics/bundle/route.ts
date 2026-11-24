@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceUrl } from "@/lib/api-config";
+import { buildInternalAuthHeaders } from "@/lib/api/internal-headers";
 import { requireOperator } from "@/lib/auth/session";
 import { redactObject } from "@/lib/api/redact";
 import type { DiagnosticBundle } from "@/lib/api/schemas/diagnostics";
@@ -48,16 +49,19 @@ async function collectBundlePayload() {
   const createdAt = new Date().toISOString();
   const bundleId = `diag_${createdAt.replace(/[-:TZ.]/g, "").slice(0, 14)}`;
 
+  const headers = buildInternalAuthHeaders();
   const [probes, instancesRes, auditRes] = await Promise.all([
     Promise.all(ENGINES.map(probeEngine)),
     fetch(`${getServiceUrl("argus")}/v1/instances?limit=100`, {
       cache: "no-store",
+      headers,
       signal: AbortSignal.timeout(BUNDLE_PROBE_TIMEOUT_MS),
     })
       .then(async (r) => (r.ok ? r.json() : null))
       .catch(() => null),
     fetch(`${getServiceUrl("argus")}/v1/audit?limit=50`, {
       cache: "no-store",
+      headers,
       signal: AbortSignal.timeout(BUNDLE_PROBE_TIMEOUT_MS),
     })
       .then(async (r) => (r.ok ? r.json() : null))

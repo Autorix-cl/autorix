@@ -1,4 +1,5 @@
 import { BACKEND_URLS, getServiceUrl, JANUS_ADMIN_URL } from "../api-config";
+import { buildInternalAuthHeaders } from "../api/internal-headers";
 
 const SSO_REQUEST_TIMEOUT_MS = 8_000;
 
@@ -91,10 +92,7 @@ export async function generatePkceChallenge(verifier: string): Promise<string> {
   for (let i = 0; i < bytes.byteLength; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 /**
@@ -105,7 +103,7 @@ export async function registerConsoleOAuthClient(): Promise<void> {
     const adminBase = JANUS_ADMIN_URL.replace(/\/+$/, "");
     await fetch(`${adminBase}/admin/clients`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: buildInternalAuthHeaders({ "Content-Type": "application/json" }),
       signal: AbortSignal.timeout(SSO_REQUEST_TIMEOUT_MS),
       body: JSON.stringify({
         client_id: "autorix-console",

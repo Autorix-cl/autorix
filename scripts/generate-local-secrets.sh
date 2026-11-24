@@ -9,15 +9,23 @@ if [ -e "$target" ]; then
 fi
 
 umask 077
-if command -v openssl >/dev/null 2>&1; then
-  password="$(openssl rand -hex 32)"
-else
-  password="$(od -An -N 32 -tx1 /dev/urandom | tr -d ' \n')"
-fi
+rand_hex() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32
+  else
+    od -An -N 32 -tx1 /dev/urandom | tr -d ' \n'
+  fi
+}
+
+password="$(rand_hex)"
+internal_auth_secret="$(rand_hex)"
+identity_signing_secret="$(rand_hex)"
 
 cat >"$target" <<EOF
 # Generated locally; never commit this file.
 POSTGRES_PASSWORD=$password
+AUTORIX_INTERNAL_AUTH_SECRET=$internal_auth_secret
+AUTORIX_IDENTITY_SIGNING_SECRET=$identity_signing_secret
 EOF
 chmod 600 "$target"
 echo "created $target with owner-only permissions"

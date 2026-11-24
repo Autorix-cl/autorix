@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServiceUrl } from "@/lib/api-config";
+import { buildInternalAuthHeaders } from "@/lib/api/internal-headers";
 import { requireOperator } from "@/lib/auth/session";
 import type { ChangeTimelineEvent } from "@/lib/api/schemas/diagnostics";
 
@@ -8,7 +9,8 @@ const TIMELINE_TIMEOUT_MS = 5_000;
 function mapAuditEventType(action: string, resourceType: string): ChangeTimelineEvent["event_type"] {
   const combined = `${action} ${resourceType}`.toLowerCase();
   if (combined.includes("migration") || combined.includes("schema")) return "schema_migration";
-  if (combined.includes("enroll") || combined.includes("register") || combined.includes("instance")) return "registration";
+  if (combined.includes("enroll") || combined.includes("register") || combined.includes("instance"))
+    return "registration";
   if (combined.includes("deploy")) return "deployment";
   return "config_change";
 }
@@ -18,13 +20,16 @@ export async function GET() {
   if (!auth.ok) return auth.response;
 
   const argusUrl = getServiceUrl("argus");
+  const headers = buildInternalAuthHeaders();
   const [auditRes, enrollmentRes] = await Promise.allSettled([
     fetch(`${argusUrl}/v1/audit?limit=50`, {
       cache: "no-store",
+      headers,
       signal: AbortSignal.timeout(TIMELINE_TIMEOUT_MS),
     }),
     fetch(`${argusUrl}/v1/enrollment-audit?limit=25`, {
       cache: "no-store",
+      headers,
       signal: AbortSignal.timeout(TIMELINE_TIMEOUT_MS),
     }),
   ]);

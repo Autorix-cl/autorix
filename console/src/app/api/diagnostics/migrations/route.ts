@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServiceUrl } from "@/lib/api-config";
+import { buildInternalAuthHeaders } from "@/lib/api/internal-headers";
 import { requireOperator } from "@/lib/auth/session";
 import type { MigrationStatus } from "@/lib/api/schemas/diagnostics";
 
@@ -27,6 +28,7 @@ export async function GET() {
   try {
     const res = await fetch(`${getServiceUrl("argus")}/v1/instances?limit=200`, {
       cache: "no-store",
+      headers: buildInternalAuthHeaders(),
       signal: AbortSignal.timeout(MIGRATIONS_TIMEOUT_MS),
     });
 
@@ -60,7 +62,8 @@ export async function GET() {
         expected_schema_version: Number.isFinite(expected) ? expected : 0,
         up_to_date: pending === 0,
         pending_migrations_count: pending,
-        last_migrated_at: inst.metadata?.last_migrated_at || inst.updated_at || inst.last_heartbeat_at || new Date(0).toISOString(),
+        last_migrated_at:
+          inst.metadata?.last_migrated_at || inst.updated_at || inst.last_heartbeat_at || new Date(0).toISOString(),
         status: pending === 0 ? "up_to_date" : "behind",
       };
     });

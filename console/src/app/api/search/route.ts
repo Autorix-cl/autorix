@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServiceUrl, JANUS_ADMIN_URL } from "@/lib/api-config";
+import { buildInternalAuthHeaders } from "@/lib/api/internal-headers";
 import { requireOperator } from "@/lib/auth/session";
 
 const SEARCH_TIMEOUT_MS = 5_000;
@@ -14,13 +15,9 @@ export interface SearchResultItem {
 }
 
 async function fetchJsonSafe(url: string): Promise<unknown | null> {
-  const headers: Record<string, string> = { "x-autorix-caller": "console" };
-  if (process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN) {
-    headers["x-autorix-console-token"] = process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN;
-  }
   const res = await fetch(url, {
     cache: "no-store",
-    headers,
+    headers: buildInternalAuthHeaders(),
     signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
   });
   if (!res.ok) return null;

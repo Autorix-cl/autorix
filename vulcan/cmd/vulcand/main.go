@@ -93,7 +93,7 @@ func main() {
 		logger.Error("failed to initialize distributed cache", "error", err)
 		os.Exit(1)
 	}
-	defer appCache.Close()
+	defer func() { _ = appCache.Close() }()
 	server.SetCache(appCache)
 
 	handler := httpx.Chain(server.Routes(),
@@ -103,6 +103,7 @@ func main() {
 		httpx.AccessLog(logger),
 		httpx.Timeout(cfg.RequestTimeout),
 		httpx.CORS(httpx.CORSConfig{AllowedOrigins: strings.Split(cfg.CORSOrigins, ",")}),
+		httpx.InternalAuth(httpx.InternalAuthConfigFromEnv("/admin/", "/keys", "/scopes")),
 	)
 
 	httpServer := &http.Server{

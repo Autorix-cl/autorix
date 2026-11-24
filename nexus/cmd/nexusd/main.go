@@ -98,7 +98,7 @@ func main() {
 		logger.Error("failed to initialize distributed cache", "error", err)
 		os.Exit(1)
 	}
-	defer appCache.Close()
+	defer func() { _ = appCache.Close() }()
 
 	resolver := graph.NewResolver(repo, celEvaluator, graph.WithNamespaceGetter(repo), graph.WithCache(appCache))
 
@@ -121,7 +121,10 @@ func main() {
 
 	// 4. Initialize Transport Layer (gRPC Server) — canonical service-to-service transport
 	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(metrics.UnaryServerInterceptor("nexus")),
+		grpc.ChainUnaryInterceptor(
+			metrics.UnaryServerInterceptor("nexus"),
+			autortls.UnaryInternalAuthInterceptor(autortls.GRPCInternalAuthConfigFromEnv()),
+		),
 		grpc.StreamInterceptor(metrics.StreamServerInterceptor("nexus")),
 	)
 	nexusServer := grpcTransport.NewServer(resolver,
@@ -158,6 +161,7 @@ func main() {
 		httpx.AccessLog(logger),
 		httpx.Timeout(c.RequestTimeout),
 		httpx.CORS(httpx.CORSConfig{AllowedOrigins: allowedOrigins}),
+		httpx.InternalAuth(httpx.InternalAuthConfigFromEnv()),
 	)
 
 	httpServer := &http.Server{

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceUrl, JANUS_ADMIN_URL } from "@/lib/api-config";
+import { buildInternalAuthHeaders } from "@/lib/api/internal-headers";
 import { requireOperator } from "@/lib/auth/session";
 import type { UnifiedSubject } from "@/lib/api/schemas/explorer";
 
@@ -8,11 +9,7 @@ type Params = { params: Promise<{ id: string }> };
 const SUBJECT_TIMEOUT_MS = 8_000;
 
 function internalHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { "x-autorix-caller": "console" };
-  if (process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN) {
-    headers["x-autorix-console-token"] = process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN;
-  }
-  return headers;
+  return buildInternalAuthHeaders();
 }
 
 async function fetchJsonWithStatus(url: string): Promise<{ status: number; ok: boolean; data: unknown }> {
@@ -104,7 +101,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Extract Relations (strictly match cleanId or user:cleanId)
   if (nexusRes.status === "fulfilled" && nexusRes.value.ok && nexusRes.value.data) {
     const raw = nexusRes.value.data as unknown;
-    const rawTuples = (Array.isArray(raw) ? raw : (raw as Record<string, unknown>).data || []) as Record<string, unknown>[];
+    const rawTuples = (Array.isArray(raw) ? raw : (raw as Record<string, unknown>).data || []) as Record<
+      string,
+      unknown
+    >[];
     unified.relations = rawTuples
       .filter((t) => {
         const subId = String(t.subject_id || t.subject || "");
@@ -126,7 +126,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Extract Janus OAuth2 Grants
   if (janusGrantsRes.status === "fulfilled" && janusGrantsRes.value.ok && janusGrantsRes.value.data) {
     const raw = janusGrantsRes.value.data as unknown;
-    const rawGrants = (Array.isArray(raw) ? raw : (raw as Record<string, unknown>).data || []) as Record<string, unknown>[];
+    const rawGrants = (Array.isArray(raw) ? raw : (raw as Record<string, unknown>).data || []) as Record<
+      string,
+      unknown
+    >[];
     unified.oauth_grants = rawGrants
       .filter((g) => {
         const sub = typeof g.subject === "string" ? g.subject : typeof g.sub === "string" ? g.sub : "";
@@ -149,7 +152,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Extract Vulcan API Keys (strictly match owner_id against cleanId or identity email; never leak system/unowned keys)
   if (vulcanRes.status === "fulfilled" && vulcanRes.value.ok && vulcanRes.value.data) {
     const raw = vulcanRes.value.data as unknown;
-    const rawKeys = (Array.isArray(raw) ? raw : (raw as Record<string, unknown>).data || []) as Record<string, unknown>[];
+    const rawKeys = (Array.isArray(raw) ? raw : (raw as Record<string, unknown>).data || []) as Record<
+      string,
+      unknown
+    >[];
     unified.api_keys = rawKeys
       .filter((k) => {
         const owner = typeof k.owner_id === "string" ? k.owner_id : "";
@@ -167,7 +173,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   // Extract Hermes SCIM Linkage
-  if (scimRes.status === "fulfilled" && scimRes.value.ok && scimRes.value.data && typeof scimRes.value.data === "object") {
+  if (
+    scimRes.status === "fulfilled" &&
+    scimRes.value.ok &&
+    scimRes.value.data &&
+    typeof scimRes.value.data === "object"
+  ) {
     const scimBody = scimRes.value.data as Record<string, unknown>;
     const users = (Array.isArray(scimBody.Resources) ? scimBody.Resources : []) as Record<string, unknown>[];
     const matched = users.find((u) => {

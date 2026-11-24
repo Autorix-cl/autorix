@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceUrl } from "@/lib/api-config";
+import { buildInternalAuthHeaders } from "@/lib/api/internal-headers";
 import { requireOperator } from "@/lib/auth/session";
 import { safePatternMatch } from "@/lib/explorer/pattern-match";
 import type { EffectiveAccessResult } from "@/lib/api/schemas/explorer";
@@ -7,12 +8,7 @@ import type { EffectiveAccessResult } from "@/lib/api/schemas/explorer";
 const EXPLORER_TIMEOUT_MS = 8_000;
 
 function buildInternalHeaders(json = false): Record<string, string> {
-  const headers: Record<string, string> = { "x-autorix-caller": "console" };
-  if (json) headers["Content-Type"] = "application/json";
-  if (process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN) {
-    headers["x-autorix-console-token"] = process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN;
-  }
-  return headers;
+  return buildInternalAuthHeaders(json ? { "Content-Type": "application/json" } : undefined);
 }
 
 export async function POST(req: NextRequest) {
@@ -21,12 +17,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const {
-      subject = "user:alice",
-      resource = "/api/v1/finance/invoices",
-      action = "GET",
-      context = {},
-    } = body;
+    const { subject = "user:alice", resource = "/api/v1/finance/invoices", action = "GET", context = {} } = body;
 
     const cleanSubjectId = String(subject).replace(/^user:/, "");
 
@@ -71,7 +62,10 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Evaluate Nexus ReBAC Relation (fail closed by default)
-    const pathParts = String(resource).replace(/^\/api\/v\d+\//, "").split("/").filter(Boolean);
+    const pathParts = String(resource)
+      .replace(/^\/api\/v\d+\//, "")
+      .split("/")
+      .filter(Boolean);
     const namespace = pathParts[0] || "resource";
     const object = pathParts[1] || "default";
     const relation = String(action).toUpperCase() === "GET" ? "viewer" : "editor";

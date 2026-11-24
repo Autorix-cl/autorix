@@ -63,7 +63,7 @@ func main() {
 			log.Println("Aegis migrations applied successfully")
 			return
 		default:
-			log.Fatalf("unknown command %q (supported: migrate)", os.Args[1])
+			log.Fatalf("unknown command %q (supported: migrate)", os.Args[1]) //nolint:gosec // CLI subcommand usage error
 		}
 	}
 
@@ -171,6 +171,7 @@ func main() {
 		httpx.AccessLog(logger),
 		httpx.Timeout(c.RequestTimeout),
 		httpx.CORS(httpx.CORSConfig{AllowedOrigins: []string{c.CORSOrigins}}),
+		httpx.InternalAuth(httpx.InternalAuthConfigFromEnv()),
 	)
 
 	adminHTTPServer := &http.Server{

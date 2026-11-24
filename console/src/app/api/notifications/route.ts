@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { getServiceUrl } from "@/lib/api-config";
+import { buildInternalAuthHeaders } from "@/lib/api/internal-headers";
 import { requireOperator } from "@/lib/auth/session";
 
 const NOTIFICATIONS_TIMEOUT_MS = 5_000;
@@ -14,10 +15,7 @@ export interface FleetNotificationItem {
 }
 
 function deterministicAuditId(action: string, engine: string, timestamp: string, actor: string): string {
-  const digest = createHash("sha256")
-    .update(`${action}|${engine}|${timestamp}|${actor}`)
-    .digest("hex")
-    .slice(0, 12);
+  const digest = createHash("sha256").update(`${action}|${engine}|${timestamp}|${actor}`).digest("hex").slice(0, 12);
   return `audit-${digest}`;
 }
 
@@ -27,15 +25,18 @@ export async function GET() {
 
   try {
     const argusUrl = getServiceUrl("argus");
+    const headers = buildInternalAuthHeaders();
 
     // Fetch enrollment audit logs, fleet instances, and Prometheus alerts in parallel with timeouts
     const [auditRes, instancesRes, alertsRes] = await Promise.allSettled([
       fetch(`${argusUrl}/v1/enrollment-audit?limit=25`, {
         cache: "no-store",
+        headers,
         signal: AbortSignal.timeout(NOTIFICATIONS_TIMEOUT_MS),
       }),
       fetch(`${argusUrl}/v1/instances?limit=25`, {
         cache: "no-store",
+        headers,
         signal: AbortSignal.timeout(NOTIFICATIONS_TIMEOUT_MS),
       }),
       fetch(`${getServiceUrl("prometheus")}/api/v1/alerts`, {

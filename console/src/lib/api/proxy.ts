@@ -97,10 +97,7 @@ export async function proxyRequest<T>(
 
   // 2. Path traversal protection: reject malformed or escaping upstream paths
   if (!isValidUpstreamPath(path)) {
-    return NextResponse.json(
-      { error: "bad request: invalid upstream path" },
-      { status: 400, headers },
-    );
+    return NextResponse.json({ error: "bad request: invalid upstream path" }, { status: 400, headers });
   }
 
   // 3. Server-side Authentication & RBAC Enforcement (P3-S4-T2)
@@ -145,8 +142,9 @@ export async function proxyRequest<T>(
     requestHeaders.set("x-request-id", requestId);
     requestHeaders.set("x-correlation-id", requestId);
     requestHeaders.set("x-autorix-caller", "console");
-    const internalToken = process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN;
+    const internalToken = process.env.AUTORIX_INTERNAL_AUTH_SECRET || process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN;
     if (internalToken) {
+      requestHeaders.set("x-autorix-internal-token", internalToken);
       requestHeaders.set("x-autorix-console-token", internalToken);
     }
 

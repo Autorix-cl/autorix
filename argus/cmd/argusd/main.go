@@ -122,6 +122,15 @@ func main() {
 		httpx.AccessLog(logger),
 		timeoutExceptStream(c.RequestTimeout),
 		httpx.CORS(httpx.CORSConfig{AllowedOrigins: []string{c.CORSOrigins}}),
+		httpx.InternalAuth(httpx.InternalAuthConfigFromEnv(
+			"/admin/",
+			"/v1/instances",
+			"/v1/enrollment-tokens",
+			"/v1/enrollment-audit",
+			"/v1/audit",
+			"/v1/environments",
+			"/v1/operators",
+		)),
 	)
 
 	httpServer := &http.Server{

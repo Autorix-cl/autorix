@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getServiceUrl } from "@/lib/api-config";
+import { buildInternalAuthHeaders } from "@/lib/api/internal-headers";
 import { requireOperator } from "@/lib/auth/session";
 import type { RequestSimulationTrace, SimulationTraceStep } from "@/lib/api/schemas/explorer";
 
@@ -11,14 +12,7 @@ function roundMs(ms: number): number {
 }
 
 function internalHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "x-autorix-caller": "console",
-  };
-  if (process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN) {
-    headers["x-autorix-console-token"] = process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN;
-  }
-  return headers;
+  return buildInternalAuthHeaders({ "Content-Type": "application/json" });
 }
 
 export async function POST(req: NextRequest) {
@@ -114,7 +108,10 @@ export async function POST(req: NextRequest) {
     });
 
     // Step 3: Real Nexus Zanzibar ReBAC Check via POST /check
-    const pathParts = String(path).replace(/^\/api\/v\d+\//, "").split("/").filter(Boolean);
+    const pathParts = String(path)
+      .replace(/^\/api\/v\d+\//, "")
+      .split("/")
+      .filter(Boolean);
     const namespace = pathParts[0] || "project";
     const object = pathParts[1] || "default";
     const relation = String(method).toUpperCase() === "GET" ? "viewer" : "operator";

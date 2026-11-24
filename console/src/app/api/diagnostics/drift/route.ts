@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServiceUrl } from "@/lib/api-config";
+import { buildInternalAuthHeaders } from "@/lib/api/internal-headers";
 import { requireOperator } from "@/lib/auth/session";
 import type { ConfigDriftFinding } from "@/lib/api/schemas/diagnostics";
 
@@ -20,6 +21,7 @@ export async function GET() {
   try {
     const res = await fetch(`${getServiceUrl("argus")}/v1/instances?limit=200`, {
       cache: "no-store",
+      headers: buildInternalAuthHeaders(),
       signal: AbortSignal.timeout(DRIFT_TIMEOUT_MS),
     });
 
