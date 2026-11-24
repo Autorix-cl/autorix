@@ -12,14 +12,14 @@ describe("BulkActionBar", () => {
   it("renders with correct count and calls onSuspend", async () => {
     const user = userEvent.setup();
     const handleSuspend = vi.fn();
-    
+
     render(<BulkActionBar selectedCount={3} onSuspend={handleSuspend} onClearSelection={vi.fn()} />);
-    
+
     expect(screen.getByText("3 users selected")).toBeInTheDocument();
-    
+
     const suspendBtn = screen.getByRole("button", { name: /Suspend/i });
     await user.click(suspendBtn);
-    
+
     expect(handleSuspend).toHaveBeenCalledTimes(1);
   });
 });

@@ -40,12 +40,7 @@ export interface DynamicSchemaFormProps {
  * DynamicSchemaForm dynamically translates Ory Kratos / Ego JSON Schema definitions
  * into interactive, accessible HTML form fields with full nesting support.
  */
-export function DynamicSchemaForm({
-  schema,
-  value,
-  onChange,
-  disabled = false,
-}: DynamicSchemaFormProps) {
+export function DynamicSchemaForm({ schema, value, onChange, disabled = false }: DynamicSchemaFormProps) {
   // Extract traits definition from schema
   const traitsDef = schema?.properties?.traits?.properties || {};
   const requiredFields = new Set<string>(schema?.properties?.traits?.required || schema?.required || []);
@@ -76,20 +71,9 @@ export function DynamicSchemaForm({
     return current;
   };
 
-  const renderProperty = (
-    key: string,
-    prop: JSONSchemaProperty,
-    path: string[],
-    isRequired: boolean
-  ) => {
+  const renderProperty = (key: string, prop: JSONSchemaProperty, path: string[], isRequired: boolean) => {
     const fieldId =
-      key === "first"
-        ? "firstName"
-        : key === "last"
-        ? "lastName"
-        : key === "email"
-        ? "email"
-        : path.join(".");
+      key === "first" ? "firstName" : key === "last" ? "lastName" : key === "email" ? "email" : path.join(".");
     const title = prop.title || key.charAt(0).toUpperCase() + key.slice(1);
 
     // Object type with nested properties
@@ -102,13 +86,11 @@ export function DynamicSchemaForm({
               {title}
               {isRequired && <span className="text-destructive">*</span>}
             </h4>
-            {prop.description && (
-              <p className="text-[11px] text-muted-foreground">{prop.description}</p>
-            )}
+            {prop.description && <p className="text-[11px] text-muted-foreground">{prop.description}</p>}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {Object.entries(prop.properties).map(([subKey, subProp]) =>
-              renderProperty(subKey, subProp, [...path, subKey], subRequired.has(subKey))
+              renderProperty(subKey, subProp, [...path, subKey], subRequired.has(subKey)),
             )}
           </div>
         </div>
@@ -148,9 +130,7 @@ export function DynamicSchemaForm({
             disabled={disabled}
             required={isRequired}
             placeholder={`Enter ${title.toLowerCase()}`}
-            onChange={(e) =>
-              handleFieldChange(path, e.target.value === "" ? "" : Number(e.target.value))
-            }
+            onChange={(e) => handleFieldChange(path, e.target.value === "" ? "" : Number(e.target.value))}
             className="h-9 text-xs"
           />
         </div>
@@ -182,9 +162,7 @@ export function DynamicSchemaForm({
               </option>
             ))}
           </select>
-          {prop.description && (
-            <p className="text-[10px] text-muted-foreground">{prop.description}</p>
-          )}
+          {prop.description && <p className="text-[10px] text-muted-foreground">{prop.description}</p>}
         </div>
       );
     }
@@ -221,9 +199,7 @@ export function DynamicSchemaForm({
           onChange={(e) => handleFieldChange(path, e.target.value)}
           className="h-9 text-xs"
         />
-        {prop.description && (
-          <p className="text-[10px] text-muted-foreground">{prop.description}</p>
-        )}
+        {prop.description && <p className="text-[10px] text-muted-foreground">{prop.description}</p>}
       </div>
     );
   };
@@ -240,9 +216,7 @@ export function DynamicSchemaForm({
 
   return (
     <div className="space-y-3.5">
-      {entries.map(([key, prop]) =>
-        renderProperty(key, prop, [key], requiredFields.has(key))
-      )}
+      {entries.map(([key, prop]) => renderProperty(key, prop, [key], requiredFields.has(key)))}
     </div>
   );
 }

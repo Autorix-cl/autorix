@@ -22,7 +22,7 @@ CHART_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO_ROOT / "deploy" / "
 
 # Deployments this guard does not own: not a Go engine, or has no HTTP/gRPC
 # health surface of its own to validate against Go source.
-SKIP_DEPLOYMENTS = {"console"}
+SKIP_DEPLOYMENTS = {"console", "alertmanager"}
 
 ROUTE_PATTERN = re.compile(r'HandleFunc\(\s*"(?:GET|POST|PUT|PATCH|DELETE)\s+([^"]+)"')
 GRPC_HEALTH_PATTERN = re.compile(r"grpchealth\.Register\(")

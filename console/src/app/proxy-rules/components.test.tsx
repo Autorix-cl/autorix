@@ -22,13 +22,10 @@ function renderWithClient(ui: React.ReactElement) {
   });
   return render(
     <I18nProvider>
-      <QueryClientProvider client={queryClient}>
-        {ui}
-      </QueryClientProvider>
-    </I18nProvider>
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    </I18nProvider>,
   );
 }
-
 
 describe("RuleBuilderSheet", () => {
   beforeEach(() => {
@@ -99,4 +96,3 @@ describe("VersionsDialog", () => {
     });
   });
 });
-

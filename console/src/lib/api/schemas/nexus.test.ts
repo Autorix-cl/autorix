@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   checkResponseSchema,
-
   tupleListSchema,
   tupleSchema,
   expandResponseSchema,
@@ -10,7 +9,6 @@ import {
   namespaceSchema,
   caveatSchema,
 } from "./nexus";
-
 
 describe("tupleSchema", () => {
   it("accepts a realistic tuple payload", () => {
@@ -159,10 +157,7 @@ describe("namespaceSchema & caveatSchema", () => {
         viewer: {
           rewrite: {
             type: "union",
-            children: [
-              { type: "this" },
-              { type: "computed_userset", relation: "editor" },
-            ],
+            children: [{ type: "this" }, { type: "computed_userset", relation: "editor" }],
           },
         },
       },
@@ -180,4 +175,3 @@ describe("namespaceSchema & caveatSchema", () => {
     expect(caveatSchema.safeParse(payload).success).toBe(true);
   });
 });
-

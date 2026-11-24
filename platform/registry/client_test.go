@@ -57,7 +57,7 @@ func (f *fakeArgusServer) Register(ctx context.Context, req *argusv1.RegisterReq
 	}
 	cred := f.credential
 	if cred == "" {
-		cred = "test-credential"
+		cred = "test-credential" //nolint:gosec // unit test fixture
 	}
 	return &argusv1.RegisterResponse{
 		InstanceUuid:             "11111111-1111-1111-1111-111111111111",
@@ -331,7 +331,7 @@ func waitForCount(t *testing.T, counter *atomic.Int32, want int32) {
 // --- P2-S4-T1: credential persistence -------------------------------------
 
 func TestStart_PersistsCredentialAfterRegister(t *testing.T) {
-	srv := &fakeArgusServer{credential: "persisted-cred"}
+	srv := &fakeArgusServer{credential: "persisted-cred"} //nolint:gosec // unit test fixture
 	path := filepath.Join(t.TempDir(), "registry-credential.json")
 
 	c := newTestClientWithConfig(t, srv, func(cfg *Config) {
@@ -553,7 +553,7 @@ func TestHeartbeat_ReportsDependencyStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start healthy dependency listener: %v", err)
 	}
-	defer healthyLis.Close()
+	defer func() { _ = healthyLis.Close() }()
 	go func() {
 		for {
 			conn, err := healthyLis.Accept()
@@ -698,7 +698,7 @@ func TestControlPlaneDown_EngineKeepsServingNormally(t *testing.T) {
 	if err != nil {
 		t.Fatalf("engine health endpoint should stay reachable, got error: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected engine to keep serving normally with status 200, got %d", resp.StatusCode)
 	}

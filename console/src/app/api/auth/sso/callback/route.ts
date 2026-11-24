@@ -75,9 +75,11 @@ async function verifyTokenWithJanus(
     });
 
     if (!introspectRes.ok) return null;
-    const introspectData = (await introspectRes.json().catch(() => null)) as (VerifiedClaims & {
-      active?: boolean;
-    }) | null;
+    const introspectData = (await introspectRes.json().catch(() => null)) as
+      | (VerifiedClaims & {
+          active?: boolean;
+        })
+      | null;
     if (!introspectData?.active) return null;
     if (introspectData.email || introspectData.sub) {
       return introspectData;
@@ -155,9 +157,7 @@ export async function GET(request: Request) {
     const email = claims.email || claims.sub!;
     const name = claims.name || email;
     const role =
-      claims.role && ["owner", "admin", "operator", "auditor"].includes(claims.role)
-        ? claims.role
-        : "operator";
+      claims.role && ["owner", "admin", "operator", "auditor"].includes(claims.role) ? claims.role : "operator";
 
     // Exchange verified federated identity for a real Argus operator session; never mint a fake fallback cookie
     const argusUrl = getServiceUrl("argus");
@@ -194,9 +194,7 @@ export async function GET(request: Request) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      ...(ssoSession.expires_at
-        ? { expires: new Date(ssoSession.expires_at) }
-        : { maxAge: 3600 * 12 }),
+      ...(ssoSession.expires_at ? { expires: new Date(ssoSession.expires_at) } : { maxAge: 3600 * 12 }),
     });
 
     response.cookies.delete("sso_state");

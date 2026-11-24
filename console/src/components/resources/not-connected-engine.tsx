@@ -13,11 +13,7 @@ export interface NotConnectedEngineProps {
   description: string;
 }
 
-export function NotConnectedEngine({
-  engineType,
-  engineName,
-  description,
-}: NotConnectedEngineProps) {
+export function NotConnectedEngine({ engineType, engineName, description }: NotConnectedEngineProps) {
   return (
     <Card className="max-w-xl mx-auto my-12 border-dashed border-border/80 bg-card/60 text-center p-6">
       <CardHeader className="pb-3">
@@ -26,7 +22,8 @@ export function NotConnectedEngine({
         </div>
         <CardTitle className="text-lg font-bold">{engineName} Is Not Connected</CardTitle>
         <CardDescription className="text-xs max-w-sm mx-auto mt-1">
-          {description} No active {engineName} instance has registered with the Argus control plane in the current environment.
+          {description} No active {engineName} instance has registered with the Argus control plane in the current
+          environment.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 pt-2">

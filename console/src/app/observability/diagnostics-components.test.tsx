@@ -148,10 +148,7 @@ describe("Diagnostics UI Components", () => {
     fireEvent.click(exportButton);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        "/api/diagnostics/bundle",
-        expect.objectContaining({ method: "POST" })
-      );
+      expect(global.fetch).toHaveBeenCalledWith("/api/diagnostics/bundle", expect.objectContaining({ method: "POST" }));
     });
   });
 });

@@ -120,9 +120,7 @@ export async function POST(request: Request) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      ...(sessionData.expires_at
-        ? { expires: new Date(sessionData.expires_at) }
-        : { maxAge: 3600 * 12 }),
+      ...(sessionData.expires_at ? { expires: new Date(sessionData.expires_at) } : { maxAge: 3600 * 12 }),
     });
     response.cookies.delete("saml_relay_state");
 

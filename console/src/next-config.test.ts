@@ -9,7 +9,9 @@ describe("security headers", () => {
     expect(rules).toHaveLength(1);
     expect(rules[0].source).toBe("/(.*)");
 
-    const headers = Object.fromEntries(rules[0].headers.map(({ key, value }: { key: string; value: string }) => [key, value]));
+    const headers = Object.fromEntries(
+      rules[0].headers.map(({ key, value }: { key: string; value: string }) => [key, value]),
+    );
     expect(headers["Content-Security-Policy"]).toBe(
       "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
     );

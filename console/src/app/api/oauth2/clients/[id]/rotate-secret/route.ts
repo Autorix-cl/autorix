@@ -9,14 +9,9 @@ interface RouteParams {
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const { id } = await params;
   const body = await req.text();
-  return proxyRequest(
-    "janus",
-    `/admin/clients/${encodeURIComponent(id)}/rotate-secret`,
-    rotateSecretResponseSchema,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: body || "{}",
-    }
-  );
+  return proxyRequest("janus", `/admin/clients/${encodeURIComponent(id)}/rotate-secret`, rotateSecretResponseSchema, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body || "{}",
+  });
 }

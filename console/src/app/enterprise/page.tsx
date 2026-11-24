@@ -1,18 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Building2,
-  RefreshCw,
-  FileCode,
-  Users,
-  Shield,
-  Activity,
-  Download,
-  Copy,
-  Check,
-  Terminal,
-} from "lucide-react";
+import { Building2, RefreshCw, FileCode, Users, Shield, Activity, Download, Copy, Check, Terminal } from "lucide-react";
 import { ServiceHeader } from "@/components/layout/service-header";
 import { CloudSection } from "@/components/layout/cloud-section";
 import { useQueryClient } from "@tanstack/react-query";
@@ -103,7 +92,7 @@ export default function EnterprisePage() {
   const { isEngineConnected } = useCapabilities();
 
   const providersQuery = useApiQuery(["enterprise-saml-providers"], () =>
-    fetchAndParse("/api/enterprise/saml", samlProviderListSchema)
+    fetchAndParse("/api/enterprise/saml", samlProviderListSchema),
   );
 
   const {
@@ -313,12 +302,12 @@ export default function EnterprisePage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="p-3.5 rounded-lg border border-border/80 bg-card/60 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">ACS Endpoint (POST)</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">
+                    ACS Endpoint (POST)
+                  </span>
                   <CopyButton text={acsUrl} label="ACS URL" />
                 </div>
-                <div className="font-mono text-xs text-foreground font-semibold truncate select-all">
-                  {acsUrl}
-                </div>
+                <div className="font-mono text-xs text-foreground font-semibold truncate select-all">{acsUrl}</div>
                 <p className="text-[11px] text-muted-foreground">
                   Assertion Consumer Service receiving signed IdP assertions
                 </p>
@@ -326,12 +315,12 @@ export default function EnterprisePage() {
 
               <div className="p-3.5 rounded-lg border border-border/80 bg-card/60 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400">SP Entity ID / Issuer</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400">
+                    SP Entity ID / Issuer
+                  </span>
                   <CopyButton text={spEntityId} label="Entity ID" />
                 </div>
-                <div className="font-mono text-xs text-foreground font-semibold truncate select-all">
-                  {spEntityId}
-                </div>
+                <div className="font-mono text-xs text-foreground font-semibold truncate select-all">{spEntityId}</div>
                 <p className="text-[11px] text-muted-foreground">
                   Global unique URI identifying this Autorix Service Provider
                 </p>
@@ -339,12 +328,12 @@ export default function EnterprisePage() {
 
               <div className="p-3.5 rounded-lg border border-border/80 bg-card/60 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">SCIM 2.0 Base URL</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                    SCIM 2.0 Base URL
+                  </span>
                   <CopyButton text={scimBaseUrl} label="SCIM Base URL" />
                 </div>
-                <div className="font-mono text-xs text-foreground font-semibold truncate select-all">
-                  {scimBaseUrl}
-                </div>
+                <div className="font-mono text-xs text-foreground font-semibold truncate select-all">{scimBaseUrl}</div>
                 <p className="text-[11px] text-muted-foreground">
                   RFC 7644 SCIM endpoint for corporate user & group provisioning
                 </p>
@@ -360,15 +349,14 @@ export default function EnterprisePage() {
                       <FileCode className="h-4 w-4 text-blue-400" />
                       <span>{t("enterprise.spMetadataTitle")}</span>
                     </CardTitle>
-                    <CardDescription className="text-xs">
-                      {t("enterprise.spMetadataDesc")}
-                    </CardDescription>
+                    <CardDescription className="text-xs">{t("enterprise.spMetadataDesc")}</CardDescription>
                   </div>
 
                   <div className="flex items-center gap-2">
                     {metadataXml && (
                       <Badge variant="outline" className="font-mono text-[10px] px-2 py-0.5">
-                        {metadataXml.trim().split("\n").length} lines · {(new Blob([metadataXml]).size / 1024).toFixed(1)} KB
+                        {metadataXml.trim().split("\n").length} lines ·{" "}
+                        {(new Blob([metadataXml]).size / 1024).toFixed(1)} KB
                       </Badge>
                     )}
                     <Button

@@ -25,10 +25,7 @@ export const tupleColumns: ColumnDef<Tuple>[] = [
     id: "select",
     header: ({ table }) => (
       <Checkbox
-        checked={
-          table.getIsAllPageRowsSelected() ||
-          (table.getIsSomePageRowsSelected() && "indeterminate")
-        }
+        checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && "indeterminate")}
         onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
         aria-label="Select all"
       />
@@ -55,11 +52,7 @@ export const tupleColumns: ColumnDef<Tuple>[] = [
   {
     accessorKey: "relation",
     header: "Relation",
-    cell: ({ row }) => (
-      <span className="font-mono text-xs text-muted-foreground">
-        {row.original.relation}
-      </span>
-    ),
+    cell: ({ row }) => <span className="font-mono text-xs text-muted-foreground">{row.original.relation}</span>,
   },
   {
     accessorKey: "subject",
@@ -69,7 +62,8 @@ export const tupleColumns: ColumnDef<Tuple>[] = [
       const relStr = row.original.subjectRelation ? `#${row.original.subjectRelation}` : "";
       return (
         <span className="font-mono text-xs">
-          {subjectStr}{relStr}
+          {subjectStr}
+          {relStr}
         </span>
       );
     },
@@ -96,12 +90,12 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
 
   const filteredTuples = React.useMemo(() => {
     if (namespaceFilter === "all") return tuples;
-    return tuples.filter(t => t.objectType === namespaceFilter);
+    return tuples.filter((t) => t.objectType === namespaceFilter);
   }, [tuples, namespaceFilter]);
 
   const uniqueNamespaces = React.useMemo(() => {
     const set = new Set<string>();
-    tuples.forEach(t => {
+    tuples.forEach((t) => {
       if (t.objectType) set.add(t.objectType);
     });
     return Array.from(set);
@@ -130,7 +124,7 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
         // CSV: objectType,objectId,relation,subjectType,subjectId[,subjectRelation]
         const lines = importText.trim().split("\n");
         for (const line of lines) {
-          const parts = line.split(",").map(s => s.trim());
+          const parts = line.split(",").map((s) => s.trim());
           if (parts.length >= 5) {
             parsed.push({
               objectType: parts[0],
@@ -180,8 +174,10 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
               className="text-xs bg-muted/40 border border-input rounded px-2 py-1"
             >
               <option value="all">All Namespaces</option>
-              {uniqueNamespaces.map(ns => (
-                <option key={ns} value={ns}>{ns}</option>
+              {uniqueNamespaces.map((ns) => (
+                <option key={ns} value={ns}>
+                  {ns}
+                </option>
               ))}
             </select>
           )}
@@ -192,7 +188,9 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
             {/* Bulk Import Modal */}
             <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
               <DialogTrigger asChild>
-                <Button type="button" variant="outline" size="sm">Bulk Import</Button>
+                <Button type="button" variant="outline" size="sm">
+                  Bulk Import
+                </Button>
               </DialogTrigger>
               <DialogContent className="max-w-xl">
                 <DialogHeader>
@@ -243,7 +241,12 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
                     <Button type="button" variant="ghost" size="sm" onClick={() => setIsImportOpen(false)}>
                       Cancel
                     </Button>
-                    <Button type="button" size="sm" onClick={handleBulkImport} disabled={isImporting || !importText.trim()}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleBulkImport}
+                      disabled={isImporting || !importText.trim()}
+                    >
                       {isImporting ? "Importing..." : "Validate & Commit"}
                     </Button>
                   </div>
@@ -254,13 +257,15 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
             {/* Add Tuple Modal */}
             <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
               <DialogTrigger asChild>
-                <Button type="button" size="sm"><Plus className="w-4 h-4 mr-2" /> Add Tuple</Button>
+                <Button type="button" size="sm">
+                  <Plus className="w-4 h-4 mr-2" /> Add Tuple
+                </Button>
               </DialogTrigger>
               <DialogContent className="max-w-2xl">
                 <DialogHeader>
                   <DialogTitle>Add Relation Tuple</DialogTitle>
                 </DialogHeader>
-                <TupleBuilder 
+                <TupleBuilder
                   onSubmit={async (data) => {
                     await onAdd(data);
                     setIsAddOpen(false);
@@ -273,9 +278,9 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
         </Can>
       </div>
       <div className="flex-1 p-4 overflow-y-auto">
-        <DataTable 
-          columns={tupleColumns} 
-          data={filteredTuples} 
+        <DataTable
+          columns={tupleColumns}
+          data={filteredTuples}
           searchKey="relation"
           renderToolbar={(table) => {
             const selectedRows = table.getFilteredSelectedRowModel().rows;
@@ -347,4 +352,3 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
     </div>
   );
 }
-

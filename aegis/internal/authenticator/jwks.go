@@ -20,7 +20,7 @@ func NewJWKSAuthenticator(ctx context.Context, endpoint, issuer, audience string
 		return nil, errors.New("JWT issuer and audience are required")
 	}
 	u, err := url.Parse(endpoint)
-	if err != nil || u.Host == "" || u.User != nil || u.Fragment != "" || (u.Scheme != "https" && !(allowInsecureHTTP && u.Scheme == "http")) {
+	if err != nil || u.Host == "" || u.User != nil || u.Fragment != "" || (u.Scheme != "https" && (!allowInsecureHTTP || u.Scheme != "http")) {
 		return nil, errors.New("JWT_JWKS_URL requires an absolute HTTPS URL without credentials or fragment; insecure HTTP is development-only")
 	}
 	failFirstFetch := false

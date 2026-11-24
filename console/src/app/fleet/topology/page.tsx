@@ -69,11 +69,17 @@ interface LiveTopologyEdge {
 }
 
 export default function FleetTopologyPage() {
-  const { data: healthData, isFetching: healthFetching, refetch: refetchHealth } = useApiQuery(["health"], () =>
-    fetchAndParse("/api/health", healthResponseSchema),
-  );
+  const {
+    data: healthData,
+    isFetching: healthFetching,
+    refetch: refetchHealth,
+  } = useApiQuery(["health"], () => fetchAndParse("/api/health", healthResponseSchema));
 
-  const { data: topologyData, isFetching: topoFetching, refetch: refetchTopology } = useQuery<{
+  const {
+    data: topologyData,
+    isFetching: topoFetching,
+    refetch: refetchTopology,
+  } = useQuery<{
     edges?: LiveTopologyEdge[];
     nodes?: Array<{ id?: string; engine_type?: string; status?: string }>;
   } | null>({
@@ -101,9 +107,7 @@ export default function FleetTopologyPage() {
     () =>
       NODE_DEFS.map((def) => {
         const health = healthByKey.get(def.id);
-        const topoNode = topologyData?.nodes?.find(
-          (n) => (n.engine_type || n.id || "").toLowerCase() === def.id,
-        );
+        const topoNode = topologyData?.nodes?.find((n) => (n.engine_type || n.id || "").toLowerCase() === def.id);
         const status: EngineStatus =
           health?.status ??
           (topoNode?.status === "healthy"
@@ -123,8 +127,7 @@ export default function FleetTopologyPage() {
     return ARCHITECTURE_EDGES.map((def) => {
       const matched = liveEdges.find(
         (e) =>
-          (e.from || e.source || "").toLowerCase() === def.from &&
-          (e.to || e.target || "").toLowerCase() === def.to,
+          (e.from || e.source || "").toLowerCase() === def.from && (e.to || e.target || "").toLowerCase() === def.to,
       );
       const fromHealth = healthByKey.get(def.from);
       const toHealth = healthByKey.get(def.to);
@@ -134,10 +137,7 @@ export default function FleetTopologyPage() {
           : matched?.status
             ? matched.status === "healthy"
             : fromHealth?.status === "healthy" && toHealth?.status === "healthy";
-      const latencyMs =
-        typeof matched?.latency_ms === "number"
-          ? matched.latency_ms
-          : toHealth?.latencyMs ?? null;
+      const latencyMs = typeof matched?.latency_ms === "number" ? matched.latency_ms : (toHealth?.latencyMs ?? null);
       return {
         ...def,
         healthy: isHealthy,
@@ -195,7 +195,9 @@ export default function FleetTopologyPage() {
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <CardTitle className="text-sm font-semibold">Engine Dependency Nodes</CardTitle>
-                  <CardDescription className="text-xs">Live status from Argus topology & engine health probes</CardDescription>
+                  <CardDescription className="text-xs">
+                    Live status from Argus topology & engine health probes
+                  </CardDescription>
                 </div>
                 <Badge
                   variant="outline"
@@ -224,7 +226,10 @@ export default function FleetTopologyPage() {
                           <Icon className="h-4 w-4 text-primary" />
                         </div>
                         <span className="flex items-center gap-1.5">
-                          <span className={`h-2.5 w-2.5 rounded-full ${statusDotClass(node.status)}`} aria-hidden="true" />
+                          <span
+                            className={`h-2.5 w-2.5 rounded-full ${statusDotClass(node.status)}`}
+                            aria-hidden="true"
+                          />
                           <span className="sr-only">{node.status}</span>
                         </span>
                       </div>

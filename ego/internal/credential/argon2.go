@@ -3,7 +3,7 @@ package credential
 import (
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // RFC 6238 TOTP mandates HMAC-SHA1
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base32"
@@ -236,7 +236,7 @@ func GenerateTOTPCode(secret string, stepOffset int64) (string, error) {
 
 	step := (time.Now().Unix() / 30) + stepOffset
 	var counterBuf [8]byte
-	binary.BigEndian.PutUint64(counterBuf[:], uint64(step))
+	binary.BigEndian.PutUint64(counterBuf[:], uint64(step)) //nolint:gosec // TOTP time step is non-negative
 
 	mac := hmac.New(sha1.New, secretBytes)
 	mac.Write(counterBuf[:])

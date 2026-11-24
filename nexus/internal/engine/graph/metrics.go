@@ -22,14 +22,6 @@ var (
 )
 
 func init() {
-	if err := prometheus.Register(nexusCheckDuration); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			// ignore
-		}
-	}
-	if err := prometheus.Register(nexusCheckTotal); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			// ignore
-		}
-	}
+	_ = prometheus.Register(nexusCheckDuration)
+	_ = prometheus.Register(nexusCheckTotal)
 }

@@ -3,14 +3,7 @@
 import * as React from "react";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -111,11 +104,7 @@ export function PolicyBuilderSheet() {
             <div className="space-y-2">
               <Label htmlFor="themis-policy-expression">CEL Expression</Label>
               <div id="themis-policy-expression" className="border rounded-md overflow-hidden min-h-[150px]">
-                <CodeEditor
-                  value={expression}
-                  onChange={setExpression}
-                  language="cel"
-                />
+                <CodeEditor value={expression} onChange={setExpression} language="cel" />
               </div>
               <p className="text-xs text-muted-foreground">
                 Evaluates to boolean. Use{" "}

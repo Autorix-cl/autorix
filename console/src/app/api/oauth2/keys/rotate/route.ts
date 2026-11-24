@@ -6,4 +6,3 @@ export async function POST() {
     method: "POST",
   });
 }
-

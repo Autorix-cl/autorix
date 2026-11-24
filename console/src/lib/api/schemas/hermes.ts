@@ -123,4 +123,3 @@ export const scimSyncHistorySchema = z.object({
 });
 export const scimSyncHistoryListSchema = z.array(scimSyncHistorySchema);
 export type SCIMSyncHistory = z.infer<typeof scimSyncHistorySchema>;
-

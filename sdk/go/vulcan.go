@@ -123,7 +123,7 @@ func (v *VulcanClient) doVerify(ctx context.Context, payload VerifyKeyRequest) (
 	if err != nil {
 		return nil, fmt.Errorf("vulcan key verification failed: %w", err)
 	}
-	defer httpResp.Body.Close()
+	defer func() { _ = httpResp.Body.Close() }()
 
 	if httpResp.StatusCode == http.StatusBadRequest || httpResp.StatusCode == http.StatusUnauthorized || httpResp.StatusCode == http.StatusForbidden {
 		var errBody struct {
@@ -188,7 +188,7 @@ func (v *VulcanClient) AttenuateMacaroon(ctx context.Context, m *Macaroon, cavea
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("vulcan attenuate returned status: %d", resp.StatusCode)
@@ -250,7 +250,7 @@ func (v *VulcanClient) Attenuate(ctx context.Context, token string, caveats []st
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("vulcan returned status: %d", resp.StatusCode)

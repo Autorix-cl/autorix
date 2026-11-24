@@ -48,7 +48,8 @@ export function BulkImportDialog({ isOpen, onOpenChange, onSuccess }: BulkImport
     setIsValidating(true);
     setValidationResult(null);
     try {
-      const csrfMatch = typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/) : null;
+      const csrfMatch =
+        typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/) : null;
       const csrf = csrfMatch ? decodeURIComponent(csrfMatch[1]) : undefined;
       const res = await fetch("/api/identities/bulk-import", {
         method: "POST",
@@ -79,7 +80,8 @@ export function BulkImportDialog({ isOpen, onOpenChange, onSuccess }: BulkImport
 
     setIsCommitting(true);
     try {
-      const csrfMatch = typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/) : null;
+      const csrfMatch =
+        typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/) : null;
       const csrf = csrfMatch ? decodeURIComponent(csrfMatch[1]) : undefined;
       const res = await fetch("/api/identities/bulk-import", {
         method: "POST",
@@ -124,7 +126,7 @@ export function BulkImportDialog({ isOpen, onOpenChange, onSuccess }: BulkImport
                 type="button"
                 onClick={() =>
                   setCsvText(
-                    "email,firstName,lastName\nalice@autorix.io,Alice,Smith\nbob@autorix.io,Bob,Jones\ncarol@autorix.io,Carol,White"
+                    "email,firstName,lastName\nalice@autorix.io,Alice,Smith\nbob@autorix.io,Bob,Jones\ncarol@autorix.io,Carol,White",
                   )
                 }
                 className="underline hover:text-foreground text-[11px]"
@@ -197,7 +199,9 @@ export function BulkImportDialog({ isOpen, onOpenChange, onSuccess }: BulkImport
               <Button
                 size="sm"
                 onClick={handleCommit}
-                disabled={isCommitting || !csvText.trim() || (validationResult !== null && validationResult.succeeded === 0)}
+                disabled={
+                  isCommitting || !csvText.trim() || (validationResult !== null && validationResult.succeeded === 0)
+                }
               >
                 {isCommitting && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
                 Commit Import

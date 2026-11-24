@@ -9,10 +9,7 @@ export async function GET() {
     });
 
     if (!res.ok) {
-      return NextResponse.json(
-        { error: "Failed to check authentication status" },
-        { status: res.status }
-      );
+      return NextResponse.json({ error: "Failed to check authentication status" }, { status: res.status });
     }
 
     const data = await res.json();
@@ -20,7 +17,7 @@ export async function GET() {
   } catch {
     return NextResponse.json(
       { error: "Control plane service unavailable", bootstrapped: false, operators_count: 0 },
-      { status: 503 }
+      { status: 503 },
     );
   }
 }

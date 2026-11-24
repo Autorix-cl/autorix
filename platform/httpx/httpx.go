@@ -17,10 +17,11 @@ import (
 
 type contextKey string
 
+const requestIDKey contextKey = "request_id"
+
 const (
-	requestIDKey    contextKey = "request_id"
-	requestIDHeader            = "X-Request-Id"
-	maxRequestIDLen            = 128
+	requestIDHeader = "X-Request-Id"
+	maxRequestIDLen = 128
 )
 
 // Middleware wraps an http.Handler with additional behavior.

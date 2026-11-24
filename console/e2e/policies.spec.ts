@@ -6,7 +6,9 @@ test.describe("Themis ABAC / CEL Studio", () => {
     await page.waitForLoadState("networkidle");
   });
 
-  test("renders policy creation form, CEL dry-run simulator and policies table across studio tabs", async ({ page }) => {
+  test("renders policy creation form, CEL dry-run simulator and policies table across studio tabs", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1440, height: 1100 });
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Autorix Themis|CEL Policy/i);
     await expect(page.getByRole("button", { name: /Create ABAC \/ CEL Policy/i })).toBeVisible();

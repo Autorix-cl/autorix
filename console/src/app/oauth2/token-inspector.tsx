@@ -28,18 +28,13 @@ export function TokenInspector({ initialToken = "" }: TokenInspectorProps = {}) 
 
   const queryClient = useQueryClient();
 
-
   const introspectMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetchAndParse<IntrospectResponse>(
-        "/api/oauth2/tokens/introspect",
-        introspectResponseSchema,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: token.trim(), token_type_hint: tokenTypeHint }),
-        }
-      );
+      const res = await fetchAndParse<IntrospectResponse>("/api/oauth2/tokens/introspect", introspectResponseSchema, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: token.trim(), token_type_hint: tokenTypeHint }),
+      });
       if (!res.ok) {
         throw new Error(res.error.message || "Failed to introspect token");
       }
@@ -53,15 +48,11 @@ export function TokenInspector({ initialToken = "" }: TokenInspectorProps = {}) 
 
   const revokeMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetchAndParse(
-        "/api/oauth2/tokens/revoke",
-        z.unknown(),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: token.trim(), token_type_hint: tokenTypeHint }),
-        }
-      );
+      const res = await fetchAndParse("/api/oauth2/tokens/revoke", z.unknown(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: token.trim(), token_type_hint: tokenTypeHint }),
+      });
       if (!res.ok) {
         throw new Error(res.error.message || "Failed to revoke token");
       }
@@ -76,12 +67,10 @@ export function TokenInspector({ initialToken = "" }: TokenInspectorProps = {}) 
     },
   });
 
-
   const handleRevoke = () => {
     if (!token.trim()) return;
     setConfirmRevokeOpen(true);
   };
-
 
   return (
     <div className="space-y-6">
@@ -92,7 +81,8 @@ export function TokenInspector({ initialToken = "" }: TokenInspectorProps = {}) 
             RFC 7662 Token Introspection & Revocation
           </CardTitle>
           <CardDescription>
-            Inspect opaque tokens or signed JWTs against Janus to verify signatures, expiration, and active grant status.
+            Inspect opaque tokens or signed JWTs against Janus to verify signatures, expiration, and active grant
+            status.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -169,14 +159,20 @@ export function TokenInspector({ initialToken = "" }: TokenInspectorProps = {}) 
           )}
 
           {revokeMutation.isError && (
-            <div role="alert" className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm flex items-center gap-2">
+            <div
+              role="alert"
+              className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm flex items-center gap-2"
+            >
               <AlertCircle className="w-4 h-4" />
               {revokeMutation.error.message}
             </div>
           )}
 
           {introspectMutation.isError && (
-            <div role="alert" className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm flex items-center gap-2">
+            <div
+              role="alert"
+              className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm flex items-center gap-2"
+            >
               <AlertCircle className="w-4 h-4" />
               {introspectMutation.error.message}
             </div>
@@ -185,11 +181,6 @@ export function TokenInspector({ initialToken = "" }: TokenInspectorProps = {}) 
       </Card>
 
       {result && (
-
-
-
-
-
         <Card className="border-t-2 border-t-primary">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -270,4 +261,3 @@ export function TokenInspector({ initialToken = "" }: TokenInspectorProps = {}) 
     </div>
   );
 }
-

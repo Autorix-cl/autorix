@@ -41,12 +41,18 @@ describe("Diagnostics BFF Routes", () => {
     });
 
     expect(
-      (await runProbe(new NextRequest("http://localhost/api/diagnostics/probe", { method: "POST", body: JSON.stringify({}) }))).status,
+      (
+        await runProbe(
+          new NextRequest("http://localhost/api/diagnostics/probe", { method: "POST", body: JSON.stringify({}) }),
+        )
+      ).status,
     ).toBe(401);
     expect((await getDrift()).status).toBe(401);
     expect((await getMigrations()).status).toBe(401);
     expect((await getTimeline()).status).toBe(401);
-    expect((await exportBundle(new NextRequest("http://localhost/api/diagnostics/bundle", { method: "POST" }))).status).toBe(401);
+    expect(
+      (await exportBundle(new NextRequest("http://localhost/api/diagnostics/bundle", { method: "POST" }))).status,
+    ).toBe(401);
   });
 
   it("POST /api/diagnostics/probe performs real timed fetch against target /health/ready and rejects unregistered engines", async () => {

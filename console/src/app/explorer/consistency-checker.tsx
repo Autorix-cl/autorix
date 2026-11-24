@@ -5,15 +5,7 @@ import Link from "next/link";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  ShieldAlert,
-  AlertTriangle,
-  Info,
-  CheckCircle2,
-  RefreshCw,
-  ExternalLink,
-  Loader2,
-} from "lucide-react";
+import { ShieldAlert, AlertTriangle, Info, CheckCircle2, RefreshCw, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { ConsistencyFinding } from "@/lib/api/schemas/explorer";
 
@@ -56,7 +48,8 @@ export function ConsistencyChecker() {
                 Cross-Engine Architecture Consistency Diagnostics
               </CardTitle>
               <CardDescription className="text-[11px]">
-                Detects orphaned tuples, missing ReBAC namespace bindings, expired SAML certificates, and stale API keys.
+                Detects orphaned tuples, missing ReBAC namespace bindings, expired SAML certificates, and stale API
+                keys.
               </CardDescription>
             </div>
 
@@ -114,8 +107,8 @@ export function ConsistencyChecker() {
                   isCritical
                     ? "bg-destructive/10 border-destructive/30"
                     : isWarning
-                    ? "bg-amber-500/10 border-amber-500/30"
-                    : "bg-card/60 border-border"
+                      ? "bg-amber-500/10 border-amber-500/30"
+                      : "bg-card/60 border-border"
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -137,9 +130,7 @@ export function ConsistencyChecker() {
                       </Badge>
                     </div>
 
-                    <p className="text-muted-foreground text-[11px] leading-relaxed max-w-2xl">
-                      {f.description}
-                    </p>
+                    <p className="text-muted-foreground text-[11px] leading-relaxed max-w-2xl">{f.description}</p>
 
                     <div className="pt-1 flex items-center gap-1.5 text-[11px] text-foreground font-medium">
                       <span className="text-muted-foreground">Remediation:</span> {f.remediation}

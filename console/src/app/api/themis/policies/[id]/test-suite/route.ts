@@ -12,6 +12,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     "themis",
     `/policies/${encodeURIComponent(id)}/test-suite?tenant_id=${encodeURIComponent(tenantId)}`,
     testSuiteResultSchema,
-    { method: "POST" }
+    { method: "POST" },
   );
 }

@@ -12,13 +12,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RelationshipGraph } from "./relationship-graph";
 import { CaveatRegistry } from "./caveat-registry";
 
-import { 
-  useNexusSchema, 
+import {
+  useNexusSchema,
   useSaveNexusSchema,
   useNexusTuples,
   useAddNexusTuple,
   useDeleteNexusTuples,
-  useNexusCheck
+  useNexusCheck,
 } from "@/hooks/use-nexus";
 
 export default function NexusPage() {
@@ -58,7 +58,9 @@ export default function NexusPage() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between flex-shrink-0">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Nexus Playground</h1>
-          <p className="text-xs text-muted-foreground mt-1">Design, test, and manage your authorization schema and Zanzibar relationship graph.</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Design, test, and manage your authorization schema and Zanzibar relationship graph.
+          </p>
         </div>
       </div>
 
@@ -82,7 +84,10 @@ export default function NexusPage() {
         </div>
 
         {/* Tab 1: Playground (Responsive Split Schema & Simulator) */}
-        <TabsContent value="playground" className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 lg:overflow-hidden m-0 p-0">
+        <TabsContent
+          value="playground"
+          className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 lg:overflow-hidden m-0 p-0"
+        >
           {/* Left Pane: Schema Editor */}
           <div className="flex flex-col min-h-[360px] lg:min-h-0">
             {isLoadingSchema ? (
@@ -90,12 +95,12 @@ export default function NexusPage() {
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <SchemaEditor 
-                schema={schema || ""} 
+              <SchemaEditor
+                schema={schema || ""}
                 onSave={async (newSchema) => {
                   await saveSchema(newSchema);
                   toast.success("Schema validated and updated successfully.");
-                }} 
+                }}
               />
             )}
           </div>
@@ -108,8 +113,8 @@ export default function NexusPage() {
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : (
-                <TupleGrid 
-                  tuples={tuples || []} 
+                <TupleGrid
+                  tuples={tuples || []}
                   onAdd={async (data) => {
                     await addTuple(data);
                     toast.success(`Added tuple ${data.relation}`);
@@ -117,16 +122,16 @@ export default function NexusPage() {
                   onDelete={async (ids) => {
                     await deleteTuples(ids);
                     toast.success(`Deleted ${ids.length} tuples`);
-                  }} 
+                  }}
                 />
               )}
             </div>
             <div className="flex-1 min-h-[300px]">
-              <CheckSimulator 
+              <CheckSimulator
                 onCheck={async (query) => {
                   const result = await checkAccess(query);
                   return result;
-                }} 
+                }}
               />
             </div>
           </div>
@@ -134,8 +139,8 @@ export default function NexusPage() {
 
         {/* Tab 2: Tuples Browser */}
         <TabsContent value="tuples" className="flex-1 overflow-y-auto m-0 p-0 pb-6">
-          <TupleGrid 
-            tuples={tuples || []} 
+          <TupleGrid
+            tuples={tuples || []}
             onAdd={async (data) => {
               await addTuple(data);
               toast.success(`Added tuple ${data.relation}`);
@@ -143,7 +148,7 @@ export default function NexusPage() {
             onDelete={async (ids) => {
               await deleteTuples(ids);
               toast.success(`Deleted ${ids.length} tuples`);
-            }} 
+            }}
           />
         </TabsContent>
 
@@ -160,4 +165,3 @@ export default function NexusPage() {
     </div>
   );
 }
-

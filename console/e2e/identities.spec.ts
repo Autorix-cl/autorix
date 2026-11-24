@@ -100,4 +100,3 @@ test.describe("Ego Identities Studio (Ory Kratos Trait Model)", () => {
     });
   });
 });
-

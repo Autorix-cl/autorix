@@ -8,7 +8,7 @@ export interface FormValidationResult<T> {
 
 export function validateResourceForm<T extends z.ZodRawShape>(
   schema: z.ZodObject<T>,
-  values: unknown
+  values: unknown,
 ): FormValidationResult<z.infer<z.ZodObject<T>>> {
   const result = schema.safeParse(values);
   if (result.success) {

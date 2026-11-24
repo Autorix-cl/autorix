@@ -36,7 +36,7 @@ func (e *EgoClient) WhoAmI(ctx context.Context, sessionToken string) (*UserSessi
 		}
 		if sessionToken != "" {
 			httpReq.Header.Set("Authorization", "Bearer "+sessionToken)
-			httpReq.AddCookie(&http.Cookie{
+			httpReq.AddCookie(&http.Cookie{ //nolint:gosec // outbound client request cookie, not Set-Cookie
 				Name:  "autorix_session_token",
 				Value: sessionToken,
 			})
@@ -48,7 +48,7 @@ func (e *EgoClient) WhoAmI(ctx context.Context, sessionToken string) (*UserSessi
 	if err != nil {
 		return nil, err
 	}
-	defer httpResp.Body.Close()
+	defer func() { _ = httpResp.Body.Close() }()
 
 	if httpResp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("session invalid or expired (status: %d)", httpResp.StatusCode)

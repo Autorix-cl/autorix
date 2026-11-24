@@ -23,7 +23,8 @@ describe("Subset Test Matrix & Capability Gating (P5-S2-T5)", () => {
   it("handles empty fleet subset correctly without throwing", () => {
     const emptyFleet: Record<string, EngineHealthStatus> = {};
     const healthyCount = Object.values(emptyFleet).filter((s) => s === "healthy").length;
-    const healthPercentage = Object.keys(emptyFleet).length > 0 ? (healthyCount / Object.keys(emptyFleet).length) * 100 : 0;
+    const healthPercentage =
+      Object.keys(emptyFleet).length > 0 ? (healthyCount / Object.keys(emptyFleet).length) * 100 : 0;
 
     expect(healthyCount).toBe(0);
     expect(healthPercentage).toBe(0);

@@ -177,7 +177,7 @@ func (l *Lexer) skipWhitespace() {
 		} else if l.peekChar() == '*' {
 			l.readChar() // *
 			l.readChar()
-			for !(l.ch == '*' && l.peekChar() == '/') && l.ch != 0 {
+			for (l.ch != '*' || l.peekChar() != '/') && l.ch != 0 {
 				l.readChar()
 			}
 			l.readChar() // *
@@ -480,7 +480,7 @@ func (p *Parser) parsePrimaryExpr() (*core.RewriteRule, error) {
 		}
 		p.nextToken()
 		if p.peekToken.Type != TokenRelated {
-			return nil, fmt.Errorf("expected 'related' after this.")
+			return nil, fmt.Errorf("expected 'related' after this")
 		}
 		p.nextToken()
 		if p.peekToken.Type != TokenDot {

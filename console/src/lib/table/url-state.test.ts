@@ -21,7 +21,9 @@ describe("Table URL-encoded state (P4-S3-T2)", () => {
   });
 
   it("deserializes URL search params back into structured table query state", () => {
-    const searchParams = new URLSearchParams("page=3&pageSize=50&sortBy=created_at&sortOrder=desc&q=bob&f_status=suspended");
+    const searchParams = new URLSearchParams(
+      "page=3&pageSize=50&sortBy=created_at&sortOrder=desc&q=bob&f_status=suspended",
+    );
     const state = deserializeTableParams(searchParams);
 
     expect(state.page).toBe(3);

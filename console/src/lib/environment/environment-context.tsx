@@ -115,8 +115,7 @@ export function EnvironmentProvider({ children }: { children: React.ReactNode })
       const match = environments.find((e) => e.id === envId || e.slug === envId);
       if (match) {
         safeSetStorage("autorix_active_env", match.id);
-        const secureAttr =
-          typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+        const secureAttr = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
         document.cookie = `autorix_active_env=${encodeURIComponent(match.id)}; path=/; max-age=31536000; SameSite=Lax${secureAttr}`;
         setCurrentEnv(match);
       }

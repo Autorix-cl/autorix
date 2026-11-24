@@ -4,15 +4,7 @@ import * as React from "react";
 import { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import {
-  Copy,
-  Check,
-  Terminal,
-  Container,
-  FileCode,
-  ShieldCheck,
-  AlertCircle,
-} from "lucide-react";
+import { Copy, Check, Terminal, Container, FileCode, ShieldCheck, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -38,9 +30,7 @@ function FleetEnrollContent() {
   const [engineType, setEngineType] = React.useState(
     initialType && VALID_ENGINES.has(initialType) ? initialType : "ego",
   );
-  const [environment, setEnvironment] = React.useState(
-    initialEnv && VALID_ENVS.has(initialEnv) ? initialEnv : "prod",
-  );
+  const [environment, setEnvironment] = React.useState(initialEnv && VALID_ENVS.has(initialEnv) ? initialEnv : "prod");
   const [usesAllowed, setUsesAllowed] = React.useState("1");
   const [ttlHours, setTtlHours] = React.useState("24");
   const [isMinting, setIsMinting] = React.useState(false);
@@ -241,7 +231,8 @@ export AUTORIX_ENVIRONMENT="${environment}"
               <CardTitle className="text-lg font-bold">Enrollment Token Minted</CardTitle>
             </div>
             <CardDescription className="text-xs text-muted-foreground">
-              This token is revealed only once. Store it securely or supply it immediately to your container orchestrator.
+              This token is revealed only once. Store it securely or supply it immediately to your container
+              orchestrator.
             </CardDescription>
           </CardHeader>
           <CardContent className="py-6 space-y-6">
@@ -260,7 +251,11 @@ export AUTORIX_ENVIRONMENT="${environment}"
                 onClick={() => copyToClipboard(mintedToken, "raw")}
                 className="h-8 gap-1.5 text-xs shrink-0"
               >
-                {copiedCode === "raw" ? <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+                {copiedCode === "raw" ? (
+                  <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                )}
                 {copiedCode === "raw" ? "Copied" : "Copy"}
               </Button>
             </div>
@@ -297,7 +292,11 @@ export AUTORIX_ENVIRONMENT="${environment}"
                       onClick={() => copyToClipboard(dockerSnippet, "docker")}
                       className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:text-foreground"
                     >
-                      {copiedCode === "docker" ? <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+                      {copiedCode === "docker" ? (
+                        <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                      )}
                     </Button>
                   </div>
                 </TabsContent>
@@ -315,7 +314,11 @@ export AUTORIX_ENVIRONMENT="${environment}"
                       onClick={() => copyToClipboard(helmSnippet, "helm")}
                       className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:text-foreground"
                     >
-                      {copiedCode === "helm" ? <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+                      {copiedCode === "helm" ? (
+                        <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                      )}
                     </Button>
                   </div>
                 </TabsContent>
@@ -333,7 +336,11 @@ export AUTORIX_ENVIRONMENT="${environment}"
                       onClick={() => copyToClipboard(shellSnippet, "binary")}
                       className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:text-foreground"
                     >
-                      {copiedCode === "binary" ? <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+                      {copiedCode === "binary" ? (
+                        <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                      )}
                     </Button>
                   </div>
                 </TabsContent>
@@ -341,7 +348,13 @@ export AUTORIX_ENVIRONMENT="${environment}"
             </div>
 
             <div className="flex items-center justify-between border-t border-border/60 pt-4">
-              <Button type="button" variant="outline" size="sm" onClick={() => setMintedToken(null)} className="text-xs">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setMintedToken(null)}
+                className="text-xs"
+              >
                 Mint Another Token
               </Button>
               <Button asChild size="sm" className="text-xs gap-1.5">
@@ -357,7 +370,9 @@ export AUTORIX_ENVIRONMENT="${environment}"
 
 export default function FleetEnrollPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-xs text-muted-foreground font-mono">Loading enrollment wizard...</div>}>
+    <Suspense
+      fallback={<div className="p-8 text-xs text-muted-foreground font-mono">Loading enrollment wizard...</div>}
+    >
       <FleetEnrollContent />
     </Suspense>
   );

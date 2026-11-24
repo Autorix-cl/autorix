@@ -32,14 +32,14 @@ export interface ResourceDescriptor<T> {
 }
 
 export function defineResourceDescriptor<T extends Record<string, unknown>>(
-  config: ResourceDescriptor<T>
+  config: ResourceDescriptor<T>,
 ): ResourceDescriptor<T> {
   // Validate column keys exist in Zod schema shape
   const schemaKeys = Object.keys(config.schema.shape);
   for (const col of config.columns) {
     if (!schemaKeys.includes(col.key)) {
       throw new Error(
-        `Invalid column key '${col.key}' in resource descriptor '${config.id}'. Must match schema shape: ${schemaKeys.join(", ")}`
+        `Invalid column key '${col.key}' in resource descriptor '${config.id}'. Must match schema shape: ${schemaKeys.join(", ")}`,
       );
     }
   }

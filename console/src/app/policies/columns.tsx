@@ -29,10 +29,7 @@ function ExpressionCell({ expression }: { expression: string }) {
 
   return (
     <div className="flex items-center gap-1.5 font-mono text-xs text-purple-300 group max-w-md">
-      <span
-        className="rounded bg-purple-500/10 px-2 py-0.5 border border-purple-500/20 truncate"
-        title={expression}
-      >
+      <span className="rounded bg-purple-500/10 px-2 py-0.5 border border-purple-500/20 truncate" title={expression}>
         {expression}
       </span>
       <Button
@@ -55,10 +52,7 @@ export interface PolicyColumnActions {
   onOpenVersions?: (policy: Policy) => void;
 }
 
-export function getColumns(
-  tenantId: string,
-  actions?: PolicyColumnActions,
-): ColumnDef<Policy, unknown>[] {
+export function getColumns(tenantId: string, actions?: PolicyColumnActions): ColumnDef<Policy, unknown>[] {
   return [
     {
       accessorKey: "Name",
@@ -126,16 +120,20 @@ function ActionCell({
 
   const deletePolicy = useApiMutation(
     (policyId: string) =>
-      fetchAndParse(`/api/policies/${encodeURIComponent(policyId)}?tenant_id=${encodeURIComponent(tenantId)}`, deletePolicyResponseSchema, {
-        method: "DELETE",
-      }),
+      fetchAndParse(
+        `/api/policies/${encodeURIComponent(policyId)}?tenant_id=${encodeURIComponent(tenantId)}`,
+        deletePolicyResponseSchema,
+        {
+          method: "DELETE",
+        },
+      ),
     {
       successMessage: "Policy deleted from Themis.",
       onSuccess: () => {
         setConfirmOpen(false);
         queryClient.invalidateQueries({ queryKey: ["policies", tenantId] });
       },
-    }
+    },
   );
 
   return (

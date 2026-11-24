@@ -42,22 +42,28 @@ describe("Cross-Engine Explorer BFF Routes", () => {
     });
 
     expect(
-      (await getSubject(new NextRequest("http://localhost/api/explorer/subject/alice"), {
-        params: Promise.resolve({ id: "alice" }),
-      })).status,
+      (
+        await getSubject(new NextRequest("http://localhost/api/explorer/subject/alice"), {
+          params: Promise.resolve({ id: "alice" }),
+        })
+      ).status,
     ).toBe(401);
     expect(
-      (await evaluateEffectiveAccess(
-        new NextRequest("http://localhost/api/explorer/effective-access", {
-          method: "POST",
-          body: JSON.stringify({}),
-        }),
-      )).status,
+      (
+        await evaluateEffectiveAccess(
+          new NextRequest("http://localhost/api/explorer/effective-access", {
+            method: "POST",
+            body: JSON.stringify({}),
+          }),
+        )
+      ).status,
     ).toBe(401);
     expect(
-      (await simulateRequest(
-        new NextRequest("http://localhost/api/explorer/simulate", { method: "POST", body: JSON.stringify({}) }),
-      )).status,
+      (
+        await simulateRequest(
+          new NextRequest("http://localhost/api/explorer/simulate", { method: "POST", body: JSON.stringify({}) }),
+        )
+      ).status,
     ).toBe(401);
     expect((await checkConsistency()).status).toBe(401);
   });
@@ -69,10 +75,9 @@ describe("Cross-Engine Explorer BFF Routes", () => {
         return new Response(JSON.stringify([{ id: "sess-1", identity_id: "alice", active: true }]), { status: 200 });
       }
       if (u.includes("/admin/identities/alice")) {
-        return new Response(
-          JSON.stringify({ id: "alice", state: "active", traits: { email: "alice@autorix.io" } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ id: "alice", state: "active", traits: { email: "alice@autorix.io" } }), {
+          status: 200,
+        });
       }
       if (u.includes("/tuples")) {
         return new Response(
@@ -148,7 +153,9 @@ describe("Cross-Engine Explorer BFF Routes", () => {
       const u = String(url);
       if (u.includes("/rules")) {
         return new Response(
-          JSON.stringify([{ id: "r1", name: "docs-rule", enabled: true, path: "/api/v1/documents", upstream_url: "http://docs:8080" }]),
+          JSON.stringify([
+            { id: "r1", name: "docs-rule", enabled: true, path: "/api/v1/documents", upstream_url: "http://docs:8080" },
+          ]),
           { status: 200 },
         );
       }
@@ -204,7 +211,9 @@ describe("Cross-Engine Explorer BFF Routes", () => {
     vi.mocked(global.fetch).mockImplementation(async (url: RequestInfo | URL) => {
       const u = String(url);
       if (u.includes("/rules/test-match")) {
-        return new Response(JSON.stringify({ matched: true, rule_id: "r-projects", final_verdict: "allow" }), { status: 200 });
+        return new Response(JSON.stringify({ matched: true, rule_id: "r-projects", final_verdict: "allow" }), {
+          status: 200,
+        });
       }
       if (u.includes("/check")) {
         return new Response(JSON.stringify({ allowed: true, reason: "direct tuple" }), { status: 200 });
@@ -253,7 +262,13 @@ describe("Cross-Engine Explorer BFF Routes", () => {
       if (u.includes("/rules")) {
         return new Response(
           JSON.stringify([
-            { id: "r1", name: "billing", enabled: true, upstream_url: "http://billing:8080", authorizer: { config: { namespace: "missing_ns" } } },
+            {
+              id: "r1",
+              name: "billing",
+              enabled: true,
+              upstream_url: "http://billing:8080",
+              authorizer: { config: { namespace: "missing_ns" } },
+            },
           ]),
           { status: 200 },
         );

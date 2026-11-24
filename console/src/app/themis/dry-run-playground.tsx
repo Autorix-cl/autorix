@@ -4,17 +4,7 @@ import * as React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Play,
-  CheckCircle2,
-  XCircle,
-  Code2,
-  Sparkles,
-  AlertCircle,
-  FileCode2,
-  Layers,
-  Loader2,
-} from "lucide-react";
+import { Play, CheckCircle2, XCircle, Code2, Sparkles, AlertCircle, FileCode2, Layers, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { ValidationResult } from "@/lib/api/schemas/themis";
 
@@ -46,8 +36,8 @@ export function DryRunPlayground() {
         },
       },
       null,
-      2
-    )
+      2,
+    ),
   );
 
   const [validation, setValidation] = React.useState<ValidationResult | null>(null);
@@ -145,8 +135,8 @@ export function DryRunPlayground() {
             },
           },
           null,
-          2
-        )
+          2,
+        ),
       );
     } else if (presetName === "standard_user") {
       setContextJson(
@@ -162,8 +152,8 @@ export function DryRunPlayground() {
             },
           },
           null,
-          2
-        )
+          2,
+        ),
       );
     }
   };
@@ -250,9 +240,7 @@ export function DryRunPlayground() {
             />
 
             {validation && !validation.valid && validation.errors.length > 0 && (
-              <p className="text-[11px] text-destructive pt-1 font-mono">
-                {validation.errors[0].message}
-              </p>
+              <p className="text-[11px] text-destructive pt-1 font-mono">{validation.errors[0].message}</p>
             )}
           </div>
         )}

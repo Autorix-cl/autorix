@@ -7,13 +7,7 @@ import { useApiMutation } from "@/lib/query/use-api-mutation";
 import { fetchAndParse } from "@/lib/api/schema";
 import { writeTuplesResponseSchema } from "@/lib/api/schemas/nexus";
 
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -57,7 +51,7 @@ export function TupleBuilderSheet({ isOpen, onOpenChange }: TupleBuilderSheetPro
         setObject("");
         setSubjectId("");
       },
-    }
+    },
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -83,20 +77,13 @@ export function TupleBuilderSheet({ isOpen, onOpenChange }: TupleBuilderSheetPro
             <Database className="h-5 w-5 text-purple-400" />
             <SheetTitle>Create Tuple</SheetTitle>
           </div>
-          <SheetDescription>
-            Add a new relationship tuple to the Zanzibar engine.
-          </SheetDescription>
+          <SheetDescription>Add a new relationship tuple to the Zanzibar engine.</SheetDescription>
         </SheetHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="namespace">Namespace</Label>
-            <Input
-              id="namespace"
-              value={namespace}
-              onChange={(e) => setNamespace(e.target.value)}
-              required
-            />
+            <Input id="namespace" value={namespace} onChange={(e) => setNamespace(e.target.value)} required />
           </div>
 
           <div className="space-y-1.5">
@@ -112,12 +99,7 @@ export function TupleBuilderSheet({ isOpen, onOpenChange }: TupleBuilderSheetPro
 
           <div className="space-y-1.5">
             <Label htmlFor="relation">Relation</Label>
-            <Input
-              id="relation"
-              value={relation}
-              onChange={(e) => setRelation(e.target.value)}
-              required
-            />
+            <Input id="relation" value={relation} onChange={(e) => setRelation(e.target.value)} required />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -154,24 +136,11 @@ export function TupleBuilderSheet({ isOpen, onOpenChange }: TupleBuilderSheetPro
 
           <div className="space-y-1.5">
             <Label htmlFor="caveatName">Caveat Name (Optional)</Label>
-            <Input
-              id="caveatName"
-              value={caveatName}
-              onChange={(e) => setCaveatName(e.target.value)}
-            />
+            <Input id="caveatName" value={caveatName} onChange={(e) => setCaveatName(e.target.value)} />
           </div>
 
-          <Button
-            type="submit"
-            variant="purple"
-            disabled={createMutation.isPending}
-            className="w-full gap-2 mt-4"
-          >
-            {createMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
+          <Button type="submit" variant="purple" disabled={createMutation.isPending} className="w-full gap-2 mt-4">
+            {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             <span>{createMutation.isPending ? "Creating..." : "Create Tuple"}</span>
           </Button>
         </form>

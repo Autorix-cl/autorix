@@ -209,7 +209,7 @@ func (r *RedisCache) PublishInvalidation(ctx context.Context, channel, key strin
 func (r *RedisCache) SubscribeInvalidations(ctx context.Context, channel string, handler func(key string)) error {
 	pubsub := r.client.Subscribe(ctx, channel)
 	go func() {
-		defer pubsub.Close()
+		defer func() { _ = pubsub.Close() }()
 		ch := pubsub.Channel()
 		for {
 			select {

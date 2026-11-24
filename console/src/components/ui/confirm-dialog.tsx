@@ -57,9 +57,7 @@ export function ConfirmDialog({
 
   const requiresTyping = Boolean(confirmText);
   const matchesTyped =
-    !requiresTyping ||
-    typedValue === confirmText ||
-    (Boolean(confirmTextAlt) && typedValue === confirmTextAlt);
+    !requiresTyping || typedValue === confirmText || (Boolean(confirmTextAlt) && typedValue === confirmTextAlt);
 
   const handleConfirm = async () => {
     if (!matchesTyped || isLoading) return;

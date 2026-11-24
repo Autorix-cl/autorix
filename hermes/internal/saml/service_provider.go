@@ -1223,11 +1223,11 @@ func SignAssertionXML(rawResponseXML []byte, privKey *rsa.PrivateKey) ([]byte, e
 	}
 	assertionEl := root.firstChild("Assertion", samlAssertionNS)
 	if assertionEl == nil {
-		return nil, errors.New("Response missing Assertion")
+		return nil, errors.New("response missing Assertion")
 	}
 	assertionID := strings.TrimSpace(assertionEl.attr("ID"))
 	if assertionID == "" {
-		return nil, errors.New("Assertion missing ID attribute")
+		return nil, errors.New("assertion missing ID attribute")
 	}
 
 	canonAssertion := canonicalizeExcC14N(assertionEl, nil)

@@ -64,13 +64,7 @@ describe("Hermes Enterprise UI Components", () => {
   });
 
   it("renders SAMLProviderSheet with attribute mapping and certificate details", () => {
-    render(
-      <SAMLProviderSheet
-        provider={sampleProvider}
-        isOpen={true}
-        onOpenChange={() => {}}
-      />
-    );
+    render(<SAMLProviderSheet provider={sampleProvider} isOpen={true} onOpenChange={() => {}} />);
 
     expect(screen.getByText("SAML Attribute Mapping")).toBeDefined();
     expect(screen.getByText("CN=Okta Corp")).toBeDefined();

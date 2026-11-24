@@ -40,9 +40,9 @@ describe("AuthProvider", () => {
               is_active: true,
             },
           }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
-      )
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
     );
 
     const redirectSpy = vi.fn();
@@ -64,8 +64,8 @@ describe("AuthProvider", () => {
         new Response(JSON.stringify({ authenticated: false }), {
           status: 401,
           headers: { "Content-Type": "application/json" },
-        })
-      )
+        }),
+      ),
     );
 
     const redirectSpy = vi.fn();

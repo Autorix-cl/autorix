@@ -13,7 +13,10 @@ test.describe("Multi-Environment Isolation", () => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
-    const envBtn = page.locator("header button").filter({ hasText: /production/i }).first();
+    const envBtn = page
+      .locator("header button")
+      .filter({ hasText: /production/i })
+      .first();
     await expect(envBtn).toBeVisible();
     await expect(page.getByText(/connected \(5432\)|5432/i)).toBeVisible();
   });
@@ -22,21 +25,37 @@ test.describe("Multi-Environment Isolation", () => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
-    const envBtn = page.locator("header button").filter({ hasText: /production/i }).first();
+    const envBtn = page
+      .locator("header button")
+      .filter({ hasText: /production/i })
+      .first();
     await envBtn.click();
-    await page.getByRole("menuitem").filter({ hasText: /staging/i }).click();
+    await page
+      .getByRole("menuitem")
+      .filter({ hasText: /staging/i })
+      .click();
 
-    await expect(page.getByText(/staging environment|isolated sandbox|0 instances|staging/i).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/staging environment|isolated sandbox|0 instances|staging/i).first()).toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test("switching to Development gates engine studio page with NotConnectedEngine banner", async ({ page }) => {
     await page.goto("/identities");
     await page.waitForLoadState("networkidle");
 
-    const envBtn = page.locator("header button").filter({ hasText: /production/i }).first();
+    const envBtn = page
+      .locator("header button")
+      .filter({ hasText: /production/i })
+      .first();
     await envBtn.click();
-    await page.getByRole("menuitem").filter({ hasText: /development/i }).click();
+    await page
+      .getByRole("menuitem")
+      .filter({ hasText: /development/i })
+      .click();
 
-    await expect(page.getByText(/not connected|not enrolled|enroll instance|0 instances/i).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/not connected|not enrolled|enroll instance|0 instances/i).first()).toBeVisible({
+      timeout: 5000,
+    });
   });
 });

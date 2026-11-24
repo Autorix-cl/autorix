@@ -112,4 +112,3 @@ export const rollbackResponseSchema = z.object({
   status: z.string(),
   version: z.number().optional(),
 });
-

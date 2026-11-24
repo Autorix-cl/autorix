@@ -93,13 +93,6 @@ Environment Variables:
   AUTORIX_TOKEN                  Admin operator JWT or API key`)
 }
 
-func handleFleet(cfg Config, args []string) {
-	if err := runFleet(cfg, args, os.Stdout); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-}
-
 func runFleet(cfg Config, args []string, out io.Writer) error {
 	if len(args) == 0 || args[0] != "list" {
 		return errors.New("usage: autorixctl fleet list [--env <env>]")
@@ -123,7 +116,7 @@ func runFleet(cfg Config, args []string, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("querying fleet: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -135,13 +128,6 @@ func runFleet(cfg Config, args []string, out io.Writer) error {
 
 	_, _ = fmt.Fprintln(out, string(body))
 	return nil
-}
-
-func handleToken(cfg Config, args []string) {
-	if err := runToken(cfg, args, os.Stdout); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
 }
 
 func runToken(cfg Config, args []string, out io.Writer) error {
@@ -177,7 +163,7 @@ func runToken(cfg Config, args []string, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("minting token: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -189,13 +175,6 @@ func runToken(cfg Config, args []string, out io.Writer) error {
 
 	_, _ = fmt.Fprintln(out, string(body))
 	return nil
-}
-
-func handleCheck(cfg Config, args []string) {
-	if err := runCheck(cfg, args, os.Stdout); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
 }
 
 func runCheck(cfg Config, args []string, out io.Writer) error {
@@ -236,7 +215,7 @@ func runCheck(cfg Config, args []string, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("checking permission: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -264,13 +243,6 @@ func runCheck(cfg Config, args []string, out io.Writer) error {
 	return nil
 }
 
-func handleAudit(cfg Config, args []string) {
-	if err := runAudit(cfg, args, os.Stdout); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-}
-
 func runAudit(cfg Config, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		return errors.New("usage: autorixctl audit [list|verify]")
@@ -291,7 +263,7 @@ func runAudit(cfg Config, args []string, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("audit %s failed: %w", sub, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -306,13 +278,6 @@ func runAudit(cfg Config, args []string, out io.Writer) error {
 
 	_, _ = fmt.Fprintln(out, string(body))
 	return nil
-}
-
-func handleApply(cfg Config, args []string) {
-	if err := runApply(cfg, args, os.Stdout); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
 }
 
 func runApply(_ Config, args []string, _ io.Writer) error {

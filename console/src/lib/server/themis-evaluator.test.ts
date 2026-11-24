@@ -21,10 +21,10 @@ describe("Themis CEL Evaluator", () => {
 
   it("should evaluate numeric comparisons", () => {
     const context = { resource: { size: 500 } };
-    expect(evalCel('resource.size > 100', context)).toBe(true);
-    expect(evalCel('resource.size < 1000', context)).toBe(true);
-    expect(evalCel('resource.size >= 500', context)).toBe(true);
-    expect(evalCel('resource.size <= 499', context)).toBe(false);
+    expect(evalCel("resource.size > 100", context)).toBe(true);
+    expect(evalCel("resource.size < 1000", context)).toBe(true);
+    expect(evalCel("resource.size >= 500", context)).toBe(true);
+    expect(evalCel("resource.size <= 499", context)).toBe(false);
   });
 
   it("should handle deep nested properties", () => {
@@ -40,12 +40,12 @@ describe("Themis CEL Evaluator", () => {
 
   it("should handle the NOT operator", () => {
     const context = { request: { is_banned: false } };
-    expect(evalCel('!request.is_banned', context)).toBe(true);
+    expect(evalCel("!request.is_banned", context)).toBe(true);
   });
 
   it("should reject unsafe operations (prototype pollution or functions)", () => {
     const context = {};
-    expect(() => evalCel('Math.random()', context)).toThrow();
-    expect(() => evalCel('constructor.name', context)).toThrow();
+    expect(() => evalCel("Math.random()", context)).toThrow();
+    expect(() => evalCel("constructor.name", context)).toThrow();
   });
 });

@@ -23,4 +23,3 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
 
   return proxyRequest("aegis", `/rules/${encodeURIComponent(id)}`, deleteRuleResponseSchema, { method: "DELETE" });
 }
-

@@ -41,9 +41,7 @@ async function globalSetup(config: FullConfig) {
     });
 
     if (loginRes.ok()) {
-      await context.addCookies([
-        { name: "autorix_active_env", value: "prod", domain: "localhost", path: "/" },
-      ]);
+      await context.addCookies([{ name: "autorix_active_env", value: "prod", domain: "localhost", path: "/" }]);
       await context.storageState({ path: authFile });
       return;
     }
@@ -54,9 +52,7 @@ async function globalSetup(config: FullConfig) {
 
     // If already redirected to dashboard (e.g. valid cookie retained), save state directly
     if (!page.url().includes("/login")) {
-      await context.addCookies([
-        { name: "autorix_active_env", value: "prod", domain: "localhost", path: "/" },
-      ]);
+      await context.addCookies([{ name: "autorix_active_env", value: "prod", domain: "localhost", path: "/" }]);
       await context.storageState({ path: authFile });
       return;
     }
@@ -71,9 +67,7 @@ async function globalSetup(config: FullConfig) {
 
     // Wait for redirect away from /login
     await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 15_000 });
-    await context.addCookies([
-      { name: "autorix_active_env", value: "prod", domain: "localhost", path: "/" },
-    ]);
+    await context.addCookies([{ name: "autorix_active_env", value: "prod", domain: "localhost", path: "/" }]);
     // Save storage state containing cookies and localStorage
     await context.storageState({ path: authFile });
   } catch (err) {

@@ -195,8 +195,17 @@ export function KeysTable() {
         header: "Status",
         cell: ({ row }) => {
           const revoked = Boolean(row.original.revoked) || row.original.state === "revoked";
-          if (revoked) return <Badge variant="destructive" className="text-xs">Revoked</Badge>;
-          return <Badge variant="default" className="bg-emerald-500 hover:bg-emerald-600 text-xs">Active</Badge>;
+          if (revoked)
+            return (
+              <Badge variant="destructive" className="text-xs">
+                Revoked
+              </Badge>
+            );
+          return (
+            <Badge variant="default" className="bg-emerald-500 hover:bg-emerald-600 text-xs">
+              Active
+            </Badge>
+          );
         },
       },
       {
@@ -209,7 +218,12 @@ export function KeysTable() {
           return (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button type="button" variant="ghost" className="h-8 w-8 p-0" aria-label={`Actions for key ${key.name}`}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-8 w-8 p-0"
+                  aria-label={`Actions for key ${key.name}`}
+                >
                   <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>

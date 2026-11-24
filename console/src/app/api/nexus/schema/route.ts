@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { proxyRequest } from "@/lib/api/proxy";
 import { namespaceListSchema, namespaceSchema, type NamespaceSchema } from "@/lib/api/schemas/nexus";
 
-
 const defaultSchema = `definition user {}
 
 definition document {
@@ -41,7 +40,6 @@ export async function GET() {
             return `definition ${ns.name} {\n${relLines.join("\n")}\n}`;
           })
           .join("\n\n");
-
 
         cachedSchema = aplText;
         return NextResponse.json({ schema: aplText, namespaces });
@@ -94,4 +92,3 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
-

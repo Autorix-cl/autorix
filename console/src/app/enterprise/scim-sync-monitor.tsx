@@ -5,17 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  Users,
-  Users2,
-  RefreshCw,
-  Plus,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Loader2,
-  Layers,
-} from "lucide-react";
+import { Users, Users2, RefreshCw, Plus, CheckCircle2, XCircle, Clock, Loader2, Layers } from "lucide-react";
 
 import { toast } from "sonner";
 import { Can } from "@/lib/auth/use-permission";
@@ -221,7 +211,10 @@ export function SCIMSyncMonitor({ users, onRefresh }: SCIMSyncMonitorProps) {
           <div className="space-y-3">
             {/* Create Group Form */}
             <Can perform="enterprise:write">
-              <form onSubmit={handleCreateGroup} className="flex gap-2 items-center p-2.5 rounded-lg border bg-muted/20">
+              <form
+                onSubmit={handleCreateGroup}
+                className="flex gap-2 items-center p-2.5 rounded-lg border bg-muted/20"
+              >
                 <Input
                   aria-label="New SCIM Group Name"
                   placeholder="New SCIM Group Name (e.g. SRE-Team)"
@@ -229,8 +222,17 @@ export function SCIMSyncMonitor({ users, onRefresh }: SCIMSyncMonitorProps) {
                   onChange={(e) => setNewGroupName(e.target.value)}
                   className="h-7 text-xs font-mono"
                 />
-                <Button type="submit" size="sm" disabled={isCreatingGroup || !newGroupName.trim()} className="h-7 text-xs shrink-0">
-                  {isCreatingGroup ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Plus className="w-3 h-3 mr-1" />}
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={isCreatingGroup || !newGroupName.trim()}
+                  className="h-7 text-xs shrink-0"
+                >
+                  {isCreatingGroup ? (
+                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  ) : (
+                    <Plus className="w-3 h-3 mr-1" />
+                  )}
                   Add Group
                 </Button>
               </form>
@@ -328,9 +330,7 @@ export function SCIMSyncMonitor({ users, onRefresh }: SCIMSyncMonitorProps) {
 
                     <Badge
                       variant={s.status === "success" ? "default" : "destructive"}
-                      className={`text-[9px] px-1.5 py-0 ${
-                        s.status === "success" ? "bg-emerald-500" : ""
-                      }`}
+                      className={`text-[9px] px-1.5 py-0 ${s.status === "success" ? "bg-emerald-500" : ""}`}
                     >
                       {s.status}
                     </Badge>

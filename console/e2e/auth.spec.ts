@@ -1,7 +1,9 @@
 import { test, expect } from "./fixtures";
 
 test.describe("Authentication & Session Security (Argus Gateway)", () => {
-  test("unauthenticated visitor to protected route is redirected to /login with return query parameter", async ({ page }) => {
+  test("unauthenticated visitor to protected route is redirected to /login with return query parameter", async ({
+    page,
+  }) => {
     await page.context().clearCookies();
     await page.goto("/identities");
 
@@ -15,7 +17,7 @@ test.describe("Authentication & Session Security (Argus Gateway)", () => {
   test("deep-linking: operator login preserves and redirects to requested protected page", async ({ page }) => {
     await page.context().clearCookies();
     await page.goto("/login?from=%2Fpolicies");
-    
+
     const emailInput = page.locator('input[type="email"]');
     const passwordInput = page.locator('input[type="password"]');
     const submitBtn = page.getByRole("button", { name: /authenticate session/i });

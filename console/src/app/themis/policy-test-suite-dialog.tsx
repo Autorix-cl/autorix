@@ -9,16 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Can } from "@/lib/auth/use-permission";
-import {
-  FlaskConical,
-  Play,
-  CheckCircle2,
-  XCircle,
-  Plus,
-  Trash2,
-  Loader2,
-  AlertCircle,
-} from "lucide-react";
+import { FlaskConical, Play, CheckCircle2, XCircle, Plus, Trash2, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import type { PolicyFixture, TestSuiteResult } from "@/lib/api/schemas/themis";
 
@@ -35,12 +26,7 @@ interface PolicyTestSuiteDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function PolicyTestSuiteDialog({
-  policyId,
-  policyName,
-  isOpen,
-  onOpenChange,
-}: PolicyTestSuiteDialogProps) {
+export function PolicyTestSuiteDialog({ policyId, policyName, isOpen, onOpenChange }: PolicyTestSuiteDialogProps) {
   const [fixtures, setFixtures] = React.useState<PolicyFixture[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isRunning, setIsRunning] = React.useState(false);
@@ -194,11 +180,7 @@ export function PolicyTestSuiteDialog({
                 }`}
               >
                 <div className="flex items-center gap-2 font-medium">
-                  {suiteResult.all_passed ? (
-                    <CheckCircle2 className="w-4 h-4" />
-                  ) : (
-                    <XCircle className="w-4 h-4" />
-                  )}
+                  {suiteResult.all_passed ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                   <span>
                     {suiteResult.all_passed
                       ? "All Test Scenarios Passed"
@@ -279,9 +261,7 @@ export function PolicyTestSuiteDialog({
               </form>
             ) : (
               <div className="flex justify-between items-center">
-                <span className="text-xs font-semibold text-foreground">
-                  Fixtures ({fixtures.length})
-                </span>
+                <span className="text-xs font-semibold text-foreground">Fixtures ({fixtures.length})</span>
                 <Can perform="policies:write">
                   <Button
                     type="button"
@@ -326,9 +306,7 @@ export function PolicyTestSuiteDialog({
                             <Badge
                               variant={runResult.passed ? "outline" : "destructive"}
                               className={`text-[10px] ${
-                                runResult.passed
-                                  ? "text-emerald-500 border-emerald-500/30"
-                                  : ""
+                                runResult.passed ? "text-emerald-500 border-emerald-500/30" : ""
                               }`}
                             >
                               {runResult.passed ? (
@@ -374,8 +352,8 @@ export function PolicyTestSuiteDialog({
         title="Delete Test Fixture"
         description={
           <>
-            Remove test scenario <strong className="font-mono">{pendingDeleteFixture?.name}</strong> from this policy&apos;s
-            regression suite?
+            Remove test scenario <strong className="font-mono">{pendingDeleteFixture?.name}</strong> from this
+            policy&apos;s regression suite?
           </>
         }
         confirmLabel="Delete Fixture"

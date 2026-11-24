@@ -13,10 +13,7 @@ export async function POST(req: NextRequest) {
     const { name, cel_expression } = body;
 
     if (!name || !cel_expression) {
-      return NextResponse.json(
-        { error: "name and cel_expression are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "name and cel_expression are required" }, { status: 400 });
     }
 
     return proxyRequest("nexus", "/admin/caveats", caveatSchema, {
@@ -35,10 +32,7 @@ export async function DELETE(req: NextRequest) {
   const name = searchParams.get("name");
 
   if (!name) {
-    return NextResponse.json(
-      { error: "caveat name parameter is required" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "caveat name parameter is required" }, { status: 400 });
   }
 
   return proxyRequest("nexus", `/admin/caveats/${encodeURIComponent(name)}`, z.object({ status: z.string() }), {

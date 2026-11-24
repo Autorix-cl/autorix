@@ -176,13 +176,13 @@ func decodeArgon2Hash(encodedHash string) (*Argon2Params, []byte, []byte, error)
 	if err != nil || len(salt) < minArgon2SaltLength || len(salt) > maxArgon2SaltLength {
 		return nil, nil, nil, ErrInvalidHash
 	}
-	params.SaltLength = uint32(len(salt))
+	params.SaltLength = uint32(len(salt)) //nolint:gosec // length bounded by maxArgon2SaltLength
 
 	hash, err := base64.RawStdEncoding.Strict().DecodeString(vals[5])
 	if err != nil || len(hash) < minArgon2KeyLength || len(hash) > maxArgon2KeyLength {
 		return nil, nil, nil, ErrInvalidHash
 	}
-	params.KeyLength = uint32(len(hash))
+	params.KeyLength = uint32(len(hash)) //nolint:gosec // length bounded by maxArgon2KeyLength
 
 	return params, salt, hash, nil
 }

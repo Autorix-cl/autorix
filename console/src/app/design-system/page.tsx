@@ -2,16 +2,7 @@
 
 import * as React from "react";
 import { notFound } from "next/navigation";
-import {
-  Palette,
-  Type,
-  Layers,
-  Sparkles,
-  ShieldCheck,
-  AlertTriangle,
-  XCircle,
-  CheckCircle2,
-} from "lucide-react";
+import { Palette, Type, Layers, Sparkles, ShieldCheck, AlertTriangle, XCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -45,7 +36,9 @@ export default function DesignSystemPage() {
             <button
               onClick={() => setDensity("comfortable")}
               className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${
-                density === "comfortable" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                density === "comfortable"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               Comfortable
@@ -53,7 +46,9 @@ export default function DesignSystemPage() {
             <button
               onClick={() => setDensity("compact")}
               className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${
-                density === "compact" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                density === "compact"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               Compact
@@ -83,7 +78,9 @@ export default function DesignSystemPage() {
           <Card className="border-border/80 bg-card/60">
             <CardHeader>
               <CardTitle className="text-base font-semibold">Core Color Scales</CardTitle>
-              <CardDescription className="text-xs">Dynamic HSL CSS custom properties responsive to light/dark themes</CardDescription>
+              <CardDescription className="text-xs">
+                Dynamic HSL CSS custom properties responsive to light/dark themes
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -121,7 +118,9 @@ export default function DesignSystemPage() {
           <Card className="border-border/80 bg-card/60">
             <CardHeader>
               <CardTitle className="text-base font-semibold">Semantic Status Scales</CardTitle>
-              <CardDescription className="text-xs">Accessible status indicators paired with iconography for color-blind clarity</CardDescription>
+              <CardDescription className="text-xs">
+                Accessible status indicators paired with iconography for color-blind clarity
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -156,7 +155,9 @@ export default function DesignSystemPage() {
           <Card className="border-border/80 bg-card/60">
             <CardHeader>
               <CardTitle className="text-base font-semibold">Typography Scale &amp; Tabular Numerals</CardTitle>
-              <CardDescription className="text-xs">Standard type hierarchy with proportional lining numbers and monospace fonts</CardDescription>
+              <CardDescription className="text-xs">
+                Standard type hierarchy with proportional lining numbers and monospace fonts
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1 pb-3 border-b border-border/60">
@@ -195,11 +196,21 @@ export default function DesignSystemPage() {
               <div className="space-y-2">
                 <span className="text-xs font-mono text-muted-foreground">Buttons</span>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="default" size={density === "compact" ? "sm" : "default"}>Default</Button>
-                  <Button variant="secondary" size={density === "compact" ? "sm" : "default"}>Secondary</Button>
-                  <Button variant="outline" size={density === "compact" ? "sm" : "default"}>Outline</Button>
-                  <Button variant="destructive" size={density === "compact" ? "sm" : "default"}>Destructive</Button>
-                  <Button variant="ghost" size={density === "compact" ? "sm" : "default"}>Ghost</Button>
+                  <Button variant="default" size={density === "compact" ? "sm" : "default"}>
+                    Default
+                  </Button>
+                  <Button variant="secondary" size={density === "compact" ? "sm" : "default"}>
+                    Secondary
+                  </Button>
+                  <Button variant="outline" size={density === "compact" ? "sm" : "default"}>
+                    Outline
+                  </Button>
+                  <Button variant="destructive" size={density === "compact" ? "sm" : "default"}>
+                    Destructive
+                  </Button>
+                  <Button variant="ghost" size={density === "compact" ? "sm" : "default"}>
+                    Ghost
+                  </Button>
                 </div>
               </div>
 

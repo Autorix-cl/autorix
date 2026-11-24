@@ -16,25 +16,19 @@ export interface ZanzibarTupleItem {
   original: Tuple;
 }
 
-export const getColumns = (
-  onDelete: (tuple: ZanzibarTupleItem) => void,
-): ColumnDef<ZanzibarTupleItem, unknown>[] => [
+export const getColumns = (onDelete: (tuple: ZanzibarTupleItem) => void): ColumnDef<ZanzibarTupleItem, unknown>[] => [
   {
     accessorKey: "namespace",
     header: "Namespace",
     cell: ({ row }) => (
-      <span className="font-mono text-xs text-purple-400 font-medium">
-        {row.getValue("namespace")}
-      </span>
+      <span className="font-mono text-xs text-purple-400 font-medium">{row.getValue("namespace")}</span>
     ),
   },
   {
     accessorKey: "object",
     header: "Object",
     cell: ({ row }) => (
-      <span className="font-mono text-xs text-foreground font-semibold">
-        {row.getValue("object")}
-      </span>
+      <span className="font-mono text-xs text-foreground font-semibold">{row.getValue("object")}</span>
     ),
   },
   {
@@ -49,11 +43,7 @@ export const getColumns = (
   {
     accessorKey: "subject",
     header: "Subject",
-    cell: ({ row }) => (
-      <span className="font-mono text-xs text-blue-400">
-        @{row.getValue("subject")}
-      </span>
-    ),
+    cell: ({ row }) => <span className="font-mono text-xs text-blue-400">@{row.getValue("subject")}</span>,
   },
   {
     accessorKey: "caveat",

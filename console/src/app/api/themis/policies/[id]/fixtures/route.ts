@@ -10,7 +10,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   return proxyRequest(
     "themis",
     `/policies/${encodeURIComponent(id)}/fixtures?tenant_id=${encodeURIComponent(tenantId)}`,
-    policyFixtureListSchema
+    policyFixtureListSchema,
   );
 }
 
@@ -28,11 +28,16 @@ export async function POST(req: NextRequest, { params }: Params) {
       expected_result: Boolean(body.expected_result),
     };
 
-    return proxyRequest("themis", `/policies/${encodeURIComponent(id)}/fixtures?tenant_id=${encodeURIComponent(tenantId)}`, policyFixtureSchema, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    return proxyRequest(
+      "themis",
+      `/policies/${encodeURIComponent(id)}/fixtures?tenant_id=${encodeURIComponent(tenantId)}`,
+      policyFixtureSchema,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to create fixture";
     return NextResponse.json({ error: message }, { status: 400 });

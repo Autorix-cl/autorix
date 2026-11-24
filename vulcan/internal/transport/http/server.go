@@ -78,11 +78,7 @@ var (
 )
 
 func init() {
-	if err := prometheus.Register(vulcanKeysVerifiedTotal); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			// ignore in tests
-		}
-	}
+	_ = prometheus.Register(vulcanKeysVerifiedTotal)
 }
 
 type Server struct {
@@ -325,7 +321,7 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 	// Usage tracking (P6-S6-T2): record last used timestamp, call count, and validated source IP
 	sourceIP := extractSourceIP(verifyCtx.IPAddress, r)
 	if s.repo != nil {
-		go func(keyID uuid.UUID, ip string) {
+		go func(keyID uuid.UUID, ip string) { //nolint:gosec // detached background usage update outlives HTTP request
 			ctx, cancel := context.WithTimeout(context.Background(), usageRecordTimeout)
 			defer cancel()
 			_ = s.repo.RecordUsage(ctx, keyID, ip)

@@ -37,11 +37,9 @@ export function VersionsDialog() {
     isLoading,
     isError,
     refetch,
-  } = useApiQuery(
-    ["proxy-rules-versions"],
-    () => fetchAndParse("/api/proxy-rules/versions", ruleVersionListSchema),
-    { enabled: open }
-  );
+  } = useApiQuery(["proxy-rules-versions"], () => fetchAndParse("/api/proxy-rules/versions", ruleVersionListSchema), {
+    enabled: open,
+  });
 
   const rollbackMutation = useMutation({
     mutationFn: async (version: number) => {
@@ -96,7 +94,10 @@ export function VersionsDialog() {
             {isLoading && <LoadingState label="Loading version history..." />}
 
             {isError && (
-              <div role="alert" className="p-4 border border-destructive/20 bg-destructive/10 rounded-md text-destructive text-sm">
+              <div
+                role="alert"
+                className="p-4 border border-destructive/20 bg-destructive/10 rounded-md text-destructive text-sm"
+              >
                 Failed to load rule versions.
                 <Button type="button" variant="ghost" size="sm" onClick={() => refetch()} className="ml-2">
                   Retry
@@ -114,7 +115,10 @@ export function VersionsDialog() {
             {versions && versions.length > 0 && (
               <div className="divide-y border rounded-md">
                 {versions.map((v) => (
-                  <div key={v.version} className="p-4 flex items-center justify-between hover:bg-muted/30 transition-colors">
+                  <div
+                    key={v.version}
+                    className="p-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
+                  >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-sm">Version {v.version}</span>
@@ -122,12 +126,8 @@ export function VersionsDialog() {
                           {v.rules.length} {v.rules.length === 1 ? "rule" : "rules"}
                         </Badge>
                       </div>
-                      {v.description && (
-                        <p className="text-xs text-muted-foreground">{v.description}</p>
-                      )}
-                      <p className="text-[11px] text-muted-foreground/70">
-                        Created: {formatDateTime(v.created_at)}
-                      </p>
+                      {v.description && <p className="text-xs text-muted-foreground">{v.description}</p>}
+                      <p className="text-[11px] text-muted-foreground/70">Created: {formatDateTime(v.created_at)}</p>
                     </div>
 
                     <Can perform="proxy-rules:write">

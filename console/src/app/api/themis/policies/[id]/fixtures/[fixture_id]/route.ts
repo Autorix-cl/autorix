@@ -12,6 +12,6 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     "themis",
     `/policies/${encodeURIComponent(id)}/fixtures/${encodeURIComponent(fixture_id)}?tenant_id=${encodeURIComponent(tenantId)}`,
     z.any(),
-    { method: "DELETE" }
+    { method: "DELETE" },
   );
 }

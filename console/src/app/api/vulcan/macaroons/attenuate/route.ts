@@ -21,10 +21,7 @@ export async function POST(req: Request) {
 
   const parsed = attenuateBodySchema.safeParse(rawBody);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "macaroon and at least one caveat are required" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "macaroon and at least one caveat are required" }, { status: 400 });
   }
 
   const caveatsToApply = parsed.data.caveat

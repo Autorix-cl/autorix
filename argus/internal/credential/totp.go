@@ -3,7 +3,7 @@ package credential
 import (
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // RFC 6238 TOTP mandates HMAC-SHA1
 	"crypto/subtle"
 	"encoding/base32"
 	"encoding/binary"
@@ -89,7 +89,7 @@ func VerifyTOTPCode(secret string, code string) bool {
 			continue
 		}
 		expectedCode := generateHOTP(key, uint64(step))
-		if subtle.ConstantTimeEq(int32(expectedCode), int32(intCode)) == 1 {
+		if subtle.ConstantTimeEq(int32(expectedCode), int32(intCode)) == 1 { //nolint:gosec // 6-digit TOTP code bounded 0..999999
 			return true
 		}
 	}

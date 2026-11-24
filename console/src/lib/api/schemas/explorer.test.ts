@@ -65,7 +65,8 @@ describe("Explorer Cross-Engine Schemas", () => {
       resource: "/api/v1/finance/invoices",
       action: "GET",
       allowed: true,
-      reason: "Access permitted by Aegis rule 'finance-api', Nexus relation 'viewer', and Themis policy 'working-hours-only'",
+      reason:
+        "Access permitted by Aegis rule 'finance-api', Nexus relation 'viewer', and Themis policy 'working-hours-only'",
       engine_breakdown: {
         aegis: {
           matched: true,
@@ -151,7 +152,8 @@ describe("Explorer Cross-Engine Schemas", () => {
         severity: "critical",
         category: "nexus",
         title: "Missing Nexus Namespace Reference",
-        description: "Aegis rule 'legacy-api' references relation check in namespace 'crm', but 'crm' is not defined in Nexus schema.",
+        description:
+          "Aegis rule 'legacy-api' references relation check in namespace 'crm', but 'crm' is not defined in Nexus schema.",
         remediation: "Add 'crm' definition in Nexus schema or update the Aegis handler.",
         remediation_link: "/nexus",
       },

@@ -277,7 +277,11 @@ export function IdentitySheet({ identity, isOpen, onOpenChange, onIdentityUpdate
                 <h3 className="text-sm font-medium text-foreground">Traits (JSON)</h3>
                 <Can perform="identities:write">
                   <Button type="button" size="sm" onClick={handleSaveTraits} disabled={isSaving}>
-                    {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" /> : <Save className="h-4 w-4 mr-2" aria-hidden="true" />}
+                    {isSaving ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Save className="h-4 w-4 mr-2" aria-hidden="true" />
+                    )}
                     Save Changes
                   </Button>
                 </Can>

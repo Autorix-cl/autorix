@@ -4,11 +4,7 @@ import * as React from "react";
 import { Bell, ShieldAlert, CheckCircle2, Info, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatRelativeTime } from "@/lib/format/date-time";
 
 export interface FleetNotification {
@@ -131,7 +127,10 @@ export function NotificationCenter() {
         >
           <Bell className="h-4 w-4" aria-hidden="true" />
           {unreadCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-background" aria-hidden="true" />
+            <span
+              className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-background"
+              aria-hidden="true"
+            />
           )}
         </Button>
       </DropdownMenuTrigger>
@@ -158,13 +157,9 @@ export function NotificationCenter() {
 
         <div className="max-h-72 overflow-y-auto divide-y divide-border/50">
           {loading && activeNotifications.length === 0 ? (
-            <div className="py-8 text-center text-xs text-muted-foreground">
-              Loading notifications...
-            </div>
+            <div className="py-8 text-center text-xs text-muted-foreground">Loading notifications...</div>
           ) : activeNotifications.length === 0 ? (
-            <div className="py-8 text-center text-xs text-muted-foreground">
-              No notifications in fleet inbox.
-            </div>
+            <div className="py-8 text-center text-xs text-muted-foreground">No notifications in fleet inbox.</div>
           ) : (
             activeNotifications.map((n) => (
               <div

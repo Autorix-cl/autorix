@@ -6,17 +6,26 @@ test.describe("Global Header & Preferences", () => {
     await page.waitForLoadState("networkidle");
 
     // Open language menu
-    const langBtn = page.locator("header").getByRole("button").filter({ hasText: /^(EN|ES)$/ });
+    const langBtn = page
+      .locator("header")
+      .getByRole("button")
+      .filter({ hasText: /^(EN|ES)$/ });
     await langBtn.click();
 
     // Select Spanish
-    await page.getByRole("menuitem").filter({ hasText: /Español/i }).click();
+    await page
+      .getByRole("menuitem")
+      .filter({ hasText: /Español/i })
+      .click();
     await expect(page.locator("header").getByRole("button").filter({ hasText: /^ES$/ })).toBeVisible();
 
     // Switch back to English
     const esLangBtn = page.locator("header").getByRole("button").filter({ hasText: /^ES$/ });
     await esLangBtn.click();
-    await page.getByRole("menuitem").filter({ hasText: /English/i }).click();
+    await page
+      .getByRole("menuitem")
+      .filter({ hasText: /English/i })
+      .click();
     await expect(page.locator("header").getByRole("button").filter({ hasText: /^EN$/ })).toBeVisible();
   });
 

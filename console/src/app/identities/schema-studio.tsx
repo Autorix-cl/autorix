@@ -47,10 +47,7 @@ interface IdentitySchemaItem {
   updated_at?: string;
 }
 
-const PRESET_TEMPLATES: Record<
-  string,
-  { name: string; description: string; schema: Record<string, unknown> }
-> = {
+const PRESET_TEMPLATES: Record<string, { name: string; description: string; schema: Record<string, unknown> }> = {
   customer: {
     name: "SaaS Customer / End-User",
     description: "Standard end-user with email, username login identifiers, billing country, and consent",
@@ -558,8 +555,8 @@ export function SchemaStudio({ onSchemaCreated }: SchemaStudioProps) {
                       {key === "b2b_partner"
                         ? "B2B"
                         : key === "iot_machine"
-                        ? "IoT"
-                        : key.charAt(0).toUpperCase() + key.slice(1)}
+                          ? "IoT"
+                          : key.charAt(0).toUpperCase() + key.slice(1)}
                     </Button>
                   ))}
                 </div>
@@ -717,11 +714,7 @@ export function SchemaStudio({ onSchemaCreated }: SchemaStudioProps) {
             <CardContent className="p-4 space-y-4 flex-1 flex flex-col">
               {parsedSchema && parsedSchema.properties?.traits ? (
                 <div className="space-y-4 flex-1">
-                  <DynamicSchemaForm
-                    schema={parsedSchema}
-                    value={previewValues}
-                    onChange={setPreviewValues}
-                  />
+                  <DynamicSchemaForm schema={parsedSchema} value={previewValues} onChange={setPreviewValues} />
 
                   {/* Simulated Traits State */}
                   <div className="space-y-1.5 pt-2 border-t border-border/60">
@@ -738,7 +731,8 @@ export function SchemaStudio({ onSchemaCreated }: SchemaStudioProps) {
                 <div className="flex flex-col items-center justify-center py-16 text-center space-y-2 text-muted-foreground">
                   <AlertCircle className="h-6 w-6 text-muted-foreground/60" />
                   <p className="text-xs">
-                    Define <code className="text-cyan-400 font-mono">properties.traits</code> in the editor to preview the generated dynamic form.
+                    Define <code className="text-cyan-400 font-mono">properties.traits</code> in the editor to preview
+                    the generated dynamic form.
                   </p>
                 </div>
               )}

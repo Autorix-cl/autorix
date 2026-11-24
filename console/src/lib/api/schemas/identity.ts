@@ -93,7 +93,7 @@ export const bulkImportResultSchema = z.object({
       row: z.number(),
       email: z.string().optional(),
       error: z.string(),
-    })
+    }),
   ),
 });
 export type BulkImportResult = z.infer<typeof bulkImportResultSchema>;
@@ -103,4 +103,3 @@ export const registrationResponseSchema = z.object({
   session: sessionSchema,
   identity: identitySchema,
 });
-

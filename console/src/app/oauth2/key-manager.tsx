@@ -9,12 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { CodeBlock } from "@/components/ui/code-block";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { fetchAndParse } from "@/lib/api/schema";
-import {
-  jwksSchema,
-  rotateKeysResponseSchema,
-  type JWKS,
-  type RotateKeysResponse,
-} from "@/lib/api/schemas/oauth2";
+import { jwksSchema, rotateKeysResponseSchema, type JWKS, type RotateKeysResponse } from "@/lib/api/schemas/oauth2";
 import { LoadingState } from "@/components/state/loading-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Can } from "@/lib/auth/use-permission";
@@ -29,18 +24,14 @@ export function KeyManager() {
     isLoading,
     isError,
     refetch,
-  } = useApiQuery(["oauth2-jwks"], () =>
-    fetchAndParse<JWKS>("/api/oauth2/jwks", jwksSchema)
-  );
+  } = useApiQuery(["oauth2-jwks"], () => fetchAndParse<JWKS>("/api/oauth2/jwks", jwksSchema));
 
   const rotateMutation = useMutation({
     mutationFn: async () => {
       setSuccessInfo(null);
-      const res = await fetchAndParse<RotateKeysResponse>(
-        "/api/oauth2/keys/rotate",
-        rotateKeysResponseSchema,
-        { method: "POST" }
-      );
+      const res = await fetchAndParse<RotateKeysResponse>("/api/oauth2/keys/rotate", rotateKeysResponseSchema, {
+        method: "POST",
+      });
       if (!res.ok) {
         throw new Error(res.error.message || "Failed to rotate keys");
       }
@@ -54,7 +45,6 @@ export function KeyManager() {
   });
 
   const keys = Array.isArray(jwks?.keys) ? jwks.keys : [];
-
 
   return (
     <div className="space-y-6">
@@ -70,7 +60,13 @@ export function KeyManager() {
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" aria-label="Refresh JWKS keystore" onClick={() => refetch()}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-label="Refresh JWKS keystore"
+              onClick={() => refetch()}
+            >
               <RefreshCw className="w-4 h-4" />
             </Button>
             <Can perform="oauth2:write">
@@ -95,7 +91,8 @@ export function KeyManager() {
             <div className="p-3 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-500" />
               <span>
-                New primary signing key generated: <strong>{successInfo.new_kid || "Success"}</strong> (Total active keys: {successInfo.active_keys_count ?? keys.length})
+                New primary signing key generated: <strong>{successInfo.new_kid || "Success"}</strong> (Total active
+                keys: {successInfo.active_keys_count ?? keys.length})
               </span>
             </div>
           )}
@@ -127,9 +124,7 @@ export function KeyManager() {
                         </Badge>
                         <span className="text-xs font-mono text-muted-foreground">{k.alg}</span>
                       </div>
-                      <CardTitle className="text-xs font-mono break-all mt-2">
-                        {k.kid}
-                      </CardTitle>
+                      <CardTitle className="text-xs font-mono break-all mt-2">{k.kid}</CardTitle>
                     </CardHeader>
                     <CardContent className="p-4 pt-2 text-xs space-y-1">
                       <div className="flex justify-between text-muted-foreground">

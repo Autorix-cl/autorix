@@ -12,6 +12,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     "themis",
     `/policies/${encodeURIComponent(id)}/rollback/${encodeURIComponent(version)}?tenant_id=${encodeURIComponent(tenantId)}`,
     z.any(),
-    { method: "POST" }
+    { method: "POST" },
   );
 }

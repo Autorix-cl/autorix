@@ -19,14 +19,7 @@ export interface PageHeaderProps {
   actions?: React.ReactNode;
 }
 
-export function PageHeader({
-  breadcrumbs,
-  title,
-  description,
-  badge,
-  arn,
-  actions,
-}: PageHeaderProps) {
+export function PageHeader({ breadcrumbs, title, description, badge, arn, actions }: PageHeaderProps) {
   const [copiedArn, setCopiedArn] = React.useState(false);
 
   const handleCopyArn = () => {

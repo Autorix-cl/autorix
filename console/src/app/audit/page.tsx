@@ -22,13 +22,7 @@ import { ServiceHeader } from "@/components/layout/service-header";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { CodeBlock } from "@/components/ui/code-block";
 import { redactObject } from "@/lib/api/redact";
 import { auditEntrySchema, type AuditEntry, type AuditVerification } from "@/lib/api/schemas/audit";
@@ -70,7 +64,8 @@ export default function AuditPage() {
       }
       const json = await res.json();
       if (Array.isArray(json)) return json.map((entry) => auditEntrySchema.parse(entry));
-      if (json.data && Array.isArray(json.data)) return json.data.map((entry: unknown) => auditEntrySchema.parse(entry));
+      if (json.data && Array.isArray(json.data))
+        return json.data.map((entry: unknown) => auditEntrySchema.parse(entry));
       return [];
     },
   });
@@ -142,7 +137,17 @@ export default function AuditPage() {
       a.click();
       URL.revokeObjectURL(url);
     } else {
-      const headers = ["ID", "Timestamp", "Actor", "Action", "ResourceType", "ResourceId", "Environment", "Outcome", "Hash"];
+      const headers = [
+        "ID",
+        "Timestamp",
+        "Actor",
+        "Action",
+        "ResourceType",
+        "ResourceId",
+        "Environment",
+        "Outcome",
+        "Hash",
+      ];
       const rows = filteredLogs.map((l) => [
         l.id,
         l.timestamp,
@@ -169,25 +174,34 @@ export default function AuditPage() {
     toast.info(`Exported ${filteredLogs.length} filtered audit record(s) locally`);
   };
 
-  const chainState: "verified" | "tampered" | "unverified" = isVerifyError || !verification
-    ? "unverified"
-    : verification.verified
-      ? "verified"
-      : "tampered";
+  const chainState: "verified" | "tampered" | "unverified" =
+    isVerifyError || !verification ? "unverified" : verification.verified ? "verified" : "tampered";
 
   const getActionBadge = (action: string) => {
     switch (action.toUpperCase()) {
       case "CREATE":
-        return <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 font-mono text-[10px]">CREATE</Badge>;
+        return (
+          <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 font-mono text-[10px]">
+            CREATE
+          </Badge>
+        );
       case "UPDATE":
         return <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 font-mono text-[10px]">UPDATE</Badge>;
       case "DELETE":
       case "REVOKE":
-        return <Badge className="bg-rose-500/15 text-rose-400 border-rose-500/30 font-mono text-[10px]">{action}</Badge>;
+        return (
+          <Badge className="bg-rose-500/15 text-rose-400 border-rose-500/30 font-mono text-[10px]">{action}</Badge>
+        );
       case "LOGIN":
-        return <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/30 font-mono text-[10px]">LOGIN</Badge>;
+        return (
+          <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/30 font-mono text-[10px]">LOGIN</Badge>
+        );
       default:
-        return <Badge variant="outline" className="font-mono text-[10px]">{action}</Badge>;
+        return (
+          <Badge variant="outline" className="font-mono text-[10px]">
+            {action}
+          </Badge>
+        );
     }
   };
 
@@ -251,12 +265,7 @@ export default function AuditPage() {
           },
           {
             label: "Chain Status",
-            value:
-              chainState === "verified"
-                ? "Verified"
-                : chainState === "tampered"
-                  ? "Tampered"
-                  : "Unverified",
+            value: chainState === "verified" ? "Verified" : chainState === "tampered" ? "Tampered" : "Unverified",
             hint: "Cryptographic Proof State",
             icon: ShieldCheck,
           },
@@ -269,21 +278,11 @@ export default function AuditPage() {
         ]}
         actions={
           <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleExport("csv")}
-              className="h-8 gap-1.5 text-xs"
-            >
+            <Button variant="outline" size="sm" onClick={() => handleExport("csv")} className="h-8 gap-1.5 text-xs">
               <FileSpreadsheet className="h-3.5 w-3.5" />
               <span>Export CSV</span>
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleExport("json")}
-              className="h-8 gap-1.5 text-xs"
-            >
+            <Button variant="outline" size="sm" onClick={() => handleExport("json")} className="h-8 gap-1.5 text-xs">
               <FileCode className="h-3.5 w-3.5" />
               <span>Export JSON</span>
             </Button>
@@ -387,7 +386,10 @@ export default function AuditPage() {
               disabled={isVerifying}
               className="gap-1.5 text-xs shrink-0 self-start md:self-center"
             >
-              <ShieldCheck className={`h-3.5 w-3.5 ${isVerifying ? "animate-spin" : "text-emerald-400"}`} aria-hidden="true" />
+              <ShieldCheck
+                className={`h-3.5 w-3.5 ${isVerifying ? "animate-spin" : "text-emerald-400"}`}
+                aria-hidden="true"
+              />
               {isVerifying ? "Verifying..." : "Re-Verify Chain"}
             </Button>
           </div>
@@ -501,14 +503,30 @@ export default function AuditPage() {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-border/60 bg-muted/30 text-muted-foreground font-medium">
-                    <th scope="col" className="py-3 px-4">Timestamp</th>
-                    <th scope="col" className="py-3 px-4">Actor</th>
-                    <th scope="col" className="py-3 px-4">Action</th>
-                    <th scope="col" className="py-3 px-4">Resource Target</th>
-                    <th scope="col" className="py-3 px-4">Env</th>
-                    <th scope="col" className="py-3 px-4">Outcome</th>
-                    <th scope="col" className="py-3 px-4">Record Hash</th>
-                    <th scope="col" className="py-3 px-4 text-right">Inspection</th>
+                    <th scope="col" className="py-3 px-4">
+                      Timestamp
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Actor
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Action
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Resource Target
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Env
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Outcome
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Record Hash
+                    </th>
+                    <th scope="col" className="py-3 px-4 text-right">
+                      Inspection
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40 font-mono">
@@ -532,12 +550,8 @@ export default function AuditPage() {
                       </td>
                       <td className="py-3.5 px-4">{getActionBadge(entry.action)}</td>
                       <td className="py-3.5 px-4">
-                        <div className="text-foreground font-medium truncate max-w-[200px]">
-                          {entry.resource_id}
-                        </div>
-                        <span className="text-[10px] text-muted-foreground uppercase">
-                          {entry.resource_type}
-                        </span>
+                        <div className="text-foreground font-medium truncate max-w-[200px]">{entry.resource_id}</div>
+                        <span className="text-[10px] text-muted-foreground uppercase">{entry.resource_type}</span>
                       </td>
                       <td className="py-3.5 px-4">
                         <Badge variant="outline" className="text-[10px] uppercase font-mono">
@@ -583,9 +597,7 @@ export default function AuditPage() {
                     Sequence #{selectedEntry.sequence ?? "—"}
                   </span>
                 </div>
-                <DialogTitle className="text-lg font-bold">
-                  Audit Record Inspection
-                </DialogTitle>
+                <DialogTitle className="text-lg font-bold">Audit Record Inspection</DialogTitle>
                 <DialogDescription className="text-xs">
                   Event ID: <span className="font-mono text-foreground">{selectedEntry.id}</span>
                 </DialogDescription>
@@ -607,9 +619,7 @@ export default function AuditPage() {
                 </div>
                 <div>
                   <span className="text-muted-foreground text-[10px] block uppercase font-medium">Timestamp</span>
-                  <span className="font-mono text-foreground">
-                    {new Date(selectedEntry.timestamp).toISOString()}
-                  </span>
+                  <span className="font-mono text-foreground">{new Date(selectedEntry.timestamp).toISOString()}</span>
                 </div>
                 {selectedEntry.request_id && (
                   <div>
@@ -653,9 +663,7 @@ export default function AuditPage() {
                   <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     State Mutation Diff (Secrets Redacted)
                   </h4>
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    Automatic secret redaction active
-                  </span>
+                  <span className="text-[10px] text-muted-foreground font-mono">Automatic secret redaction active</span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

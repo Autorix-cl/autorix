@@ -47,7 +47,9 @@ test.describe("Hermes SAML & SCIM Enterprise Studio", () => {
 
     await page.getByPlaceholder("e.g. okta-corporate").fill(providerSlug);
     await page.getByPlaceholder("e.g. Okta Corporate").fill(providerName);
-    await page.getByPlaceholder("https://company.okta.com/app/autorix/sso/saml").fill(`https://auth.company-${unique}.okta.com/app/sso/saml`);
+    await page
+      .getByPlaceholder("https://company.okta.com/app/autorix/sso/saml")
+      .fill(`https://auth.company-${unique}.okta.com/app/sso/saml`);
 
     // Step 1 -> Step 2
     await page.getByRole("button", { name: /^Next/i }).click();

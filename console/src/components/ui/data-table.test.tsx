@@ -37,7 +37,7 @@ describe("DataTable", () => {
     render(<DataTable columns={columns} data={data} searchKey="name" />);
     const searchInput = screen.getByPlaceholderText("Search...");
     fireEvent.change(searchInput, { target: { value: "Alice" } });
-    
+
     expect(screen.getByText("Alice")).toBeInTheDocument();
     expect(screen.queryByText("Bob")).not.toBeInTheDocument();
   });
@@ -48,7 +48,7 @@ describe("DataTable", () => {
         columns={columns}
         data={[]}
         emptyState={<div data-testid="custom-empty">Custom SRE Empty State</div>}
-      />
+      />,
     );
     expect(screen.getByTestId("custom-empty")).toBeInTheDocument();
   });
@@ -68,14 +68,7 @@ describe("DataTable", () => {
       { id: "3", name: "User 3", email: "u3@example.com" },
       { id: "4", name: "User 4", email: "u4@example.com" },
     ];
-    render(
-      <DataTable
-        columns={columns}
-        data={manyUsers}
-        manualPagination={true}
-        pageSize={2}
-      />
-    );
+    render(<DataTable columns={columns} data={manyUsers} manualPagination={true} pageSize={2} />);
     expect(screen.getByText("User 1")).toBeInTheDocument();
     expect(screen.getByText("User 2")).toBeInTheDocument();
     expect(screen.queryByText("User 3")).not.toBeInTheDocument();
@@ -83,15 +76,7 @@ describe("DataTable", () => {
   });
 
   it("renders cursor-based page indicator without total page count when manualPagination is true and pageCount is omitted", () => {
-    render(
-      <DataTable
-        columns={columns}
-        data={data}
-        manualPagination={true}
-        pageIndex={2}
-      />
-    );
+    render(<DataTable columns={columns} data={data} manualPagination={true} pageIndex={2} />);
     expect(screen.getByText("Page 3")).toBeInTheDocument();
   });
 });
-

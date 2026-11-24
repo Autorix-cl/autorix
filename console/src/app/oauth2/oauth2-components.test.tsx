@@ -43,11 +43,9 @@ function renderWithClient(ui: React.ReactElement) {
   return render(
     <I18nProvider>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          {ui}
-        </TooltipProvider>
+        <TooltipProvider>{ui}</TooltipProvider>
       </QueryClientProvider>
-    </I18nProvider>
+    </I18nProvider>,
   );
 }
 
@@ -83,15 +81,11 @@ describe("OAuth2 UI Components", () => {
     });
   });
 
-
   describe("ScopeCatalogue", () => {
-
     it("renders scopes list and new scope dialog", async () => {
       vi.mocked(fetchAndParse).mockResolvedValue({
         ok: true,
-        data: [
-          { name: "openid", description: "OpenID Connect", claims: ["sub"], created_at: "2026-01-01T00:00:00Z" },
-        ],
+        data: [{ name: "openid", description: "OpenID Connect", claims: ["sub"], created_at: "2026-01-01T00:00:00Z" }],
       });
 
       renderWithClient(<ScopeCatalogue />);
@@ -116,9 +110,7 @@ describe("OAuth2 UI Components", () => {
           return {
             ok: true,
             data: {
-              keys: [
-                { kid: "key-primary-1", kty: "RSA", use: "sig", alg: "RS256", n: "abc", e: "AQAB" },
-              ],
+              keys: [{ kid: "key-primary-1", kty: "RSA", use: "sig", alg: "RS256", n: "abc", e: "AQAB" }],
             },
           };
         }
@@ -136,7 +128,6 @@ describe("OAuth2 UI Components", () => {
       });
 
       renderWithClient(<KeyManager />);
-
 
       await waitFor(() => {
         expect(screen.getByText("key-primary-1")).toBeDefined();
@@ -179,13 +170,7 @@ describe("OAuth2 UI Components", () => {
         },
       });
 
-      renderWithClient(
-        <ClientDetailDialog
-          client={mockClient}
-          open={true}
-          onOpenChange={() => {}}
-        />
-      );
+      renderWithClient(<ClientDetailDialog client={mockClient} open={true} onOpenChange={() => {}} />);
 
       expect(screen.getByText("Dashboard App")).toBeDefined();
       expect(screen.getByText("Zero-Downtime Secret Rotation")).toBeDefined();

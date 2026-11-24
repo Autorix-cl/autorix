@@ -7,19 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Zap,
-  Play,
-  CheckCircle2,
-  XCircle,
-  Loader2,
-  Clock,
-  Shield,
-  Layers,
-  Network,
-  Scale,
-  Server,
-} from "lucide-react";
+import { Zap, Play, CheckCircle2, XCircle, Loader2, Clock, Shield, Layers, Network, Scale, Server } from "lucide-react";
 import { toast } from "sonner";
 import type { RequestSimulationTrace } from "@/lib/api/schemas/explorer";
 
@@ -112,7 +100,9 @@ export function RequestSimulator() {
           <form onSubmit={handleSimulate} className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs items-end">
             <div className="flex gap-2">
               <div className="space-y-1 w-24">
-                <Label htmlFor="sim-method" className="text-[11px]">Method</Label>
+                <Label htmlFor="sim-method" className="text-[11px]">
+                  Method
+                </Label>
                 <Select value={method} onValueChange={setMethod}>
                   <SelectTrigger id="sim-method" className="h-8 text-xs font-mono">
                     <SelectValue />
@@ -126,7 +116,9 @@ export function RequestSimulator() {
                 </Select>
               </div>
               <div className="space-y-1 flex-1">
-                <Label htmlFor="sim-path" className="text-[11px]">Path</Label>
+                <Label htmlFor="sim-path" className="text-[11px]">
+                  Path
+                </Label>
                 <Input
                   id="sim-path"
                   value={path}
@@ -137,7 +129,9 @@ export function RequestSimulator() {
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="sim-auth" className="text-[11px]">Authorization Header</Label>
+              <Label htmlFor="sim-auth" className="text-[11px]">
+                Authorization Header
+              </Label>
               <Input
                 id="sim-auth"
                 value={authHeader}
@@ -148,7 +142,9 @@ export function RequestSimulator() {
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="sim-subject" className="text-[11px]">Subject Principal</Label>
+              <Label htmlFor="sim-subject" className="text-[11px]">
+                Subject Principal
+              </Label>
               <Input
                 id="sim-subject"
                 value={subject}
@@ -188,9 +184,7 @@ export function RequestSimulator() {
               </span>
               <Badge
                 variant={trace.outcome.allowed ? "default" : "destructive"}
-                className={`text-[10px] px-2 py-0.5 ${
-                  trace.outcome.allowed ? "bg-emerald-500" : ""
-                }`}
+                className={`text-[10px] px-2 py-0.5 ${trace.outcome.allowed ? "bg-emerald-500" : ""}`}
               >
                 {trace.outcome.final_decision}
               </Badge>

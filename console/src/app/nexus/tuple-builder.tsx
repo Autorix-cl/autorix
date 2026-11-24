@@ -19,11 +19,11 @@ export interface TupleBuilderProps {
 
 export function TupleBuilder({ onSubmit, onCancel }: TupleBuilderProps) {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-  
+
   const [objectType, setObjectType] = React.useState("");
   const [objectId, setObjectId] = React.useState("");
   const [relation, setRelation] = React.useState("");
-  
+
   const [subjectType, setSubjectType] = React.useState("");
   const [subjectId, setSubjectId] = React.useState("");
   const [subjectRelation, setSubjectRelation] = React.useState("");
@@ -55,19 +55,46 @@ export function TupleBuilder({ onSubmit, onCancel }: TupleBuilderProps) {
         <div className="space-y-4 p-4 border rounded-md bg-muted/10">
           <h4 className="text-sm font-semibold mb-2 text-foreground">Object</h4>
           <div className="space-y-1">
-            <label htmlFor="objectType" className="text-xs font-medium text-muted-foreground">Object Type *</label>
-            <Input id="objectType" value={objectType} onChange={(e) => setObjectType(e.target.value)} placeholder="e.g. document" required className="h-8 text-sm" />
+            <label htmlFor="objectType" className="text-xs font-medium text-muted-foreground">
+              Object Type *
+            </label>
+            <Input
+              id="objectType"
+              value={objectType}
+              onChange={(e) => setObjectType(e.target.value)}
+              placeholder="e.g. document"
+              required
+              className="h-8 text-sm"
+            />
           </div>
           <div className="space-y-1">
-            <label htmlFor="objectId" className="text-xs font-medium text-muted-foreground">Object ID *</label>
-            <Input id="objectId" value={objectId} onChange={(e) => setObjectId(e.target.value)} placeholder="e.g. doc_1" required className="h-8 text-sm" />
+            <label htmlFor="objectId" className="text-xs font-medium text-muted-foreground">
+              Object ID *
+            </label>
+            <Input
+              id="objectId"
+              value={objectId}
+              onChange={(e) => setObjectId(e.target.value)}
+              placeholder="e.g. doc_1"
+              required
+              className="h-8 text-sm"
+            />
           </div>
         </div>
 
         {/* Relation */}
         <div className="col-span-2 sm:col-span-1 space-y-1">
-          <label htmlFor="relation" className="text-xs font-medium text-muted-foreground">Relation *</label>
-          <Input id="relation" value={relation} onChange={(e) => setRelation(e.target.value)} placeholder="e.g. viewer" required className="h-8 text-sm border-dashed" />
+          <label htmlFor="relation" className="text-xs font-medium text-muted-foreground">
+            Relation *
+          </label>
+          <Input
+            id="relation"
+            value={relation}
+            onChange={(e) => setRelation(e.target.value)}
+            placeholder="e.g. viewer"
+            required
+            className="h-8 text-sm border-dashed"
+          />
         </div>
 
         {/* Subject Side */}
@@ -75,16 +102,42 @@ export function TupleBuilder({ onSubmit, onCancel }: TupleBuilderProps) {
           <h4 className="text-sm font-semibold mb-2 text-foreground">Subject (User or Set)</h4>
           <div className="grid grid-cols-3 gap-2">
             <div className="space-y-1">
-              <label htmlFor="subjectType" className="text-xs font-medium text-muted-foreground">Subject Type *</label>
-              <Input id="subjectType" value={subjectType} onChange={(e) => setSubjectType(e.target.value)} placeholder="e.g. user" required className="h-8 text-sm" />
+              <label htmlFor="subjectType" className="text-xs font-medium text-muted-foreground">
+                Subject Type *
+              </label>
+              <Input
+                id="subjectType"
+                value={subjectType}
+                onChange={(e) => setSubjectType(e.target.value)}
+                placeholder="e.g. user"
+                required
+                className="h-8 text-sm"
+              />
             </div>
             <div className="space-y-1">
-              <label htmlFor="subjectId" className="text-xs font-medium text-muted-foreground">Subject ID *</label>
-              <Input id="subjectId" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} placeholder="e.g. alice" required className="h-8 text-sm" />
+              <label htmlFor="subjectId" className="text-xs font-medium text-muted-foreground">
+                Subject ID *
+              </label>
+              <Input
+                id="subjectId"
+                value={subjectId}
+                onChange={(e) => setSubjectId(e.target.value)}
+                placeholder="e.g. alice"
+                required
+                className="h-8 text-sm"
+              />
             </div>
             <div className="space-y-1">
-              <label htmlFor="subjectRelation" className="text-xs font-medium text-muted-foreground">Subject Relation</label>
-              <Input id="subjectRelation" value={subjectRelation} onChange={(e) => setSubjectRelation(e.target.value)} placeholder="e.g. member (optional)" className="h-8 text-sm" />
+              <label htmlFor="subjectRelation" className="text-xs font-medium text-muted-foreground">
+                Subject Relation
+              </label>
+              <Input
+                id="subjectRelation"
+                value={subjectRelation}
+                onChange={(e) => setSubjectRelation(e.target.value)}
+                placeholder="e.g. member (optional)"
+                className="h-8 text-sm"
+              />
             </div>
           </div>
         </div>

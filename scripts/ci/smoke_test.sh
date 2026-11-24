@@ -59,19 +59,31 @@ while true; do
   sleep 3
 done
 
+# Load generated local secrets (e.g., AUTORIX_INTERNAL_AUTH_SECRET) if present.
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+
 # The smoke project publishes no host ports, so it can coexist with a local
 # developer stack. BusyBox wget is available inside engine images; execute
 # requests through the Compose network instead.
 check_internal() {
   local name="$1" expected_status="$2" service="$3" url="$4" payload="$5"
   local output status
+  local -a auth_args=()
+  if [ -n "${AUTORIX_INTERNAL_AUTH_SECRET:-}" ]; then
+    auth_args=(--header="X-Autorix-Internal-Token: ${AUTORIX_INTERNAL_AUTH_SECRET}")
+  fi
   if [ -n "$payload" ]; then
     output=$("${COMPOSE[@]}" exec -T "$service" wget -S -O - \
-      --header='Content-Type: application/json' --post-data="$payload" "$url" 2>&1) || true
+      --header='Content-Type: application/json' "${auth_args[@]}" --post-data="$payload" "$url" 2>&1) || true
   else
-    output=$("${COMPOSE[@]}" exec -T "$service" wget -S -O - "$url" 2>&1) || true
+    output=$("${COMPOSE[@]}" exec -T "$service" wget -S -O - "${auth_args[@]}" "$url" 2>&1) || true
   fi
-  status=$(printf '%s\n' "$output" | awk '/HTTP\/1\.[01] [0-9]+/ {code=$2} END {print code}')
+  status=$(printf '%s\n' "$output" | awk '/^[[:space:]]*HTTP\/1\.[01] [0-9]+/ {code=$2} END {print code}')
   if [ "$status" != "$expected_status" ]; then
     echo "FAIL: $name — expected HTTP $expected_status, got $status"
     printf '%s\n' "$output"

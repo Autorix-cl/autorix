@@ -1098,7 +1098,7 @@ func (r *Repository) UpdateOperatorStatus(ctx context.Context, id uuid.UUID, isA
 	if err != nil {
 		return fmt.Errorf("beginning tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	tag, err := tx.Exec(ctx, `
 		UPDATE operators

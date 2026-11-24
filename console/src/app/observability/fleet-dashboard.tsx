@@ -94,11 +94,7 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
                     : "text-amber-500"
               }`}
             >
-              {!metrics
-                ? "Unmeasured"
-                : metrics.fleet_error_rate <= 0.0005
-                  ? "Within 0.05% SLO"
-                  : "Above 0.05% SLO"}
+              {!metrics ? "Unmeasured" : metrics.fleet_error_rate <= 0.0005 ? "Within 0.05% SLO" : "Above 0.05% SLO"}
             </p>
           </CardContent>
         </Card>
@@ -210,61 +206,67 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
                   const isPositiveStatus = eng.status === "healthy" || eng.status === "observed";
                   const isDegraded = eng.status === "degraded";
                   return (
-                  <tr key={eng.engine_type} className="hover:bg-muted/20">
-                    <td className="px-4 py-2.5 font-medium flex items-center gap-1.5 uppercase tracking-wide">
-                      <span
-                        className={`w-2 h-2 rounded-full inline-block ${
-                          isPositiveStatus ? "bg-emerald-500" : isDegraded ? "bg-amber-500" : "bg-rose-500"
-                        }`}
-                        aria-hidden="true"
-                      />
-                      {eng.engine_type}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <Badge
-                        variant={isPositiveStatus ? "default" : isDegraded ? "warning" : "destructive"}
-                        className="text-[10px] capitalize px-1.5 py-0"
-                      >
-                        {eng.status}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{eng.instance_count} active</td>
-                    <td className="px-3 py-2.5 font-mono">{eng.requests_per_second.toFixed(1)}</td>
-                    <td className="px-3 py-2.5 font-mono">
-                      <span
-                        className={
-                          eng.error_rate !== null && eng.error_rate > 0.01 ? "text-amber-500 font-semibold" : ""
-                        }
-                      >
-                        {eng.error_rate === null ? "N/A" : `${(eng.error_rate * 100).toFixed(2)}%`}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 font-mono text-muted-foreground">
-                      {eng.latency_p50_ms !== null && eng.latency_p50_ms !== undefined ? `${eng.latency_p50_ms.toFixed(1)} ms` : "N/A"}
-                    </td>
-                    <td className="px-3 py-2.5 font-mono font-medium">
-                      {eng.latency_p95_ms !== null && eng.latency_p95_ms !== undefined ? `${eng.latency_p95_ms.toFixed(1)} ms` : "N/A"}
-                    </td>
-                    <td className="px-3 py-2.5 font-mono text-muted-foreground">
-                      {eng.latency_p99_ms !== null && eng.latency_p99_ms !== undefined ? `${eng.latency_p99_ms.toFixed(1)} ms` : "N/A"}
-                    </td>
-                    <td className="px-3 py-2.5 font-mono">
-                      {eng.auth_allow_rate !== null && eng.auth_allow_rate > 0
-                        ? `${(eng.auth_allow_rate * 100).toFixed(1)}%`
-                        : "N/A"}
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-[11px] px-2"
-                        onClick={() => onSelectEngine?.(eng.engine_type)}
-                      >
-                        Inspect
-                      </Button>
-                    </td>
-                  </tr>
+                    <tr key={eng.engine_type} className="hover:bg-muted/20">
+                      <td className="px-4 py-2.5 font-medium flex items-center gap-1.5 uppercase tracking-wide">
+                        <span
+                          className={`w-2 h-2 rounded-full inline-block ${
+                            isPositiveStatus ? "bg-emerald-500" : isDegraded ? "bg-amber-500" : "bg-rose-500"
+                          }`}
+                          aria-hidden="true"
+                        />
+                        {eng.engine_type}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <Badge
+                          variant={isPositiveStatus ? "default" : isDegraded ? "warning" : "destructive"}
+                          className="text-[10px] capitalize px-1.5 py-0"
+                        >
+                          {eng.status}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{eng.instance_count} active</td>
+                      <td className="px-3 py-2.5 font-mono">{eng.requests_per_second.toFixed(1)}</td>
+                      <td className="px-3 py-2.5 font-mono">
+                        <span
+                          className={
+                            eng.error_rate !== null && eng.error_rate > 0.01 ? "text-amber-500 font-semibold" : ""
+                          }
+                        >
+                          {eng.error_rate === null ? "N/A" : `${(eng.error_rate * 100).toFixed(2)}%`}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-muted-foreground">
+                        {eng.latency_p50_ms !== null && eng.latency_p50_ms !== undefined
+                          ? `${eng.latency_p50_ms.toFixed(1)} ms`
+                          : "N/A"}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono font-medium">
+                        {eng.latency_p95_ms !== null && eng.latency_p95_ms !== undefined
+                          ? `${eng.latency_p95_ms.toFixed(1)} ms`
+                          : "N/A"}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-muted-foreground">
+                        {eng.latency_p99_ms !== null && eng.latency_p99_ms !== undefined
+                          ? `${eng.latency_p99_ms.toFixed(1)} ms`
+                          : "N/A"}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono">
+                        {eng.auth_allow_rate !== null && eng.auth_allow_rate > 0
+                          ? `${(eng.auth_allow_rate * 100).toFixed(1)}%`
+                          : "N/A"}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[11px] px-2"
+                          onClick={() => onSelectEngine?.(eng.engine_type)}
+                        >
+                          Inspect
+                        </Button>
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>

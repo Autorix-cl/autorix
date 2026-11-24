@@ -37,8 +37,8 @@ describe("Operators BFF Proxy Routes", () => {
             is_active: true,
           },
         ]),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const res = await listOperators();
@@ -60,8 +60,8 @@ describe("Operators BFF Proxy Routes", () => {
           is_local: true,
           is_active: true,
         }),
-        { status: 201, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const req = new NextRequest("http://localhost/api/operators", {
@@ -91,8 +91,8 @@ describe("Operators BFF Proxy Routes", () => {
           is_local: true,
           is_active: false,
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const req = new NextRequest("http://localhost/api/operators/c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a33", {
@@ -110,9 +110,7 @@ describe("Operators BFF Proxy Routes", () => {
   });
 
   it("deletes operator via DELETE proxy", async () => {
-    vi.mocked(global.fetch).mockResolvedValueOnce(
-      new Response(null, { status: 204 })
-    );
+    vi.mocked(global.fetch).mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     const req = new NextRequest("http://localhost/api/operators/d3eebc99-9c0b-4ef8-bb6d-6bb9bd380a44", {
       method: "DELETE",
@@ -138,7 +136,12 @@ describe("Operators BFF Proxy Routes", () => {
     const postRes = await createOperator(
       new NextRequest("http://localhost/api/operators", {
         method: "POST",
-        body: JSON.stringify({ email: "escalate@autorix.io", name: "Escalate", role: "owner", password: "Password123!" }),
+        body: JSON.stringify({
+          email: "escalate@autorix.io",
+          name: "Escalate",
+          role: "owner",
+          password: "Password123!",
+        }),
       }),
     );
     expect(postRes.status).toBe(403);

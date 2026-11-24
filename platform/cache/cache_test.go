@@ -9,7 +9,7 @@ import (
 
 func TestMemoryCache_SetGetDelete(t *testing.T) {
 	c := NewMemoryCache()
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	ctx := context.Background()
 
@@ -47,7 +47,7 @@ func TestMemoryCache_SetGetDelete(t *testing.T) {
 
 func TestMemoryCache_Expiration(t *testing.T) {
 	c := NewMemoryCache()
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	ctx := context.Background()
 
@@ -75,7 +75,7 @@ func TestNew_EmptyURL_UsesMemory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error for empty URL, got %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	if err := c.Set(ctx, "foo", []byte("bar"), time.Minute); err != nil {
 		t.Fatalf("Set failed: %v", err)
@@ -92,7 +92,7 @@ func TestNew_UnreachableRedis_FailsClosed(t *testing.T) {
 	c, err := New(ctx, "redis://admin:super-secret-password@127.0.0.1:1/0")
 	if err == nil {
 		if c != nil {
-			c.Close()
+			_ = c.Close()
 		}
 		t.Fatalf("expected error connecting to unreachable redis, got nil")
 	}
@@ -115,7 +115,7 @@ func TestNew_InvalidRedisURL_RedactsCredentials(t *testing.T) {
 func TestMemoryCache_DefensiveCopyAndBoundedEviction(t *testing.T) {
 	ctx := context.Background()
 	c := NewMemoryCacheWithLimit(2)
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	orig := []byte("secret-value")
 	if err := c.Set(ctx, "k1", orig, time.Minute); err != nil {

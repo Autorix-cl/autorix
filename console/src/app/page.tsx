@@ -81,9 +81,8 @@ export default function DashboardPage() {
     staleTime: 30_000,
   });
 
-  const liveRps = typeof metricsData?.total_rps === "number" && Number.isFinite(metricsData.total_rps)
-    ? metricsData.total_rps
-    : null;
+  const liveRps =
+    typeof metricsData?.total_rps === "number" && Number.isFinite(metricsData.total_rps) ? metricsData.total_rps : null;
 
   const rawServices = healthData?.services ?? [];
   const services = isProduction ? rawServices : [];
@@ -217,15 +216,19 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" aria-hidden="true" />
             <div>
-              <h4 className="text-xs font-semibold text-amber-300">
-                Viewing {currentEnv.name} Environment
-              </h4>
+              <h4 className="text-xs font-semibold text-amber-300">Viewing {currentEnv.name} Environment</h4>
               <p className="text-[11px] text-muted-foreground">
-                No active engine instances are currently enrolled for {currentEnv.name}. Local cluster engines are active under Production.
+                No active engine instances are currently enrolled for {currentEnv.name}. Local cluster engines are
+                active under Production.
               </p>
             </div>
           </div>
-          <Button asChild size="sm" variant="outline" className="text-xs gap-1.5 h-8 border-amber-500/40 text-amber-300 hover:bg-amber-500/20 shrink-0">
+          <Button
+            asChild
+            size="sm"
+            variant="outline"
+            className="text-xs gap-1.5 h-8 border-amber-500/40 text-amber-300 hover:bg-amber-500/20 shrink-0"
+          >
             <Link href={`/fleet/enroll?env=${currentEnv.id}`}>
               <Plus className="h-3 w-3" aria-hidden="true" />
               Enroll {currentEnv.name} Instance

@@ -21,15 +21,40 @@ type WebAuthnUser struct {
 	credentials []webauthn.Credential
 }
 
+// Compile-time check that WebAuthnUser satisfies webauthn.User.
+var _ webauthn.User = (*WebAuthnUser)(nil)
+
 func NewWebAuthnUser(identity *core.Identity, creds []webauthn.Credential) *WebAuthnUser {
 	name := "user"
-	if email, ok := identity.Traits["email"].(string); ok && email != "" {
-		name = email
+	if identity != nil && identity.Traits != nil {
+		if email, ok := identity.Traits["email"].(string); ok && email != "" {
+			name = email
+		}
+	}
+	displayName := name
+	if identity != nil && identity.Traits != nil {
+		switch v := identity.Traits["name"].(type) {
+		case string:
+			if trimmed := strings.TrimSpace(v); trimmed != "" {
+				displayName = trimmed
+			}
+		case map[string]interface{}:
+			first, _ := v["first"].(string)
+			last, _ := v["last"].(string)
+			full := strings.TrimSpace(strings.TrimSpace(first) + " " + strings.TrimSpace(last))
+			if full != "" {
+				displayName = full
+			}
+		}
+	}
+	var id uuid.UUID
+	if identity != nil {
+		id = identity.ID
 	}
 	return &WebAuthnUser{
-		id:          identity.ID,
+		id:          id,
 		name:        name,
-		displayName: name,
+		displayName: displayName,
 		credentials: creds,
 	}
 }
@@ -59,43 +84,63 @@ type Manager struct {
 	wa *webauthn.WebAuthn
 }
 
-// NewWebAuthnManager creates a WebAuthn manager from environment or defaults.
-func NewWebAuthnManager() (*Manager, error) {
-	rpID := os.Getenv("WEBAUTHN_RP_ID")
+// NewWebAuthnConfigFromEnv builds a WebAuthn Relying Party configuration from
+// environment variables with safe local-development defaults.
+func NewWebAuthnConfigFromEnv() *webauthn.Config {
+	rpID := strings.TrimSpace(os.Getenv("WEBAUTHN_RP_ID"))
 	if rpID == "" {
 		rpID = "localhost"
 	}
 
-	rpDisplayName := os.Getenv("WEBAUTHN_RP_DISPLAY_NAME")
+	rpDisplayName := strings.TrimSpace(os.Getenv("WEBAUTHN_RP_DISPLAY_NAME"))
 	if rpDisplayName == "" {
-		rpDisplayName = "Autorix Identity"
+		rpDisplayName = "Autorix"
 	}
 
-	originsEnv := os.Getenv("WEBAUTHN_RP_ORIGINS")
+	originsEnv := strings.TrimSpace(os.Getenv("WEBAUTHN_RP_ORIGINS"))
 	var origins []string
 	if originsEnv != "" {
-		origins = strings.Split(originsEnv, ",")
-	} else {
+		for _, raw := range strings.Split(originsEnv, ",") {
+			if trimmed := strings.TrimSpace(raw); trimmed != "" {
+				origins = append(origins, trimmed)
+			}
+		}
+	}
+	if len(origins) == 0 {
 		origins = []string{
 			"http://localhost:3000",
 			"http://localhost:4433",
-			"https://localhost:3000",
-			"https://localhost:4433",
 		}
 	}
 
-	cfg := &webauthn.Config{
+	return &webauthn.Config{
 		RPDisplayName: rpDisplayName,
 		RPID:          rpID,
 		RPOrigins:     origins,
 	}
+}
 
-	wa, err := webauthn.New(cfg)
+// NewWebAuthnFromEnv initializes a *webauthn.WebAuthn using environment variables.
+func NewWebAuthnFromEnv() (*webauthn.WebAuthn, error) {
+	wa, err := webauthn.New(NewWebAuthnConfigFromEnv())
 	if err != nil {
 		return nil, fmt.Errorf("initialize webauthn: %w", err)
 	}
+	return wa, nil
+}
 
+// NewWebAuthnManager creates a WebAuthn manager from environment or defaults.
+func NewWebAuthnManager() (*Manager, error) {
+	wa, err := NewWebAuthnFromEnv()
+	if err != nil {
+		return nil, err
+	}
 	return &Manager{wa: wa}, nil
+}
+
+// NewWebAuthnManagerWithInstance wraps a pre-configured *webauthn.WebAuthn instance.
+func NewWebAuthnManagerWithInstance(wa *webauthn.WebAuthn) *Manager {
+	return &Manager{wa: wa}
 }
 
 // BeginRegistration generates credential creation options.

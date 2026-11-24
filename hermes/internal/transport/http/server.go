@@ -62,16 +62,8 @@ var (
 )
 
 func init() {
-	if err := prometheus.Register(hermesSAMLLoginsTotal); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			// ignore in tests
-		}
-	}
-	if err := prometheus.Register(hermesSCIMSyncTotal); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			// ignore in tests
-		}
-	}
+	_ = prometheus.Register(hermesSAMLLoginsTotal)
+	_ = prometheus.Register(hermesSCIMSyncTotal)
 }
 
 type Server struct {

@@ -77,9 +77,7 @@ function buildGraphFromTuples(tuples: GridTuple[]): Record<string, GraphNode> {
     const objNode = ensureNode(objId, t.objectType);
     ensureNode(subjId, subjNs);
 
-    const alreadyLinked = objNode.relations.some(
-      (r) => r.relation === t.relation && r.targetId === subjId,
-    );
+    const alreadyLinked = objNode.relations.some((r) => r.relation === t.relation && r.targetId === subjId);
     if (!alreadyLinked) {
       objNode.relations.push({
         relation: t.relation,
@@ -257,7 +255,8 @@ export function RelationshipGraph({ initialObjectId }: RelationshipGraphProps) {
             Relationship Graph Explorer
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Live Zanzibar object neighborhoods built from Nexus tuples. Enter <code className="font-mono">ns:id#rel</code> to expand a relation tree.
+            Live Zanzibar object neighborhoods built from Nexus tuples. Enter{" "}
+            <code className="font-mono">ns:id#rel</code> to expand a relation tree.
           </p>
         </div>
 
@@ -389,8 +388,8 @@ export function RelationshipGraph({ initialObjectId }: RelationshipGraphProps) {
             <GitGraph className="w-8 h-8 text-muted-foreground/50 mx-auto" />
             <p className="text-xs font-medium text-foreground">No Relationship Tuples in Nexus</p>
             <p className="text-[11px] text-muted-foreground">
-              Add relation tuples in the Tuples tab or enter <code className="font-mono">namespace:object#relation</code>{" "}
-              above to expand a live Zanzibar tree.
+              Add relation tuples in the Tuples tab or enter{" "}
+              <code className="font-mono">namespace:object#relation</code> above to expand a live Zanzibar tree.
             </p>
           </div>
         ) : (

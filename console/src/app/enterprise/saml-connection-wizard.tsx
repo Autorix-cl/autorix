@@ -12,14 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Building2,
-  ChevronRight,
-  ChevronLeft,
-  Zap,
-  CheckCircle2,
-  Loader2,
-} from "lucide-react";
+import { Building2, ChevronRight, ChevronLeft, Zap, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { getCsrfHeaders } from "@/lib/api/client";
 
@@ -50,18 +43,14 @@ const TEMPLATES: { [key: string]: { name: string; mapping: { [key: string]: stri
   google: {
     name: "Google Workspace",
     mapping: {
-      "email": "email",
-      "first_name": "first_name",
-      "last_name": "last_name",
+      email: "email",
+      first_name: "first_name",
+      last_name: "last_name",
     },
   },
 };
 
-export function SAMLConnectionWizard({
-  isOpen,
-  onOpenChange,
-  onSuccess,
-}: SAMLConnectionWizardProps) {
+export function SAMLConnectionWizard({ isOpen, onOpenChange, onSuccess }: SAMLConnectionWizardProps) {
   const [step, setStep] = React.useState<1 | 2 | 3>(1);
 
   // Step 1: IdP details
@@ -73,9 +62,7 @@ export function SAMLConnectionWizard({
 
   // Step 2: Attribute mapping
   const [template, setTemplate] = React.useState("okta");
-  const [attributeMapping, setAttributeMapping] = React.useState<{ [key: string]: string }>(
-    TEMPLATES.okta.mapping
-  );
+  const [attributeMapping, setAttributeMapping] = React.useState<{ [key: string]: string }>(TEMPLATES.okta.mapping);
 
   // Step 3: Test status
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -96,8 +83,7 @@ export function SAMLConnectionWizard({
   };
 
   const hasValidPemFormat =
-    certificatePem.includes("-----BEGIN CERTIFICATE-----") &&
-    certificatePem.includes("-----END CERTIFICATE-----");
+    certificatePem.includes("-----BEGIN CERTIFICATE-----") && certificatePem.includes("-----END CERTIFICATE-----");
 
   const handleCreate = async () => {
     if (!hasValidPemFormat) {
@@ -170,7 +156,9 @@ export function SAMLConnectionWizard({
           <div className="space-y-3 pt-2 text-xs">
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <Label htmlFor="saml-provider-slug" className="text-[11px]">Provider Slug</Label>
+                <Label htmlFor="saml-provider-slug" className="text-[11px]">
+                  Provider Slug
+                </Label>
                 <Input
                   id="saml-provider-slug"
                   placeholder="e.g. okta-corporate"
@@ -181,7 +169,9 @@ export function SAMLConnectionWizard({
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="saml-display-name" className="text-[11px]">Display Name</Label>
+                <Label htmlFor="saml-display-name" className="text-[11px]">
+                  Display Name
+                </Label>
                 <Input
                   id="saml-display-name"
                   placeholder="e.g. Okta Corporate"
@@ -193,7 +183,9 @@ export function SAMLConnectionWizard({
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="saml-sso-url" className="text-[11px]">IdP SSO Service URL (HTTPS)</Label>
+              <Label htmlFor="saml-sso-url" className="text-[11px]">
+                IdP SSO Service URL (HTTPS)
+              </Label>
               <Input
                 id="saml-sso-url"
                 type="url"
@@ -206,7 +198,9 @@ export function SAMLConnectionWizard({
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="saml-entity-id" className="text-[11px]">IdP Entity ID (Issuer URI)</Label>
+              <Label htmlFor="saml-entity-id" className="text-[11px]">
+                IdP Entity ID (Issuer URI)
+              </Label>
               <Input
                 id="saml-entity-id"
                 placeholder="https://www.okta.com/exk123456"
@@ -217,7 +211,9 @@ export function SAMLConnectionWizard({
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="saml-cert-pem" className="text-[11px]">X.509 Signing Certificate (PEM) *</Label>
+              <Label htmlFor="saml-cert-pem" className="text-[11px]">
+                X.509 Signing Certificate (PEM) *
+              </Label>
               <textarea
                 id="saml-cert-pem"
                 rows={3}
@@ -275,7 +271,10 @@ export function SAMLConnectionWizard({
               </span>
               <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
                 {Object.entries(attributeMapping).map(([k, v]) => (
-                  <div key={k} className="flex items-center justify-between text-[11px] p-1.5 rounded border bg-background font-mono">
+                  <div
+                    key={k}
+                    className="flex items-center justify-between text-[11px] p-1.5 rounded border bg-background font-mono"
+                  >
                     <span className="truncate max-w-[200px] text-muted-foreground">{k}</span>
                     <span>➔</span>
                     <span className="text-primary font-semibold">{v}</span>

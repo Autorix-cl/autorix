@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  auditEntrySchema,
-  auditVerificationSchema,
-  auditExportResponseSchema,
-} from "./audit";
+import { auditEntrySchema, auditVerificationSchema, auditExportResponseSchema } from "./audit";
 
 describe("Audit Schemas (P8-S1)", () => {
   it("validates a complete audit log entry", () => {

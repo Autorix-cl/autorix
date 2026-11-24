@@ -86,10 +86,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     [currentDict],
   );
 
-  const value = useMemo(
-    () => ({ locale, setLocale, t, dict: currentDict }),
-    [locale, setLocale, t, currentDict],
-  );
+  const value = useMemo(() => ({ locale, setLocale, t, dict: currentDict }), [locale, setLocale, t, currentDict]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

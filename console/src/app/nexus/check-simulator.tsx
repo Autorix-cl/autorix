@@ -70,9 +70,7 @@ function DecisionNodeView({ node, depth = 0 }: { node: DecisionNode; depth?: num
         )}
 
         {node.reason && (
-          <span className="text-[11px] text-muted-foreground ml-auto truncate max-w-[200px]">
-            {node.reason}
-          </span>
+          <span className="text-[11px] text-muted-foreground ml-auto truncate max-w-[200px]">{node.reason}</span>
         )}
       </div>
 
@@ -93,7 +91,7 @@ export function CheckSimulator({ onCheck }: CheckSimulatorProps) {
   const [object, setObject] = React.useState("");
   const [contextJson, setContextJson] = React.useState("");
   const [showContext, setShowContext] = React.useState(false);
-  
+
   const [isChecking, setIsChecking] = React.useState(false);
   const [result, setResult] = React.useState<CheckResult | null>(null);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
@@ -134,16 +132,43 @@ export function CheckSimulator({ onCheck }: CheckSimulatorProps) {
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-end gap-3">
             <div className="space-y-1">
-              <label htmlFor="check-subject" className="text-xs font-medium text-muted-foreground">Subject</label>
-              <Input id="check-subject" value={subject} onChange={e => setSubject(e.target.value)} placeholder="user:alice" required className="h-8 text-sm font-mono" />
+              <label htmlFor="check-subject" className="text-xs font-medium text-muted-foreground">
+                Subject
+              </label>
+              <Input
+                id="check-subject"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="user:alice"
+                required
+                className="h-8 text-sm font-mono"
+              />
             </div>
             <div className="space-y-1">
-              <label htmlFor="check-relation" className="text-xs font-medium text-muted-foreground">Relation / Permission</label>
-              <Input id="check-relation" value={relation} onChange={e => setRelation(e.target.value)} placeholder="edit" required className="h-8 text-sm font-mono border-dashed" />
+              <label htmlFor="check-relation" className="text-xs font-medium text-muted-foreground">
+                Relation / Permission
+              </label>
+              <Input
+                id="check-relation"
+                value={relation}
+                onChange={(e) => setRelation(e.target.value)}
+                placeholder="edit"
+                required
+                className="h-8 text-sm font-mono border-dashed"
+              />
             </div>
             <div className="space-y-1">
-              <label htmlFor="check-object" className="text-xs font-medium text-muted-foreground">Object</label>
-              <Input id="check-object" value={object} onChange={e => setObject(e.target.value)} placeholder="document:1" required className="h-8 text-sm font-mono" />
+              <label htmlFor="check-object" className="text-xs font-medium text-muted-foreground">
+                Object
+              </label>
+              <Input
+                id="check-object"
+                value={object}
+                onChange={(e) => setObject(e.target.value)}
+                placeholder="document:1"
+                required
+                className="h-8 text-sm font-mono"
+              />
             </div>
             <Button type="submit" disabled={isChecking} size="sm" className="h-8 w-full">
               {isChecking ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
@@ -191,7 +216,7 @@ export function CheckSimulator({ onCheck }: CheckSimulatorProps) {
               Enter a tuple query to simulate the graph resolution and decision trace.
             </div>
           )}
-          
+
           {isChecking && (
             <div className="m-auto flex items-center text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Traversing graph and evaluating rewrites...
@@ -211,9 +236,7 @@ export function CheckSimulator({ onCheck }: CheckSimulatorProps) {
                     <XCircle className="w-4 h-4 mr-1" /> DENIED
                   </span>
                 )}
-                {result.reason && (
-                  <span className="text-xs text-muted-foreground ml-2">({result.reason})</span>
-                )}
+                {result.reason && <span className="text-xs text-muted-foreground ml-2">({result.reason})</span>}
               </div>
 
               {result.trace && (
@@ -225,7 +248,9 @@ export function CheckSimulator({ onCheck }: CheckSimulatorProps) {
                   {Array.isArray(result.trace) ? (
                     <ul className="space-y-2 font-mono text-xs border-l-2 border-primary/20 pl-4 py-1">
                       {result.trace.map((step, idx) => (
-                        <li key={idx} className="text-foreground/80">{step}</li>
+                        <li key={idx} className="text-foreground/80">
+                          {step}
+                        </li>
                       ))}
                     </ul>
                   ) : (
@@ -242,4 +267,3 @@ export function CheckSimulator({ onCheck }: CheckSimulatorProps) {
     </div>
   );
 }
-

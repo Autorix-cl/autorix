@@ -114,7 +114,7 @@ func (j *JanusClient) Discovery(ctx context.Context) (*DiscoveryDocument, error)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("janus discovery returned status: %d", resp.StatusCode)
 	}
@@ -150,7 +150,7 @@ func (j *JanusClient) ExchangeToken(ctx context.Context, input TokenRequest) (*T
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("janus token exchange returned status: %d", resp.StatusCode)
 	}
@@ -183,7 +183,7 @@ func (j *JanusClient) Revoke(ctx context.Context, clientID, clientSecret, token,
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("janus revoke returned status: %d", resp.StatusCode)
 	}
@@ -210,7 +210,7 @@ func (j *JanusClient) Introspect(ctx context.Context, token string) (*TokenIntro
 	if err != nil {
 		return nil, err
 	}
-	defer httpResp.Body.Close()
+	defer func() { _ = httpResp.Body.Close() }()
 
 	if httpResp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("janus introspect returned status: %d", httpResp.StatusCode)
@@ -246,7 +246,7 @@ func (j *JanusClient) GetJWKS(ctx context.Context) (map[string]interface{}, erro
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("janus jwks returned unexpected status: %d", resp.StatusCode)

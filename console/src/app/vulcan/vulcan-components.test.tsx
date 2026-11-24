@@ -29,8 +29,8 @@ describe("Vulcan UI Components", () => {
           { name: "billing:read", description: "Read billing records" },
           { name: "auth:admin", description: "Full admin privileges" },
         ]),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     render(<ScopeCatalogSheet isOpen={true} onOpenChange={() => {}} />);
@@ -45,14 +45,7 @@ describe("Vulcan UI Components", () => {
   });
 
   it("renders KeyRotateDialog with grace period options and rotation flow", async () => {
-    render(
-      <KeyRotateDialog
-        keyId="key-123"
-        keyName="Payment Worker"
-        isOpen={true}
-        onOpenChange={() => {}}
-      />
-    );
+    render(<KeyRotateDialog keyId="key-123" keyName="Payment Worker" isOpen={true} onOpenChange={() => {}} />);
 
     expect(screen.getByText(/Rotate API Key/i)).toBeDefined();
     expect(screen.getByText("Zero-Downtime Overlap")).toBeDefined();

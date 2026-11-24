@@ -12,6 +12,7 @@ import (
 	"github.com/autorix/ego/internal/core"
 	"github.com/autorix/ego/internal/worker"
 	"github.com/autorix/platform/paging"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -1229,37 +1230,72 @@ func (r *Repository) UpdateFlowState(ctx context.Context, id uuid.UUID, state st
 
 // --- WebAuthn Methods ---
 
-func (r *Repository) GetWebAuthnCredentials(ctx context.Context, identityID uuid.UUID) ([]map[string]interface{}, error) {
-	rows, err := r.pool.Query(ctx, `SELECT credential_data FROM credentials WHERE identity_id = $1 AND credential_type = 'webauthn'`, identityID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var creds []map[string]interface{}
-	for rows.Next() {
-		var dataJSON []byte
-		if err := rows.Scan(&dataJSON); err != nil {
-			return nil, fmt.Errorf("scan webauthn credential: %w", err)
-		}
-		var data map[string]interface{}
-		if err := json.Unmarshal(dataJSON, &data); err != nil {
-			return nil, fmt.Errorf("unmarshal webauthn credential: %w", err)
-		}
-		creds = append(creds, data)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate webauthn credentials: %w", err)
-	}
-	return creds, nil
+type webAuthnCredentialEnvelope struct {
+	Credentials []webauthn.Credential `json:"credentials"`
 }
 
-func (r *Repository) AddWebAuthnCredential(ctx context.Context, identityID uuid.UUID, credentialData map[string]interface{}) error {
-	dataJSON, _ := json.Marshal(credentialData)
-	_, err := r.pool.Exec(ctx, `
+// GetWebAuthnCredentials retrieves all stored WebAuthn credentials for an identity.
+func (r *Repository) GetWebAuthnCredentials(ctx context.Context, identityID uuid.UUID) ([]webauthn.Credential, error) {
+	var dataJSON []byte
+	err := r.pool.QueryRow(ctx, `
+		SELECT credential_data
+		FROM credentials
+		WHERE identity_id = $1 AND credential_type = 'webauthn'
+	`, identityID).Scan(&dataJSON)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("query webauthn credentials: %w", err)
+	}
+
+	var envelope webAuthnCredentialEnvelope
+	if err := json.Unmarshal(dataJSON, &envelope); err != nil {
+		return nil, fmt.Errorf("unmarshal webauthn credentials: %w", err)
+	}
+	if envelope.Credentials != nil {
+		return envelope.Credentials, nil
+	}
+
+	// Backward compatibility for single-credential JSON objects stored without an envelope.
+	var single webauthn.Credential
+	if err := json.Unmarshal(dataJSON, &single); err == nil && len(single.ID) > 0 {
+		return []webauthn.Credential{single}, nil
+	}
+	return nil, nil
+}
+
+// SaveWebAuthnCredentials upserts the full set of WebAuthn credentials for an identity
+// inside the single (identity_id, 'webauthn') credentials row.
+func (r *Repository) SaveWebAuthnCredentials(ctx context.Context, identityID uuid.UUID, creds []webauthn.Credential) error {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM identities WHERE id = $1 AND deleted_at IS NULL)`, identityID).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("check identity: %w", err)
+	}
+	if !exists {
+		return ErrNotFound
+	}
+
+	if creds == nil {
+		creds = []webauthn.Credential{}
+	}
+	dataJSON, err := json.Marshal(webAuthnCredentialEnvelope{Credentials: creds})
+	if err != nil {
+		return fmt.Errorf("marshal webauthn credentials: %w", err)
+	}
+
+	now := time.Now()
+	_, err = r.pool.Exec(ctx, `
 		INSERT INTO credentials (id, identity_id, credential_type, credential_data, created_at, updated_at)
 		VALUES ($1, $2, 'webauthn', $3, $4, $4)
-	`, uuid.New(), identityID, dataJSON, time.Now())
-	return err
+		ON CONFLICT (identity_id, credential_type)
+		DO UPDATE SET credential_data = $3, updated_at = $4
+	`, uuid.New(), identityID, dataJSON, now)
+	if err != nil {
+		return fmt.Errorf("save webauthn credentials: %w", err)
+	}
+	return nil
 }
 
 // --- Notification Outbox Methods ---

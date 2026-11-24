@@ -60,22 +60,150 @@ export function CommandDialog({ open, onOpenChange }: CommandDialogProps) {
 
   const quickLinks: CommandItem[] = React.useMemo(
     () => [
-      { id: "nav-dashboard", title: t("nav.dashboard"), desc: t("dashboard.subtitle"), href: "/", icon: LayoutDashboard, badge: "Overview", group: "modules" },
-      { id: "nav-observability", title: "Observability & Diagnostics", desc: "Cluster telemetry, alerts, and live diagnostics", href: "/observability", icon: Activity, badge: "Metrics", group: "modules" },
-      { id: "nav-explorer", title: "Cross-Engine Explorer", desc: "Unified subject view, effective access, and request simulator", href: "/explorer", icon: Compass, badge: "Explorer", group: "modules" },
-      { id: "nav-fleet", title: "Fleet & Engines", desc: "Monitor registered engine instances and enrollment", href: "/fleet", icon: Server, badge: ":4400", group: "modules" },
-      { id: "nav-topology", title: "Fleet Topology", desc: "Live service graph and inter-engine dependencies", href: "/fleet/topology", icon: Activity, badge: "Argus", group: "modules" },
-      { id: "nav-enroll", title: "Enroll Engine", desc: "Mint single-use enrollment tokens and deployment snippets", href: "/fleet/enroll", icon: PlusCircle, badge: "Argus", group: "modules" },
-      { id: "nav-identities", title: t("nav.ego"), desc: t("identities.subtitle"), href: "/identities", icon: Users, badge: ":4433", group: "modules" },
-      { id: "nav-permissions", title: t("nav.nexus"), desc: t("permissions.subtitle"), href: "/permissions", icon: Network, badge: ":8080", group: "modules" },
-      { id: "nav-oauth2", title: t("nav.janus"), desc: t("oauth2.subtitle"), href: "/oauth2", icon: KeyRound, badge: ":4444", group: "modules" },
-      { id: "nav-proxy", title: t("nav.aegis"), desc: t("proxyRules.subtitle"), href: "/proxy-rules", icon: Shield, badge: ":4455", group: "modules" },
-      { id: "nav-vulcan", title: t("nav.vulcan"), desc: t("apiKeys.subtitle"), href: "/vulcan", icon: Layers, badge: ":4466", group: "modules" },
-      { id: "nav-enterprise", title: t("nav.hermes"), desc: t("enterprise.subtitle"), href: "/enterprise", icon: Building2, badge: ":4477", group: "modules" },
-      { id: "nav-policies", title: "Policies & Themis", desc: "ABAC CEL policy compilation, evaluation, and testing", href: "/policies", icon: Scale, badge: ":4488", group: "modules" },
-      { id: "nav-operators", title: "Console Operators & RBAC", desc: "Manage operator principals and role bindings", href: "/operators", icon: Users, badge: "Argus", group: "modules" },
-      { id: "nav-audit", title: "Audit Log", desc: "Cryptographic SHA-256 hash-chained audit trail", href: "/audit", icon: ScrollText, badge: "Audit", group: "modules" },
-      { id: "nav-compliance", title: "Compliance & Evidence", desc: "SOC 2 / ISO 27001 control checks and evidence exports", href: "/compliance", icon: ShieldCheck, badge: "GRC", group: "modules" },
+      {
+        id: "nav-dashboard",
+        title: t("nav.dashboard"),
+        desc: t("dashboard.subtitle"),
+        href: "/",
+        icon: LayoutDashboard,
+        badge: "Overview",
+        group: "modules",
+      },
+      {
+        id: "nav-observability",
+        title: "Observability & Diagnostics",
+        desc: "Cluster telemetry, alerts, and live diagnostics",
+        href: "/observability",
+        icon: Activity,
+        badge: "Metrics",
+        group: "modules",
+      },
+      {
+        id: "nav-explorer",
+        title: "Cross-Engine Explorer",
+        desc: "Unified subject view, effective access, and request simulator",
+        href: "/explorer",
+        icon: Compass,
+        badge: "Explorer",
+        group: "modules",
+      },
+      {
+        id: "nav-fleet",
+        title: "Fleet & Engines",
+        desc: "Monitor registered engine instances and enrollment",
+        href: "/fleet",
+        icon: Server,
+        badge: ":4400",
+        group: "modules",
+      },
+      {
+        id: "nav-topology",
+        title: "Fleet Topology",
+        desc: "Live service graph and inter-engine dependencies",
+        href: "/fleet/topology",
+        icon: Activity,
+        badge: "Argus",
+        group: "modules",
+      },
+      {
+        id: "nav-enroll",
+        title: "Enroll Engine",
+        desc: "Mint single-use enrollment tokens and deployment snippets",
+        href: "/fleet/enroll",
+        icon: PlusCircle,
+        badge: "Argus",
+        group: "modules",
+      },
+      {
+        id: "nav-identities",
+        title: t("nav.ego"),
+        desc: t("identities.subtitle"),
+        href: "/identities",
+        icon: Users,
+        badge: ":4433",
+        group: "modules",
+      },
+      {
+        id: "nav-permissions",
+        title: t("nav.nexus"),
+        desc: t("permissions.subtitle"),
+        href: "/permissions",
+        icon: Network,
+        badge: ":8080",
+        group: "modules",
+      },
+      {
+        id: "nav-oauth2",
+        title: t("nav.janus"),
+        desc: t("oauth2.subtitle"),
+        href: "/oauth2",
+        icon: KeyRound,
+        badge: ":4444",
+        group: "modules",
+      },
+      {
+        id: "nav-proxy",
+        title: t("nav.aegis"),
+        desc: t("proxyRules.subtitle"),
+        href: "/proxy-rules",
+        icon: Shield,
+        badge: ":4455",
+        group: "modules",
+      },
+      {
+        id: "nav-vulcan",
+        title: t("nav.vulcan"),
+        desc: t("apiKeys.subtitle"),
+        href: "/vulcan",
+        icon: Layers,
+        badge: ":4466",
+        group: "modules",
+      },
+      {
+        id: "nav-enterprise",
+        title: t("nav.hermes"),
+        desc: t("enterprise.subtitle"),
+        href: "/enterprise",
+        icon: Building2,
+        badge: ":4477",
+        group: "modules",
+      },
+      {
+        id: "nav-policies",
+        title: "Policies & Themis",
+        desc: "ABAC CEL policy compilation, evaluation, and testing",
+        href: "/policies",
+        icon: Scale,
+        badge: ":4488",
+        group: "modules",
+      },
+      {
+        id: "nav-operators",
+        title: "Console Operators & RBAC",
+        desc: "Manage operator principals and role bindings",
+        href: "/operators",
+        icon: Users,
+        badge: "Argus",
+        group: "modules",
+      },
+      {
+        id: "nav-audit",
+        title: "Audit Log",
+        desc: "Cryptographic SHA-256 hash-chained audit trail",
+        href: "/audit",
+        icon: ScrollText,
+        badge: "Audit",
+        group: "modules",
+      },
+      {
+        id: "nav-compliance",
+        title: "Compliance & Evidence",
+        desc: "SOC 2 / ISO 27001 control checks and evidence exports",
+        href: "/compliance",
+        icon: ShieldCheck,
+        badge: "GRC",
+        group: "modules",
+      },
     ],
     [t],
   );
@@ -238,7 +366,12 @@ export function CommandDialog({ open, onOpenChange }: CommandDialogProps) {
           </div>
         </DialogHeader>
 
-        <div id={listboxId} role="listbox" aria-label="Search results" className="max-h-80 overflow-y-auto p-2 space-y-1">
+        <div
+          id={listboxId}
+          role="listbox"
+          aria-label="Search results"
+          className="max-h-80 overflow-y-auto p-2 space-y-1"
+        >
           {mappedRemote.length > 0 && (
             <>
               <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
@@ -274,7 +407,13 @@ export function CommandDialog({ open, onOpenChange }: CommandDialogProps) {
                       <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-mono text-primary uppercase">
                         {item.badge}
                       </span>
-                      <ArrowRight className={cn("h-3.5 w-3.5 text-primary transition-opacity", isSelected ? "opacity-100" : "opacity-0")} aria-hidden="true" />
+                      <ArrowRight
+                        className={cn(
+                          "h-3.5 w-3.5 text-primary transition-opacity",
+                          isSelected ? "opacity-100" : "opacity-0",
+                        )}
+                        aria-hidden="true"
+                      />
                     </div>
                   </button>
                 );
@@ -287,7 +426,9 @@ export function CommandDialog({ open, onOpenChange }: CommandDialogProps) {
           </div>
 
           {allItems.length === 0 ? (
-            <div className="py-8 text-center text-xs text-muted-foreground">No matching modules or resources found.</div>
+            <div className="py-8 text-center text-xs text-muted-foreground">
+              No matching modules or resources found.
+            </div>
           ) : (
             filteredModules.map((item, localIdx) => {
               const globalIdx = mappedRemote.length + localIdx;
@@ -328,7 +469,10 @@ export function CommandDialog({ open, onOpenChange }: CommandDialogProps) {
                       {item.badge}
                     </span>
                     <ArrowRight
-                      className={cn("h-3.5 w-3.5 text-primary transition-opacity", isSelected ? "opacity-100" : "opacity-0")}
+                      className={cn(
+                        "h-3.5 w-3.5 text-primary transition-opacity",
+                        isSelected ? "opacity-100" : "opacity-0",
+                      )}
                       aria-hidden="true"
                     />
                   </div>

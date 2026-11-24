@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,13 +24,7 @@ interface KeyRotateDialogProps {
   onSuccess?: () => void;
 }
 
-export function KeyRotateDialog({
-  keyId,
-  keyName,
-  isOpen,
-  onOpenChange,
-  onSuccess,
-}: KeyRotateDialogProps) {
+export function KeyRotateDialog({ keyId, keyName, isOpen, onOpenChange, onSuccess }: KeyRotateDialogProps) {
   const [gracePeriod, setGracePeriod] = React.useState("24h");
   const [isRotating, setIsRotating] = React.useState(false);
   const [rotatedData, setRotatedData] = React.useState<RotateKeyResponse | null>(null);
@@ -80,7 +81,8 @@ export function KeyRotateDialog({
             Rotate API Key · {keyName || keyId}
           </DialogTitle>
           <DialogDescription className="text-xs">
-            Generate a new cryptographically secure token while maintaining an overlap grace period for zero-downtime migration.
+            Generate a new cryptographically secure token while maintaining an overlap grace period for zero-downtime
+            migration.
           </DialogDescription>
         </DialogHeader>
 
@@ -91,7 +93,8 @@ export function KeyRotateDialog({
               <div>
                 <p className="font-semibold">Zero-Downtime Overlap</p>
                 <p className="text-[11px] opacity-90 mt-0.5">
-                  The previous root key will remain valid during the grace period so you can deploy the new token without service disruption.
+                  The previous root key will remain valid during the grace period so you can deploy the new token
+                  without service disruption.
                 </p>
               </div>
             </div>
@@ -128,9 +131,7 @@ export function KeyRotateDialog({
                 <span>New Token Issued</span>
                 <span className="text-[10px] text-muted-foreground font-mono">One-Time Reveal</span>
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                Copy this token now. It will not be shown again.
-              </p>
+              <p className="text-[11px] text-muted-foreground">Copy this token now. It will not be shown again.</p>
               <div className="flex items-center gap-2">
                 <input
                   type="text"

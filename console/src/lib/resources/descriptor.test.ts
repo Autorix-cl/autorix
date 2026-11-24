@@ -48,10 +48,8 @@ describe("Resource Descriptor (P4-S2-T1)", () => {
         service: "ego",
         basePath: "/api/invalid",
         schema: identitySchema,
-        columns: [
-          { key: "unknown_column" as unknown as "email", label: "Unknown" },
-        ],
-      })
+        columns: [{ key: "unknown_column" as unknown as "email", label: "Unknown" }],
+      }),
     ).toThrow();
   });
 });

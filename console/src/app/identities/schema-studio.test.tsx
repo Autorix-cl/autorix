@@ -7,11 +7,7 @@ import { SchemaStudio } from "./schema-studio";
 // Mock CodeEditor since CodeMirror needs browser DOM canvas/measurements
 vi.mock("@/components/ui/code-editor", () => ({
   CodeEditor: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
-    <textarea
-      data-testid="mock-code-editor"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
+    <textarea data-testid="mock-code-editor" value={value} onChange={(e) => onChange(e.target.value)} />
   ),
 }));
 
@@ -49,7 +45,7 @@ describe("SchemaStudio Component", () => {
           });
         }
         return Promise.resolve({ ok: true, json: async () => ({}) });
-      })
+      }),
     );
   });
 
@@ -57,7 +53,7 @@ describe("SchemaStudio Component", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <SchemaStudio />
-      </QueryClientProvider>
+      </QueryClientProvider>,
     );
 
     await waitFor(() => {
@@ -73,7 +69,7 @@ describe("SchemaStudio Component", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <SchemaStudio />
-      </QueryClientProvider>
+      </QueryClientProvider>,
     );
 
     await waitFor(() => {
@@ -94,7 +90,7 @@ describe("SchemaStudio Component", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <SchemaStudio />
-      </QueryClientProvider>
+      </QueryClientProvider>,
     );
 
     await waitFor(() => {

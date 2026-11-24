@@ -3,59 +3,71 @@ import { z } from "zod";
 // 1. Unified Subject Schema (P6-S8-T1)
 export const unifiedSubjectSchema = z.object({
   id: z.string(),
-  identity: z.object({
-    id: z.string(),
-    state: z.string(),
-    traits: z.record(z.string(), z.unknown()),
-    created_at: z.string().optional(),
-    schema_id: z.string().optional(),
-  }).optional(),
-  sessions: z.array(
-    z.object({
+  identity: z
+    .object({
       id: z.string(),
-      identity_id: z.string(),
+      state: z.string(),
+      traits: z.record(z.string(), z.unknown()),
+      created_at: z.string().optional(),
+      schema_id: z.string().optional(),
+    })
+    .optional(),
+  sessions: z
+    .array(
+      z.object({
+        id: z.string(),
+        identity_id: z.string(),
+        active: z.boolean().default(true),
+        ip_address: z.string().optional(),
+        user_agent: z.string().optional(),
+        created_at: z.string().optional(),
+        expires_at: z.string().optional(),
+      }),
+    )
+    .default([]),
+  relations: z
+    .array(
+      z.object({
+        namespace: z.string(),
+        object: z.string(),
+        relation: z.string(),
+        subject: z.string(),
+        caveat: z.string().optional(),
+      }),
+    )
+    .default([]),
+  oauth_grants: z
+    .array(
+      z.object({
+        id: z.string(),
+        client_id: z.string(),
+        scope: z.string().optional(),
+        created_at: z.string().optional(),
+        expires_at: z.string().optional(),
+      }),
+    )
+    .default([]),
+  api_keys: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        prefix: z.string(),
+        scopes: z.array(z.string()).default([]),
+        call_count: z.number().default(0),
+        last_used_at: z.string().optional(),
+      }),
+    )
+    .default([]),
+  enterprise_linkage: z
+    .object({
+      provider_id: z.string().optional(),
+      external_id: z.string().optional(),
+      email: z.string().optional(),
       active: z.boolean().default(true),
-      ip_address: z.string().optional(),
-      user_agent: z.string().optional(),
-      created_at: z.string().optional(),
-      expires_at: z.string().optional(),
+      last_sync_at: z.string().optional(),
     })
-  ).default([]),
-  relations: z.array(
-    z.object({
-      namespace: z.string(),
-      object: z.string(),
-      relation: z.string(),
-      subject: z.string(),
-      caveat: z.string().optional(),
-    })
-  ).default([]),
-  oauth_grants: z.array(
-    z.object({
-      id: z.string(),
-      client_id: z.string(),
-      scope: z.string().optional(),
-      created_at: z.string().optional(),
-      expires_at: z.string().optional(),
-    })
-  ).default([]),
-  api_keys: z.array(
-    z.object({
-      id: z.string(),
-      name: z.string(),
-      prefix: z.string(),
-      scopes: z.array(z.string()).default([]),
-      call_count: z.number().default(0),
-      last_used_at: z.string().optional(),
-    })
-  ).default([]),
-  enterprise_linkage: z.object({
-    provider_id: z.string().optional(),
-    external_id: z.string().optional(),
-    email: z.string().optional(),
-    active: z.boolean().default(true),
-    last_sync_at: z.string().optional(),
-  }).optional(),
+    .optional(),
 });
 export type UnifiedSubject = z.infer<typeof unifiedSubjectSchema>;
 

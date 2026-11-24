@@ -6,12 +6,7 @@ const CSRF_COOKIE_NAME = "autorix_csrf";
 const STATIC_ASSET_EXT_RE = /\.(?:ico|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|css|js|map)$/i;
 
 // Explicit public allowlist (P3-S2-T1)
-const PUBLIC_PATHS = [
-  "/login",
-  "/setup",
-  "/403",
-  "/api/health",
-];
+const PUBLIC_PATHS = ["/login", "/setup", "/403", "/api/health"];
 
 const PUBLIC_API_PATHS = [
   "/api/auth/login",
@@ -56,10 +51,7 @@ export async function middleware(request: NextRequest) {
   // Protected route and no session cookie: reject API calls or redirect browser to /login
   if (!sessionCookie) {
     if (pathname.startsWith("/api/")) {
-      return NextResponse.json(
-        { error: "unauthorized: authentication required" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "unauthorized: authentication required" }, { status: 401 });
     }
     const loginUrl = new URL("/login", request.url);
     if (pathname !== "/") {
@@ -79,10 +71,7 @@ export async function middleware(request: NextRequest) {
     const hasValidToken = Boolean(csrfCookie && csrfHeader && constantTimeEqual(csrfCookie, csrfHeader));
 
     if (!isSameOrigin && !hasValidToken) {
-      return NextResponse.json(
-        { error: "forbidden: csrf verification failed" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "forbidden: csrf verification failed" }, { status: 403 });
     }
   }
 
@@ -131,7 +120,5 @@ function ensureCsrfCookie(request: NextRequest, response: NextResponse) {
 }
 
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

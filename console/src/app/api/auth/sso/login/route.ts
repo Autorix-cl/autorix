@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getJanusDiscovery, generatePkceVerifier, generatePkceChallenge, registerConsoleOAuthClient } from "@/lib/auth/sso";
+import {
+  getJanusDiscovery,
+  generatePkceVerifier,
+  generatePkceChallenge,
+  registerConsoleOAuthClient,
+} from "@/lib/auth/sso";
 
 export async function GET(request: Request) {
   try {
@@ -7,10 +12,7 @@ export async function GET(request: Request) {
 
     const discovery = await getJanusDiscovery();
     if (!discovery) {
-      return NextResponse.json(
-        { error: "Janus OIDC provider discovery unavailable" },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: "Janus OIDC provider discovery unavailable" }, { status: 502 });
     }
 
     const state = crypto.randomUUID();
@@ -28,8 +30,18 @@ export async function GET(request: Request) {
     authUrl.searchParams.set("code_challenge_method", "S256");
 
     const response = NextResponse.redirect(authUrl.toString());
-    response.cookies.set("sso_state", state, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 600 });
-    response.cookies.set("sso_verifier", verifier, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 600 });
+    response.cookies.set("sso_state", state, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 600,
+    });
+    response.cookies.set("sso_verifier", verifier, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 600,
+    });
 
     return response;
   } catch (error: unknown) {

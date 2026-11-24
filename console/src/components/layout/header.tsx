@@ -40,9 +40,7 @@ export function Header({ onOpenSearch, onOpenMobileNav, mobileNavOpen = false }:
   const { theme, setTheme, resolvedTheme } = useTheme();
   const { currentEnv, isProduction } = useEnvironment();
 
-  const { data: healthData } = useApiQuery(["health"], () =>
-    fetchAndParse("/api/health", healthResponseSchema),
-  );
+  const { data: healthData } = useApiQuery(["health"], () => fetchAndParse("/api/health", healthResponseSchema));
   const services = healthData?.services ?? [];
   const isHealthy = services.length > 0 && services.every((s) => s.status === "healthy");
   const isEnvHealthy = isProduction && isHealthy;
@@ -103,9 +101,7 @@ export function Header({ onOpenSearch, onOpenMobileNav, mobileNavOpen = false }:
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-36">
-            <DropdownMenuLabel className="text-[10px] uppercase text-muted-foreground">
-              Theme
-            </DropdownMenuLabel>
+            <DropdownMenuLabel className="text-[10px] uppercase text-muted-foreground">Theme</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => setTheme("light")}
@@ -142,10 +138,24 @@ export function Header({ onOpenSearch, onOpenMobileNav, mobileNavOpen = false }:
 
         {/* Cluster / PostgreSQL Live Health Indicator */}
         <div className="hidden xl:flex items-center gap-2 rounded-full border border-border/60 bg-muted/30 px-3 py-1 text-xs">
-          <Database className={cn("h-3.5 w-3.5", isEnvHealthy ? "text-emerald-400" : "text-muted-foreground")} aria-hidden="true" />
+          <Database
+            className={cn("h-3.5 w-3.5", isEnvHealthy ? "text-emerald-400" : "text-muted-foreground")}
+            aria-hidden="true"
+          />
           <span className="text-muted-foreground text-[11px]">PostgreSQL:</span>
-          <span className={cn("font-medium font-mono text-[11px] flex items-center gap-1.5", isEnvHealthy ? "text-emerald-400" : "text-muted-foreground")}>
-            <span className={cn("inline-block h-1.5 w-1.5 rounded-full", isEnvHealthy ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground/50")} aria-hidden="true" />
+          <span
+            className={cn(
+              "font-medium font-mono text-[11px] flex items-center gap-1.5",
+              isEnvHealthy ? "text-emerald-400" : "text-muted-foreground",
+            )}
+          >
+            <span
+              className={cn(
+                "inline-block h-1.5 w-1.5 rounded-full",
+                isEnvHealthy ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground/50",
+              )}
+              aria-hidden="true"
+            />
             {isEnvHealthy
               ? t("header.dbConnected")
               : isProduction
@@ -246,7 +256,9 @@ function OperatorProfileDropdown({ t }: { t: (key: string) => string }) {
           </Avatar>
           <div className="hidden text-left md:block">
             <div className="text-xs font-semibold leading-none text-foreground">{operator?.name || "Operator"}</div>
-            <div className="text-[10px] text-muted-foreground leading-none mt-1 font-mono">{operator?.email || "auth:active"}</div>
+            <div className="text-[10px] text-muted-foreground leading-none mt-1 font-mono">
+              {operator?.email || "auth:active"}
+            </div>
           </div>
         </button>
       </DropdownMenuTrigger>
@@ -261,7 +273,10 @@ function OperatorProfileDropdown({ t }: { t: (key: string) => string }) {
           <p className="text-[10px] text-muted-foreground font-mono truncate mt-0.5">{operator?.email}</p>
         </div>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleLogout} className="text-xs text-destructive flex items-center gap-2 cursor-pointer">
+        <DropdownMenuItem
+          onClick={handleLogout}
+          className="text-xs text-destructive flex items-center gap-2 cursor-pointer"
+        >
           <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
           <span>{t("header.logout")}</span>
         </DropdownMenuItem>
@@ -269,4 +284,3 @@ function OperatorProfileDropdown({ t }: { t: (key: string) => string }) {
     </DropdownMenu>
   );
 }
-

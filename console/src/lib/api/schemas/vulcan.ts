@@ -82,4 +82,3 @@ export type VerifyKeyResponse = z.infer<typeof verifyKeyResponseSchema>;
 
 // POST /keys/attenuate -> the attenuated core.Macaroon, returned bare.
 export const attenuateResponseSchema = macaroonSchema;
-

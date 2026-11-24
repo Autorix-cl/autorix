@@ -15,7 +15,6 @@ import { fetchAndParse } from "@/lib/api/schema";
 import { caveatListSchema, caveatSchema, type CaveatDefinition } from "@/lib/api/schemas/nexus";
 import { toast } from "sonner";
 
-
 export function CaveatRegistry() {
   const queryClient = useQueryClient();
   const [isAddOpen, setIsAddOpen] = React.useState(false);
@@ -24,7 +23,12 @@ export function CaveatRegistry() {
   const [formError, setFormError] = React.useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null);
 
-  const { data: caveats = [], isLoading, isError, refetch } = useQuery({
+  const {
+    data: caveats = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ["nexus-caveats"],
     queryFn: async () => {
       const res = await fetchAndParse<CaveatDefinition[]>("/api/nexus/caveats", caveatListSchema);
@@ -115,43 +119,52 @@ export function CaveatRegistry() {
 
                 <form onSubmit={handleSubmit} className="space-y-4 pt-2">
                   {formError && (
-                    <div role="alert" className="p-2.5 rounded bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-center gap-2">
+                    <div
+                      role="alert"
+                      className="p-2.5 rounded bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-center gap-2"
+                    >
                       <AlertCircle className="w-4 h-4 flex-shrink-0" />
                       <span>{formError}</span>
                     </div>
                   )}
 
-                <div className="space-y-1.5">
-                  <label htmlFor="caveat-name" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Caveat Name
-                  </label>
-                  <Input
-                    id="caveat-name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. is_business_hours"
-                    required
-                    className="font-mono text-xs"
-                  />
-                </div>
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="caveat-name"
+                      className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    >
+                      Caveat Name
+                    </label>
+                    <Input
+                      id="caveat-name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g. is_business_hours"
+                      required
+                      className="font-mono text-xs"
+                    />
+                  </div>
 
-                <div className="space-y-1.5">
-                  <label htmlFor="caveat-cel" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    CEL Expression
-                  </label>
-                  <textarea
-                    id="caveat-cel"
-                    value={celExpression}
-                    onChange={(e) => setCelExpression(e.target.value)}
-                    placeholder="request.time.hour >= 9 && request.time.hour < 18"
-                    rows={4}
-                    required
-                    className="w-full text-xs font-mono p-3 rounded-md border bg-muted/20"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Expressions have access to <code>request</code> (time, IP, headers) and tuple context variables.
-                  </p>
-                </div>
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="caveat-cel"
+                      className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    >
+                      CEL Expression
+                    </label>
+                    <textarea
+                      id="caveat-cel"
+                      value={celExpression}
+                      onChange={(e) => setCelExpression(e.target.value)}
+                      placeholder="request.time.hour >= 9 && request.time.hour < 18"
+                      rows={4}
+                      required
+                      className="w-full text-xs font-mono p-3 rounded-md border bg-muted/20"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Expressions have access to <code>request</code> (time, IP, headers) and tuple context variables.
+                    </p>
+                  </div>
 
                   <div className="flex justify-end gap-2 pt-2">
                     <Button variant="ghost" size="sm" type="button" onClick={() => setIsAddOpen(false)}>
@@ -193,9 +206,7 @@ export function CaveatRegistry() {
                 >
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="font-mono font-semibold text-sm text-foreground">
-                        {c.name}
-                      </span>
+                      <span className="font-mono font-semibold text-sm text-foreground">{c.name}</span>
                       <Badge variant="outline" className="text-[10px] font-mono flex items-center gap-1">
                         <Code2 className="w-3 h-3" /> CEL
                       </Badge>

@@ -10,7 +10,8 @@
     "themis": 6,
     "vulcan": 31,
     "sdk/go": 54.6,
-    "argus": 3
+    "argus": 3,
+    "terraform-provider-autorix": 70
   },
   "console": {
     "statements": 48.9

@@ -27,7 +27,9 @@ export function EnvironmentSwitcher() {
         >
           <span
             className={`h-2 w-2 rounded-full ${
-              currentEnv.isProduction ? "bg-rose-500 ring-2 ring-rose-500/20" : "bg-emerald-500 ring-2 ring-emerald-500/20"
+              currentEnv.isProduction
+                ? "bg-rose-500 ring-2 ring-rose-500/20"
+                : "bg-emerald-500 ring-2 ring-emerald-500/20"
             }`}
           />
           <span>{currentEnv.name}</span>
@@ -46,11 +48,7 @@ export function EnvironmentSwitcher() {
             className="flex items-center justify-between text-xs cursor-pointer"
           >
             <div className="flex items-center gap-2">
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  env.isProduction ? "bg-rose-500" : "bg-emerald-500"
-                }`}
-              />
+              <span className={`h-2 w-2 rounded-full ${env.isProduction ? "bg-rose-500" : "bg-emerald-500"}`} />
               <span className="font-medium">{env.name}</span>
             </div>
             {currentEnv.id === env.id && <Check className="h-3.5 w-3.5 text-primary" />}

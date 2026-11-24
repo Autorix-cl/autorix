@@ -100,10 +100,13 @@ describe("Hardened BFF Direct-Fetch & Integration Routes", () => {
         { status: 200 },
       );
 
-    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: RequestInfo | URL) => {
-      if (String(url).includes("/v1/enrollment-audit")) return makeResponse();
-      return new Response(JSON.stringify({ data: [] }), { status: 200 });
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (url: RequestInfo | URL) => {
+        if (String(url).includes("/v1/enrollment-audit")) return makeResponse();
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }),
+    );
 
     const first = await (await getNotifications()).json();
     const second = await (await getNotifications()).json();

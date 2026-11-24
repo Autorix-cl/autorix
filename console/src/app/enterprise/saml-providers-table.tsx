@@ -5,14 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import {
-  Building2,
-  Plus,
-  Settings2,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-} from "lucide-react";
+import { Building2, Plus, Settings2, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 
 import { toast } from "sonner";
 import { Can, usePermission } from "@/lib/auth/use-permission";
@@ -27,11 +20,7 @@ interface SAMLProvidersTableProps {
   onRefresh?: () => void;
 }
 
-export function SAMLProvidersTable({
-  providers,
-  isLoading,
-  onRefresh,
-}: SAMLProvidersTableProps) {
+export function SAMLProvidersTable({ providers, isLoading, onRefresh }: SAMLProvidersTableProps) {
   const { can } = usePermission();
   const canWrite = can("enterprise:write");
   const [selectedProvider, setSelectedProvider] = React.useState<SAMLProvider | null>(null);
@@ -67,12 +56,7 @@ export function SAMLProvidersTable({
               </CardDescription>
             </div>
             <Can perform="enterprise:write">
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => setIsWizardOpen(true)}
-                className="h-8 gap-1.5 text-xs"
-              >
+              <Button type="button" size="sm" onClick={() => setIsWizardOpen(true)} className="h-8 gap-1.5 text-xs">
                 <Plus className="w-3.5 h-3.5" />
                 New Connection Wizard
               </Button>
@@ -101,12 +85,8 @@ export function SAMLProvidersTable({
                   return (
                     <div key={p.id} className="grid grid-cols-12 p-2.5 items-center text-[11px]">
                       <div className="col-span-4 space-y-0.5 truncate pr-2">
-                        <div className="font-semibold text-foreground truncate">
-                          {p.display_name || p.id}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground font-mono truncate">
-                          {p.idp_entity_id}
-                        </div>
+                        <div className="font-semibold text-foreground truncate">{p.display_name || p.id}</div>
+                        <div className="text-[10px] text-muted-foreground font-mono truncate">{p.idp_entity_id}</div>
                       </div>
 
                       <div className="col-span-4 space-y-0.5 pr-2">
@@ -117,7 +97,10 @@ export function SAMLProvidersTable({
                                 <XCircle className="w-2.5 h-2.5" /> Expired
                               </Badge>
                             ) : cert.expiring_soon ? (
-                              <Badge variant="outline" className="text-[9px] text-amber-500 border-amber-500/30 gap-1 px-1 py-0">
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] text-amber-500 border-amber-500/30 gap-1 px-1 py-0"
+                              >
                                 <AlertTriangle className="w-2.5 h-2.5" /> {cert.days_until_expiry}d left
                               </Badge>
                             ) : (
@@ -147,9 +130,7 @@ export function SAMLProvidersTable({
                           aria-label={`Toggle SAML provider ${p.display_name || p.id}`}
                           onCheckedChange={(c) => handleToggle(p, c)}
                         />
-                        <span className="text-[10px] text-muted-foreground">
-                          {p.enabled ? "Active" : "Off"}
-                        </span>
+                        <span className="text-[10px] text-muted-foreground">{p.enabled ? "Active" : "Off"}</span>
                       </div>
 
                       <div className="col-span-2 text-right">
@@ -181,11 +162,7 @@ export function SAMLProvidersTable({
       />
 
       {/* 3-Step SAML Connection Wizard */}
-      <SAMLConnectionWizard
-        isOpen={isWizardOpen}
-        onOpenChange={setIsWizardOpen}
-        onSuccess={onRefresh}
-      />
+      <SAMLConnectionWizard isOpen={isWizardOpen} onOpenChange={setIsWizardOpen} onSuccess={onRefresh} />
     </>
   );
 }

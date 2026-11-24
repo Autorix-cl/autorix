@@ -190,7 +190,7 @@ func ComputeBackoff(attempt int) time.Duration {
 	if jitterBound <= 0 {
 		return backoff
 	}
-	jitter := time.Duration(rand.Int63n(jitterBound))
+	jitter := time.Duration(rand.Int63n(jitterBound)) //nolint:gosec // non-cryptographic retry backoff jitter
 	return backoff + jitter
 }
 

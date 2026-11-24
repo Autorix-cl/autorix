@@ -124,8 +124,7 @@ export function PolicyVersionsDialog({
                     <div className="space-y-1 flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant="outline" className="font-mono text-[11px]">
-                          <GitCommit className="w-3 h-3 mr-1" />
-                          v{v.version}
+                          <GitCommit className="w-3 h-3 mr-1" />v{v.version}
                         </Badge>
                         <span className="font-semibold text-foreground">{v.name}</span>
                         <span className="text-[11px] text-muted-foreground">

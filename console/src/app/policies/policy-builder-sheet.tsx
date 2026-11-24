@@ -1,14 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -145,9 +138,7 @@ export function PolicyBuilderSheet({ tenantId }: PolicyBuilderSheetProps) {
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  setTemplate('request.amount < 10000 || auth.claims.role == "vp"', "High Value Approver")
-                }
+                onClick={() => setTemplate('request.amount < 10000 || auth.claims.role == "vp"', "High Value Approver")}
                 className="rounded border border-border/80 bg-muted/40 px-2 py-0.5 text-[10px] font-mono text-muted-foreground hover:text-foreground hover:border-purple-500/50 transition-colors"
               >
                 Threshold & Role

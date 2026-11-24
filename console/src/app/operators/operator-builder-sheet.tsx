@@ -1,23 +1,11 @@
 "use client";
 
 import * as React from "react";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, UserPlus, Shield, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -79,7 +67,8 @@ export function OperatorBuilderSheet({ isOpen, onOpenChange, onSuccess }: Operat
 
     setIsSubmitting(true);
     try {
-      const csrfMatch = typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/) : null;
+      const csrfMatch =
+        typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/) : null;
       const csrfToken = csrfMatch ? decodeURIComponent(csrfMatch[1]) : undefined;
       const res = await fetch("/api/operators", {
         method: "POST",
@@ -202,7 +191,11 @@ export function OperatorBuilderSheet({ isOpen, onOpenChange, onSuccess }: Operat
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
-                {showPassword ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" aria-hidden="true" />
+                ) : (
+                  <Eye className="w-4 h-4" aria-hidden="true" />
+                )}
               </button>
             </div>
             <p className="text-[11px] text-muted-foreground">

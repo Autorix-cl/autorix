@@ -29,26 +29,26 @@ const mockIdentity: IdentityItem = {
     state: "active",
     created_at: "2023-01-01",
     updated_at: "2023-01-01",
-  }
+  },
 };
 
 describe("IdentitySheet", () => {
   it("renders tabs and complete UI", async () => {
     const user = userEvent.setup();
     render(<IdentitySheet identity={mockIdentity} isOpen={true} onOpenChange={() => {}} />);
-    
+
     // Check Tabs
     const securityTab = screen.getByRole("tab", { name: /security/i });
     expect(screen.getByRole("tab", { name: /overview/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /traits/i })).toBeInTheDocument();
     expect(securityTab).toBeInTheDocument();
-    
+
     // Check Overview content
     expect(screen.getByText("test@example.com")).toBeInTheDocument();
-    
+
     // Click Security Tab
     await user.click(securityTab);
-    
+
     // Verify Security Actions exist
     await waitFor(() => {
       expect(screen.getByText("Force Password Reset")).toBeInTheDocument();

@@ -110,7 +110,6 @@ describe("new OAuth2 schemas", () => {
     };
     expect(rotateKeysResponseSchema.safeParse(rotateKey).success).toBe(true);
 
-
     const grant = {
       grant_id: "grnt-1",
       client_id: "client-1",
@@ -121,4 +120,3 @@ describe("new OAuth2 schemas", () => {
     expect(oauth2GrantSchema.safeParse(grant).success).toBe(true);
   });
 });
-

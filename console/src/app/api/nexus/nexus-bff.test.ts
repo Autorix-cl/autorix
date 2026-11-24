@@ -25,7 +25,7 @@ describe("Nexus BFF Routes", () => {
             relation: "viewer",
             allowed: true,
           },
-        })
+        }),
       );
 
       const req = new NextRequest("http://localhost/api/nexus/check", {
@@ -47,7 +47,7 @@ describe("Nexus BFF Routes", () => {
         expect.objectContaining({
           method: "POST",
           body: expect.stringContaining('"namespace":"document"'),
-        })
+        }),
       );
       expect(res.status).toBe(200);
     });
@@ -72,11 +72,7 @@ describe("Nexus BFF Routes", () => {
       const req = new NextRequest("http://localhost/api/nexus/tuples?namespace=doc&limit=25");
       const res = await GET(req);
 
-      expect(proxyRequest).toHaveBeenCalledWith(
-        "nexus",
-        "/tuples?namespace=doc&limit=25",
-        expect.anything()
-      );
+      expect(proxyRequest).toHaveBeenCalledWith("nexus", "/tuples?namespace=doc&limit=25", expect.anything());
       expect(res.status).toBe(200);
     });
 
@@ -101,7 +97,7 @@ describe("Nexus BFF Routes", () => {
         "nexus",
         "/tuples",
         expect.anything(),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(res.status).toBe(200);
     });
@@ -119,7 +115,7 @@ describe("Nexus BFF Routes", () => {
         "nexus",
         "/tuples",
         expect.anything(),
-        expect.objectContaining({ method: "DELETE" })
+        expect.objectContaining({ method: "DELETE" }),
       );
       expect(res.status).toBe(200);
     });
@@ -145,7 +141,7 @@ describe("Nexus BFF Routes", () => {
         "nexus",
         "/expand",
         expect.anything(),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(res.status).toBe(200);
     });
@@ -172,7 +168,7 @@ describe("Nexus BFF Routes", () => {
         "nexus",
         "/lookup/subjects",
         expect.anything(),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(res.status).toBe(200);
     });
@@ -197,7 +193,7 @@ describe("Nexus BFF Routes", () => {
         "nexus",
         "/lookup/resources",
         expect.anything(),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(res.status).toBe(200);
     });
@@ -216,9 +212,7 @@ describe("Nexus BFF Routes", () => {
 
     it("proxies POST /api/nexus/caveats", async () => {
       const { POST } = await import("./caveats/route");
-      vi.mocked(proxyRequest).mockResolvedValue(
-        NextResponse.json({ name: "is_admin", cel_expression: "true" })
-      );
+      vi.mocked(proxyRequest).mockResolvedValue(NextResponse.json({ name: "is_admin", cel_expression: "true" }));
 
       const req = new NextRequest("http://localhost/api/nexus/caveats", {
         method: "POST",
@@ -231,7 +225,7 @@ describe("Nexus BFF Routes", () => {
         "nexus",
         "/admin/caveats",
         expect.anything(),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(res.status).toBe(200);
     });
@@ -249,7 +243,7 @@ describe("Nexus BFF Routes", () => {
         "nexus",
         "/admin/caveats/is_admin",
         expect.anything(),
-        expect.objectContaining({ method: "DELETE" })
+        expect.objectContaining({ method: "DELETE" }),
       );
       expect(res.status).toBe(200);
     });

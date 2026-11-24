@@ -43,9 +43,7 @@ export async function getCurrentOperator(): Promise<Operator | null> {
   return valid && operator ? operator : null;
 }
 
-export type OperatorAuthResult =
-  | { ok: true; operator: Operator }
-  | { ok: false; response: NextResponse };
+export type OperatorAuthResult = { ok: true; operator: Operator } | { ok: false; response: NextResponse };
 
 export async function requireOperator(
   requiredPermission?: string,

@@ -2,13 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import {
-  Sparkles,
-  KeyRound,
-  ArrowRight,
-  CheckCircle2,
-  Radio,
-} from "lucide-react";
+import { Sparkles, KeyRound, ArrowRight, CheckCircle2, Radio } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -66,7 +60,8 @@ export default function WelcomeOnboardingPage() {
               <CardTitle className="text-sm font-semibold">Select Environment</CardTitle>
             </div>
             <CardDescription className="text-xs mt-2">
-              Your default environment is <span className="font-mono text-foreground font-semibold">prod</span>. Use the header dropdown anytime to switch contexts.
+              Your default environment is <span className="font-mono text-foreground font-semibold">prod</span>. Use the
+              header dropdown anytime to switch contexts.
             </CardDescription>
           </CardHeader>
           <CardContent className="p-5 pt-0">
@@ -85,7 +80,8 @@ export default function WelcomeOnboardingPage() {
               <CardTitle className="text-sm font-semibold">Mint Enrollment Token</CardTitle>
             </div>
             <CardDescription className="text-xs mt-2">
-              Generate a high-entropy <span className="font-mono text-foreground">aet_</span> token scoped to your engine type.
+              Generate a high-entropy <span className="font-mono text-foreground">aet_</span> token scoped to your
+              engine type.
             </CardDescription>
           </CardHeader>
           <CardContent className="p-5 pt-0">
@@ -106,7 +102,8 @@ export default function WelcomeOnboardingPage() {
               <CardTitle className="text-sm font-semibold">Launch Engine</CardTitle>
             </div>
             <CardDescription className="text-xs mt-2">
-              Pass <span className="font-mono text-foreground">AUTORIX_ENROLLMENT_TOKEN</span> to your container or binary.
+              Pass <span className="font-mono text-foreground">AUTORIX_ENROLLMENT_TOKEN</span> to your container or
+              binary.
             </CardDescription>
           </CardHeader>
           <CardContent className="p-5 pt-0">

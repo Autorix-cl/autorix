@@ -44,16 +44,8 @@ var (
 )
 
 func init() {
-	if err := prometheus.Register(janusTokensIssuedTotal); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			// ignore in tests
-		}
-	}
-	if err := prometheus.Register(janusActiveJWKSKeys); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			// ignore in tests
-		}
-	}
+	_ = prometheus.Register(janusTokensIssuedTotal)
+	_ = prometheus.Register(janusActiveJWKSKeys)
 	janusTokensIssuedTotal.WithLabelValues("authorization_code")
 	janusTokensIssuedTotal.WithLabelValues("client_credentials")
 	janusTokensIssuedTotal.WithLabelValues("refresh_token")
@@ -923,7 +915,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "server_error", "Invalid redirect URI")
 			return
 		}
-		http.Redirect(w, r, redirectURI, http.StatusFound)
+		http.Redirect(w, r, redirectURI, http.StatusFound) //nolint:gosec // redirectURI is validated against client's registered RedirectURIs
 		return
 	}
 

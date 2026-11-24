@@ -31,9 +31,9 @@ export function SessionManager({ sessions, onRevoke }: SessionManagerProps) {
               <span>Last active: {session.lastAccess}</span>
             </div>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => onRevoke(session.id)}
             aria-label={`Revoke session for ${session.ip}`}
           >

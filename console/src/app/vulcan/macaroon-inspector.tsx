@@ -5,17 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  SearchCode,
-  CheckCircle2,
-  XCircle,
-  ShieldCheck,
-  Play,
-  Loader2,
-  Lock,
-  FileCode2,
-  Sparkles,
-} from "lucide-react";
+import { SearchCode, CheckCircle2, XCircle, ShieldCheck, Play, Loader2, Lock, FileCode2, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import type { Macaroon, VerifyKeyResponse } from "@/lib/api/schemas/vulcan";
@@ -42,7 +32,12 @@ export function MacaroonInspector() {
     const caveats = rawCaveats.map((c) =>
       typeof c === "string"
         ? { predicate: c }
-        : { predicate: typeof (c as { predicate?: unknown })?.predicate === "string" ? (c as { predicate: string }).predicate : String(c) },
+        : {
+            predicate:
+              typeof (c as { predicate?: unknown })?.predicate === "string"
+                ? (c as { predicate: string }).predicate
+                : String(c),
+          },
     );
 
     return { location, key_id: keyId, caveats, signature };
@@ -102,7 +97,8 @@ export function MacaroonInspector() {
 
     setIsVerifying(true);
     try {
-      const csrfMatch = typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/) : null;
+      const csrfMatch =
+        typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/) : null;
       const csrf = csrfMatch ? decodeURIComponent(csrfMatch[1]) : undefined;
       const res = await fetch("/api/vulcan/verify", {
         method: "POST",
@@ -195,7 +191,7 @@ export function MacaroonInspector() {
                       signature: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
                     },
                     null,
-                    2
+                    2,
                   );
                   setTokenInput(sample);
                 }}
@@ -221,11 +217,7 @@ export function MacaroonInspector() {
                   ? `${tokenInput.trim().length} characters`
                   : "Supports raw JSON object or standard base64-encoded macaroon binary"}
               </span>
-              <Button
-                onClick={handleParse}
-                size="sm"
-                className="h-7 px-3.5 text-xs font-medium gap-1.5 shadow-sm"
-              >
+              <Button onClick={handleParse} size="sm" className="h-7 px-3.5 text-xs font-medium gap-1.5 shadow-sm">
                 <SearchCode className="w-3.5 h-3.5" />
                 Decode
               </Button>
@@ -250,16 +242,24 @@ export function MacaroonInspector() {
 
               <div className="space-y-2 font-mono text-[11px]">
                 <div className="p-2 rounded bg-muted/20 border border-border/50 flex flex-col gap-0.5">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-sans font-medium">Location Authority</span>
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-sans font-medium">
+                    Location Authority
+                  </span>
                   <span className="text-foreground select-all">{parsedMacaroon.location}</span>
                 </div>
                 <div className="p-2 rounded bg-muted/20 border border-border/50 flex flex-col gap-0.5">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-sans font-medium">Root Key ID</span>
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-sans font-medium">
+                    Root Key ID
+                  </span>
                   <span className="text-foreground select-all">{parsedMacaroon.key_id}</span>
                 </div>
                 <div className="p-2 rounded bg-muted/20 border border-border/50 flex flex-col gap-0.5">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-sans font-medium">HMAC Signature</span>
-                  <span className="text-foreground break-all select-all font-mono text-[10px] opacity-90">{parsedMacaroon.signature}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-sans font-medium">
+                    HMAC Signature
+                  </span>
+                  <span className="text-foreground break-all select-all font-mono text-[10px] opacity-90">
+                    {parsedMacaroon.signature}
+                  </span>
                 </div>
               </div>
 
@@ -301,7 +301,9 @@ export function MacaroonInspector() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div className="space-y-1">
-                    <Label htmlFor="macaroon-test-ip" className="text-[10px] text-muted-foreground">Client IP</Label>
+                    <Label htmlFor="macaroon-test-ip" className="text-[10px] text-muted-foreground">
+                      Client IP
+                    </Label>
                     <Input
                       id="macaroon-test-ip"
                       value={testIp}
@@ -310,7 +312,9 @@ export function MacaroonInspector() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="macaroon-test-method" className="text-[10px] text-muted-foreground">Method</Label>
+                    <Label htmlFor="macaroon-test-method" className="text-[10px] text-muted-foreground">
+                      Method
+                    </Label>
                     <Input
                       id="macaroon-test-method"
                       value={testMethod}
@@ -319,7 +323,9 @@ export function MacaroonInspector() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="macaroon-test-path" className="text-[10px] text-muted-foreground">Path</Label>
+                    <Label htmlFor="macaroon-test-path" className="text-[10px] text-muted-foreground">
+                      Path
+                    </Label>
                     <Input
                       id="macaroon-test-path"
                       value={testPath}
@@ -335,11 +341,7 @@ export function MacaroonInspector() {
                   size="sm"
                   className="w-full h-8 text-xs font-medium gap-1.5"
                 >
-                  {isVerifying ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Play className="w-3.5 h-3.5" />
-                  )}
+                  {isVerifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                   Verify Against Context
                 </Button>
               </div>
@@ -359,16 +361,10 @@ export function MacaroonInspector() {
                     ) : (
                       <XCircle className="w-4 h-4 shrink-0" />
                     )}
-                    <span>
-                      {verificationResult.valid
-                        ? "Cryptographically Valid"
-                        : "Verification Failed"}
-                    </span>
+                    <span>{verificationResult.valid ? "Cryptographically Valid" : "Verification Failed"}</span>
                   </div>
                   {verificationResult.error && (
-                    <span className="text-[10px] opacity-80 truncate max-w-[180px]">
-                      {verificationResult.error}
-                    </span>
+                    <span className="text-[10px] opacity-80 truncate max-w-[180px]">{verificationResult.error}</span>
                   )}
                 </div>
               )}

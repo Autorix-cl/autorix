@@ -35,12 +35,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
 export async function DELETE(_req: NextRequest, { params }: RouteParams) {
   const { id } = await params;
-  return proxyRequest(
-    "janus",
-    `/admin/clients/${encodeURIComponent(id)}`,
-    z.unknown(),
-    {
-      method: "DELETE",
-    }
-  );
+  return proxyRequest("janus", `/admin/clients/${encodeURIComponent(id)}`, z.unknown(), {
+    method: "DELETE",
+  });
 }

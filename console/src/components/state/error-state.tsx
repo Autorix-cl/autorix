@@ -24,12 +24,7 @@ export function ErrorState({ error, onRetry }: { error?: ApiError; onRetry?: () 
       <h3 className="text-sm font-medium">{t("state.errorTitle")}</h3>
       <p className="max-w-sm text-sm text-muted-foreground">{description}</p>
       {onRetry ? (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onRetry}
-          className="mt-3"
-        >
+        <Button variant="outline" size="sm" onClick={onRetry} className="mt-3">
           {t("state.retry")}
         </Button>
       ) : null}

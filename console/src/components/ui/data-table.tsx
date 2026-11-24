@@ -15,14 +15,7 @@ import {
   Table as TanStackTable,
 } from "@tanstack/react-table";
 
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -31,13 +24,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, SlidersHorizontal, Rows, FolderOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -133,9 +120,7 @@ export function DataTable<TData, TValue>({
 
   const activeRows = table.getRowModel().rows;
   const rowsToRender =
-    manualPagination && activeRows.length > pagination.pageSize
-      ? activeRows.slice(0, pagination.pageSize)
-      : activeRows;
+    manualPagination && activeRows.length > pagination.pageSize ? activeRows.slice(0, pagination.pageSize) : activeRows;
 
   return (
     <div>
@@ -144,9 +129,7 @@ export function DataTable<TData, TValue>({
           <Input
             placeholder="Search..."
             value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
-            onChange={(event) =>
-              table.getColumn(searchKey)?.setFilterValue(event.target.value)
-            }
+            onChange={(event) => table.getColumn(searchKey)?.setFilterValue(event.target.value)}
             className="max-w-sm"
           />
         ) : (
@@ -166,11 +149,7 @@ export function DataTable<TData, TValue>({
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-auto flex items-center gap-1.5 text-xs h-9"
-              >
+              <Button variant="outline" size="sm" className="ml-auto flex items-center gap-1.5 text-xs h-9">
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 Columns
               </Button>
@@ -204,18 +183,9 @@ export function DataTable<TData, TValue>({
                   return (
                     <TableHead
                       key={header.id}
-                      className={cn(
-                        density === "compact"
-                          ? "h-8 px-3 text-[10px]"
-                          : "h-10 px-4 text-[11px]"
-                      )}
+                      className={cn(density === "compact" ? "h-8 px-3 text-[10px]" : "h-10 px-4 text-[11px]")}
                     >
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
+                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                     </TableHead>
                   );
                 })}
@@ -225,10 +195,7 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-28 text-center"
-                >
+                <TableCell colSpan={columns.length} className="h-28 text-center">
                   <div className="flex items-center justify-center">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
@@ -242,26 +209,15 @@ export function DataTable<TData, TValue>({
                   className={cn(density === "compact" ? "h-9" : "")}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className={cn(
-                        density === "compact" ? "py-1.5 px-3 text-xs" : "p-4"
-                      )}
-                    >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
+                    <TableCell key={cell.id} className={cn(density === "compact" ? "py-1.5 px-3 text-xs" : "p-4")}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-32 text-center"
-                >
+                <TableCell colSpan={columns.length} className="h-32 text-center">
                   {emptyState ? (
                     emptyState
                   ) : (
@@ -293,8 +249,8 @@ export function DataTable<TData, TValue>({
         <div className="flex items-center gap-2">
           {table.getFilteredSelectedRowModel().rows.length > 0 ? (
             <span>
-              {table.getFilteredSelectedRowModel().rows.length} of{" "}
-              {table.getFilteredRowModel().rows.length} row(s) selected.
+              {table.getFilteredSelectedRowModel().rows.length} of {table.getFilteredRowModel().rows.length} row(s)
+              selected.
             </span>
           ) : (
             <span>
@@ -305,9 +261,7 @@ export function DataTable<TData, TValue>({
 
         <div className="flex flex-wrap items-center gap-4 sm:gap-6">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-              Rows per page
-            </span>
+            <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Rows per page</span>
             <Select
               value={String(table.getState().pagination.pageSize)}
               onValueChange={(value) => {

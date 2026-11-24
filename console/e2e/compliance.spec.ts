@@ -5,7 +5,9 @@ test.describe("Argus Continuous Compliance Matrix", () => {
     await page.goto("/compliance");
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/continuous compliance|compliance matrix|compliance/i);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      /continuous compliance|compliance matrix|compliance/i,
+    );
     await expect(page.getByText(/soc 2|iso 27001|evidence/i).first()).toBeVisible();
   });
 

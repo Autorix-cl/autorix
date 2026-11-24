@@ -19,9 +19,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setMobileNavOpen(false);
   }, [pathname]);
 
-  const isStandalone = STANDALONE_ROUTES.some(
-    (route) => pathname === route || pathname?.startsWith(route + "/")
-  );
+  const isStandalone = STANDALONE_ROUTES.some((route) => pathname === route || pathname?.startsWith(route + "/"));
 
   if (isStandalone) {
     return (

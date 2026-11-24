@@ -23,14 +23,6 @@ var (
 )
 
 func init() {
-	if err := prometheus.Register(aegisRequestsTotal); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			// ignore
-		}
-	}
-	if err := prometheus.Register(pipelineStageDuration); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			// ignore
-		}
-	}
+	_ = prometheus.Register(aegisRequestsTotal)
+	_ = prometheus.Register(pipelineStageDuration)
 }

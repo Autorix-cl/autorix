@@ -4,9 +4,7 @@ import { ServiceHeader } from "./service-header";
 import { Users, Shield } from "lucide-react";
 import { EnvironmentProvider } from "@/lib/environment/environment-context";
 
-const wrapper = ({ children }: { children: React.ReactNode }) => (
-  <EnvironmentProvider>{children}</EnvironmentProvider>
-);
+const wrapper = ({ children }: { children: React.ReactNode }) => <EnvironmentProvider>{children}</EnvironmentProvider>;
 
 describe("ServiceHeader", () => {
   it("renders cloud breadcrumb, title, badge, and metrics strip", () => {
@@ -22,7 +20,7 @@ describe("ServiceHeader", () => {
           { label: "Engine Mesh", value: "mTLS", hint: "Port 4433", icon: Shield },
         ]}
       />,
-      { wrapper }
+      { wrapper },
     );
 
     // Breadcrumb

@@ -4,12 +4,7 @@ import { GET as getProvider, PATCH as updateProvider, DELETE as deleteProvider }
 import { POST as enableProvider } from "./saml/[id]/enable/route";
 import { POST as disableProvider } from "./saml/[id]/disable/route";
 import { GET as listGroups, POST as createGroup } from "./scim/groups/route";
-import {
-  GET as getGroup,
-  PUT as putGroup,
-  PATCH as patchGroup,
-  DELETE as deleteGroup,
-} from "./scim/groups/[id]/route";
+import { GET as getGroup, PUT as putGroup, PATCH as patchGroup, DELETE as deleteGroup } from "./scim/groups/[id]/route";
 import { GET as listSyncHistory, POST as triggerSync } from "./scim/sync/route";
 
 vi.mock("@/lib/auth/session", () => ({
@@ -46,8 +41,8 @@ describe("Hermes Enterprise BFF Routes", () => {
           created_at: "2026-09-02T10:00:00Z",
           updated_at: "2026-09-02T10:00:00Z",
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const getRes = await getProvider(new NextRequest("http://localhost/api/enterprise/saml/okta-test"), {
@@ -72,8 +67,8 @@ describe("Hermes Enterprise BFF Routes", () => {
           created_at: "2026-09-02T10:00:00Z",
           updated_at: "2026-09-02T10:00:00Z",
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const patchRes = await updateProvider(
@@ -81,7 +76,7 @@ describe("Hermes Enterprise BFF Routes", () => {
         method: "PATCH",
         body: JSON.stringify({ display_name: "Okta Updated", attribute_mapping: { email: "mail" } }),
       }),
-      { params: Promise.resolve({ id: "okta-test" }) }
+      { params: Promise.resolve({ id: "okta-test" }) },
     );
     expect(patchRes.status).toBe(200);
     const patchJson = await patchRes.json();
@@ -92,12 +87,15 @@ describe("Hermes Enterprise BFF Routes", () => {
       new Response(JSON.stringify({ status: "deleted" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
-    const delRes = await deleteProvider(new NextRequest("http://localhost/api/enterprise/saml/okta-test", { method: "DELETE" }), {
-      params: Promise.resolve({ id: "okta-test" }),
-    });
+    const delRes = await deleteProvider(
+      new NextRequest("http://localhost/api/enterprise/saml/okta-test", { method: "DELETE" }),
+      {
+        params: Promise.resolve({ id: "okta-test" }),
+      },
+    );
     expect(delRes.status).toBe(200);
   });
 
@@ -116,13 +114,16 @@ describe("Hermes Enterprise BFF Routes", () => {
           created_at: "2026-09-02T10:00:00Z",
           updated_at: "2026-09-02T10:00:00Z",
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
-    const enableRes = await enableProvider(new NextRequest("http://localhost/api/enterprise/saml/okta-test/enable", { method: "POST" }), {
-      params: Promise.resolve({ id: "okta-test" }),
-    });
+    const enableRes = await enableProvider(
+      new NextRequest("http://localhost/api/enterprise/saml/okta-test/enable", { method: "POST" }),
+      {
+        params: Promise.resolve({ id: "okta-test" }),
+      },
+    );
     expect(enableRes.status).toBe(200);
 
     vi.mocked(global.fetch).mockResolvedValueOnce(
@@ -139,13 +140,16 @@ describe("Hermes Enterprise BFF Routes", () => {
           created_at: "2026-09-02T10:00:00Z",
           updated_at: "2026-09-02T10:00:00Z",
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
-    const disableRes = await disableProvider(new NextRequest("http://localhost/api/enterprise/saml/okta-test/disable", { method: "POST" }), {
-      params: Promise.resolve({ id: "okta-test" }),
-    });
+    const disableRes = await disableProvider(
+      new NextRequest("http://localhost/api/enterprise/saml/okta-test/disable", { method: "POST" }),
+      {
+        params: Promise.resolve({ id: "okta-test" }),
+      },
+    );
     expect(disableRes.status).toBe(200);
   });
 
@@ -164,12 +168,17 @@ describe("Hermes Enterprise BFF Routes", () => {
               id: "g-1",
               displayName: "Security Ops",
               members: [],
-              meta: { resourceType: "Group", created: "2026-09-02T10:00:00Z", lastModified: "2026-09-02T10:00:00Z", location: "/scim/v2/Groups/g-1" },
+              meta: {
+                resourceType: "Group",
+                created: "2026-09-02T10:00:00Z",
+                lastModified: "2026-09-02T10:00:00Z",
+                location: "/scim/v2/Groups/g-1",
+              },
             },
           ],
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const listRes = await listGroups();
@@ -185,17 +194,22 @@ describe("Hermes Enterprise BFF Routes", () => {
           id: "g-2",
           displayName: "DevOps",
           members: [{ value: "u-1" }],
-          meta: { resourceType: "Group", created: "2026-09-02T10:00:00Z", lastModified: "2026-09-02T10:00:00Z", location: "/scim/v2/Groups/g-2" },
+          meta: {
+            resourceType: "Group",
+            created: "2026-09-02T10:00:00Z",
+            lastModified: "2026-09-02T10:00:00Z",
+            location: "/scim/v2/Groups/g-2",
+          },
         }),
-        { status: 201, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const createRes = await createGroup(
       new NextRequest("http://localhost/api/enterprise/scim/groups", {
         method: "POST",
         body: JSON.stringify({ displayName: "DevOps", members: [{ value: "u-1" }] }),
-      })
+      }),
     );
     expect(createRes.status).toBe(201);
 
@@ -207,10 +221,15 @@ describe("Hermes Enterprise BFF Routes", () => {
           id: "g-2",
           displayName: "DevOps",
           members: [{ value: "u-1" }],
-          meta: { resourceType: "Group", created: "2026-09-02T10:00:00Z", lastModified: "2026-09-02T10:00:00Z", location: "/scim/v2/Groups/g-2" },
+          meta: {
+            resourceType: "Group",
+            created: "2026-09-02T10:00:00Z",
+            lastModified: "2026-09-02T10:00:00Z",
+            location: "/scim/v2/Groups/g-2",
+          },
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const getGroupRes = await getGroup(new NextRequest("http://localhost/api/enterprise/scim/groups/g-2"), {
@@ -236,14 +255,14 @@ describe("Hermes Enterprise BFF Routes", () => {
       new Response(JSON.stringify(updatedGroup), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
     const putRes = await putGroup(
       new NextRequest("http://localhost/api/enterprise/scim/groups/g-2", {
         method: "PUT",
         body: JSON.stringify({ displayName: "DevOps Updated" }),
       }),
-      { params: Promise.resolve({ id: "g-2" }) }
+      { params: Promise.resolve({ id: "g-2" }) },
     );
     expect(putRes.status).toBe(200);
 
@@ -252,29 +271,31 @@ describe("Hermes Enterprise BFF Routes", () => {
       new Response(JSON.stringify({ ...updatedGroup, displayName: "DevOps Patched" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
     const patchRes = await patchGroup(
       new NextRequest("http://localhost/api/enterprise/scim/groups/g-2", {
         method: "PATCH",
         body: JSON.stringify({ displayName: "DevOps Patched" }),
       }),
-      { params: Promise.resolve({ id: "g-2" }) }
+      { params: Promise.resolve({ id: "g-2" }) },
     );
     expect(patchRes.status).toBe(200);
-
 
     // 4. Delete
     vi.mocked(global.fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ status: "deleted" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
-    const delGroupRes = await deleteGroup(new NextRequest("http://localhost/api/enterprise/scim/groups/g-2", { method: "DELETE" }), {
-      params: Promise.resolve({ id: "g-2" }),
-    });
+    const delGroupRes = await deleteGroup(
+      new NextRequest("http://localhost/api/enterprise/scim/groups/g-2", { method: "DELETE" }),
+      {
+        params: Promise.resolve({ id: "g-2" }),
+      },
+    );
     expect(delGroupRes.status).toBe(200);
   });
 
@@ -297,8 +318,8 @@ describe("Hermes Enterprise BFF Routes", () => {
             completed_at: "2026-09-02T10:01:00Z",
           },
         ]),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const listRes = await listSyncHistory();
@@ -322,15 +343,15 @@ describe("Hermes Enterprise BFF Routes", () => {
           started_at: "2026-09-02T10:00:00Z",
           completed_at: "2026-09-02T10:01:00Z",
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const triggerRes = await triggerSync(
       new NextRequest("http://localhost/api/enterprise/scim/sync", {
         method: "POST",
         body: JSON.stringify({ resource_type: "Groups" }),
-      })
+      }),
     );
     expect(triggerRes.status).toBe(200);
   });

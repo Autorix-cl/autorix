@@ -1,13 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiMutation } from "@/lib/query/use-api-mutation";
 import { fetchAndParse } from "@/lib/api/schema";
@@ -92,7 +86,7 @@ export function IdentityBuilderSheet({ isOpen, onOpenChange, onSuccess }: Identi
         queryClient.invalidateQueries({ queryKey: ["identities"] });
         resetForm();
       },
-    }
+    },
   );
 
   const resetForm = () => {
@@ -131,7 +125,8 @@ export function IdentityBuilderSheet({ isOpen, onOpenChange, onSuccess }: Identi
             </span>
           </div>
           <SheetDescription>
-            Invite a new member to join the tenant. Form fields are dynamically populated from the active Ory Kratos JSON Schema.
+            Invite a new member to join the tenant. Form fields are dynamically populated from the active Ory Kratos
+            JSON Schema.
           </SheetDescription>
         </SheetHeader>
 
@@ -157,15 +152,12 @@ export function IdentityBuilderSheet({ isOpen, onOpenChange, onSuccess }: Identi
           )}
 
           {/* Dynamic Schema Form */}
-          <DynamicSchemaForm
-            schema={activeSchema}
-            value={traits}
-            onChange={(updated) => setTraits(updated)}
-          />
+          <DynamicSchemaForm schema={activeSchema} value={traits} onChange={(updated) => setTraits(updated)} />
 
           <div className="rounded-md border bg-muted/30 p-3 mt-2">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              <strong>Security Note:</strong> We no longer allow setting passwords manually. The user will receive a secure token via email to configure their own authentication (Password, Passkey, or Social Login).
+              <strong>Security Note:</strong> We no longer allow setting passwords manually. The user will receive a
+              secure token via email to configure their own authentication (Password, Passkey, or Social Login).
             </p>
           </div>
 
@@ -192,11 +184,7 @@ export function IdentityBuilderSheet({ isOpen, onOpenChange, onSuccess }: Identi
             disabled={inviteIdentity.isPending}
             className="w-full gap-2 mt-4 bg-blue-600 hover:bg-blue-700 text-white"
           >
-            {inviteIdentity.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
+            {inviteIdentity.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             <span>{inviteIdentity.isPending ? "Sending..." : "Send Invitation"}</span>
           </Button>
         </form>

@@ -12,13 +12,7 @@ export interface EmptyStateProps {
   onAction?: () => void;
 }
 
-export function EmptyState({
-  icon: Icon = FolderOpen,
-  title,
-  description,
-  actionLabel,
-  onAction,
-}: EmptyStateProps) {
+export function EmptyState({ icon: Icon = FolderOpen, title, description, actionLabel, onAction }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-xl border border-dashed border-border/80 bg-card/40 backdrop-blur-xs">
       <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/80 text-muted-foreground mb-4">

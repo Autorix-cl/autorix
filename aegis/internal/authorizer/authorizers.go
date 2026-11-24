@@ -103,7 +103,7 @@ func (a *NexusAuthorizer) Authorize(r *http.Request, session *core.Session, conf
 	if err != nil {
 		return false, fmt.Errorf("nexus check request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("nexus check returned unexpected status %d", resp.StatusCode)

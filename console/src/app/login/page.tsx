@@ -41,14 +41,21 @@ export default function LoginPage() {
   }
 
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#080B10] flex items-center justify-center text-slate-500 font-mono text-xs">Authenticating...</div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#080B10] flex items-center justify-center text-slate-500 font-mono text-xs">
+          Authenticating...
+        </div>
+      }
+    >
       <LoginForm />
     </Suspense>
   );
 }
 
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
-  sso_failed: "Enterprise OIDC sign-in could not be completed. Verify Janus SSO configuration or use local break-glass credentials.",
+  sso_failed:
+    "Enterprise OIDC sign-in could not be completed. Verify Janus SSO configuration or use local break-glass credentials.",
   saml_failed: "Enterprise SAML sign-in failed assertion verification. Verify your Hermes SAML provider configuration.",
   invalid_state: "Sign-in session state expired or did not match. Please try signing in again.",
   missing_code: "The identity provider did not return an authorization code.",
@@ -135,9 +142,7 @@ function LoginForm() {
             </span>
             Autorix Console
           </h1>
-          <p className="text-sm text-slate-400 mt-2">
-            Authenticate to access the administrative control plane
-          </p>
+          <p className="text-sm text-slate-400 mt-2">Authenticate to access the administrative control plane</p>
         </div>
 
         {/* Card */}
@@ -228,7 +233,11 @@ function LoginForm() {
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded"
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4" aria-hidden="true" />
+                    ) : (
+                      <Eye className="w-4 h-4" aria-hidden="true" />
+                    )}
                   </button>
                 </div>
               </div>

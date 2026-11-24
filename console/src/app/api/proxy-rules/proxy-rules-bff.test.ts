@@ -20,11 +20,7 @@ describe("Aegis BFF Routes", () => {
       const req = new NextRequest("http://localhost/api/proxy-rules/rule-123");
       const res = await GET(req, { params: Promise.resolve({ id: "rule-123" }) });
 
-      expect(proxyRequest).toHaveBeenCalledWith(
-        "aegis",
-        "/rules/rule-123",
-        expect.anything()
-      );
+      expect(proxyRequest).toHaveBeenCalledWith("aegis", "/rules/rule-123", expect.anything());
       expect(res.status).toBe(200);
     });
   });
@@ -48,7 +44,7 @@ describe("Aegis BFF Routes", () => {
         expect.objectContaining({
           method: "PUT",
           body: JSON.stringify({ ids: ["rule-2", "rule-1"] }),
-        })
+        }),
       );
       expect(res.status).toBe(200);
     });
@@ -71,16 +67,12 @@ describe("Aegis BFF Routes", () => {
     it("proxies GET to aegis /handlers", async () => {
       const { GET } = await import("./handlers/route");
       vi.mocked(proxyRequest).mockResolvedValue(
-        NextResponse.json({ authenticators: [], authorizers: [], mutators: [] })
+        NextResponse.json({ authenticators: [], authorizers: [], mutators: [] }),
       );
 
       const res = await GET();
 
-      expect(proxyRequest).toHaveBeenCalledWith(
-        "aegis",
-        "/handlers",
-        expect.anything()
-      );
+      expect(proxyRequest).toHaveBeenCalledWith("aegis", "/handlers", expect.anything());
       expect(res.status).toBe(200);
     });
   });
@@ -92,11 +84,7 @@ describe("Aegis BFF Routes", () => {
 
       const res = await GET();
 
-      expect(proxyRequest).toHaveBeenCalledWith(
-        "aegis",
-        "/rules/versions",
-        expect.anything()
-      );
+      expect(proxyRequest).toHaveBeenCalledWith("aegis", "/rules/versions", expect.anything());
       expect(res.status).toBe(200);
     });
   });
@@ -104,9 +92,7 @@ describe("Aegis BFF Routes", () => {
   describe("POST /api/proxy-rules/rollback/[version]", () => {
     it("proxies POST to aegis /rules/rollback/{version}", async () => {
       const { POST } = await import("./rollback/[version]/route");
-      vi.mocked(proxyRequest).mockResolvedValue(
-        NextResponse.json({ status: "rolled_back", version: 2 })
-      );
+      vi.mocked(proxyRequest).mockResolvedValue(NextResponse.json({ status: "rolled_back", version: 2 }));
 
       const req = new NextRequest("http://localhost/api/proxy-rules/rollback/2", {
         method: "POST",
@@ -117,7 +103,7 @@ describe("Aegis BFF Routes", () => {
         "aegis",
         "/rules/rollback/2",
         expect.anything(),
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(res.status).toBe(200);
     });

@@ -40,7 +40,8 @@ function isNavItemActive(pathname: string | null, href: string, allHrefs: string
   if (!pathname.startsWith(`${href}/`)) return false;
   // Avoid highlighting a parent route (e.g. /fleet) when a more specific sibling nav item matches (/fleet/enroll)
   return !allHrefs.some(
-    (other) => other !== href && other.startsWith(`${href}/`) && (pathname === other || pathname.startsWith(`${other}/`)),
+    (other) =>
+      other !== href && other.startsWith(`${href}/`) && (pathname === other || pathname.startsWith(`${other}/`)),
   );
 }
 

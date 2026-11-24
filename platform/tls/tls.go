@@ -72,7 +72,7 @@ func NewServerTLSConfig(cfg ServerConfig) (*tls.Config, error) {
 func NewClientTLSConfig(cfg ClientConfig) (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS13,
-		InsecureSkipVerify: cfg.InsecureSkipVerify,
+		InsecureSkipVerify: cfg.InsecureSkipVerify, //nolint:gosec // explicitly opt-in via AUTORIX_TLS_INSECURE_SKIP_VERIFY for dev/test only
 	}
 
 	if cfg.CAFile != "" {

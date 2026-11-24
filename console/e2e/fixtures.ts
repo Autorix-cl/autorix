@@ -50,10 +50,7 @@ interface Fixtures {
     upstream_url?: string;
   }) => Promise<{ id: string; match_path: string }>;
 
-  seedApiKey: (overrides?: {
-    name?: string;
-    owner_id?: string;
-  }) => Promise<{ id: string; name: string }>;
+  seedApiKey: (overrides?: { name?: string; owner_id?: string }) => Promise<{ id: string; name: string }>;
 
   seedTuple: (overrides?: {
     namespace?: string;
@@ -195,10 +192,7 @@ export const test = base.extend<Fixtures>({
           scopes: ["read", "write"],
         },
       });
-      expect(
-        res.ok(),
-        `seedApiKey: POST /api/keys failed (status ${res.status()}): ${await res.text()}`,
-      ).toBeTruthy();
+      expect(res.ok(), `seedApiKey: POST /api/keys failed (status ${res.status()}): ${await res.text()}`).toBeTruthy();
 
       const data = await res.json();
       return { id: data.id || unique, name };

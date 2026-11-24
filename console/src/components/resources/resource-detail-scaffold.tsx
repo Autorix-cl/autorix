@@ -1,15 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  FileCode2,
-  Terminal,
-  Trash2,
-  Edit,
-  ArrowLeft,
-  Copy,
-  Check,
-} from "lucide-react";
+import { FileCode2, Terminal, Trash2, Edit, ArrowLeft, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -57,7 +49,14 @@ export function ResourceDetailScaffold<T extends Record<string, unknown> & { id:
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-border/60 pb-4">
         <div className="flex items-center gap-3">
           {onBack && (
-            <Button type="button" variant="ghost" size="icon-sm" onClick={onBack} aria-label="Go back" className="h-8 w-8">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={onBack}
+              aria-label="Go back"
+              className="h-8 w-8"
+            >
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             </Button>
           )}
@@ -96,7 +95,9 @@ export function ResourceDetailScaffold<T extends Record<string, unknown> & { id:
       {/* Main Tabs */}
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList className="grid grid-cols-3 w-full max-w-sm">
-          <TabsTrigger value="overview" className="text-xs">Overview</TabsTrigger>
+          <TabsTrigger value="overview" className="text-xs">
+            Overview
+          </TabsTrigger>
           <TabsTrigger value="json" className="text-xs gap-1.5">
             <FileCode2 className="w-3.5 h-3.5" /> Raw JSON
           </TabsTrigger>
@@ -129,10 +130,22 @@ export function ResourceDetailScaffold<T extends Record<string, unknown> & { id:
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-sm font-semibold">API Equivalence</CardTitle>
-                  <CardDescription className="text-xs">Equivalent CLI and REST invocation to fetch or manipulate this resource</CardDescription>
+                  <CardDescription className="text-xs">
+                    Equivalent CLI and REST invocation to fetch or manipulate this resource
+                  </CardDescription>
                 </div>
-                <Button type="button" variant="outline" size="sm" onClick={handleCopyCurl} className="h-7 gap-1.5 text-xs">
-                  {copiedCurl ? <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopyCurl}
+                  className="h-7 gap-1.5 text-xs"
+                >
+                  {copiedCurl ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                  )}
                   {copiedCurl ? "Copied" : "Copy cURL"}
                 </Button>
               </div>

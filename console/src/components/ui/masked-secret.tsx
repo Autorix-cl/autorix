@@ -64,9 +64,7 @@ export function MaskedSecret({
     <div
       className={`inline-flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-2.5 py-1 font-mono text-xs ${className}`}
     >
-      <span className="select-all text-muted-foreground truncate max-w-[280px]">
-        {revealed ? secret : maskedText}
-      </span>
+      <span className="select-all text-muted-foreground truncate max-w-[280px]">{revealed ? secret : maskedText}</span>
       <div className="flex items-center gap-1">
         <Button
           type="button"
@@ -89,11 +87,7 @@ export function MaskedSecret({
             title={`Copy ${label}`}
             aria-label={`Copy ${label}`}
           >
-            {copied ? (
-              <Check className="h-3.5 w-3.5 text-emerald-400" />
-            ) : (
-              <Copy className="h-3.5 w-3.5" />
-            )}
+            {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
           </Button>
         )}
       </div>

@@ -1,16 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  BookOpen,
-  KeyRound,
-  Layers,
-  Terminal,
-  ShieldCheck,
-  CheckCircle,
-  Database,
-  Code2,
-} from "lucide-react";
+import { BookOpen, KeyRound, Layers, Terminal, ShieldCheck, CheckCircle, Database, Code2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CodeBlock } from "@/components/ui/code-block";
@@ -25,9 +16,7 @@ export function TraitsGuide() {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <BookOpen className="h-5 w-5 text-purple-400" />
-                <CardTitle className="text-base font-semibold">
-                  Ego Traits & JSON Schema Architecture Guide
-                </CardTitle>
+                <CardTitle className="text-base font-semibold">Ego Traits & JSON Schema Architecture Guide</CardTitle>
                 <Badge variant="purple" className="text-[10px] font-mono">
                   Ory Kratos Parity
                 </Badge>
@@ -47,7 +36,9 @@ export function TraitsGuide() {
               <span>Zero-Migration Extensibility</span>
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              No <code className="text-foreground">ALTER TABLE</code> migrations required. Attributes are stored as GIN-indexed <code className="text-foreground">jsonb</code> in PostgreSQL with sub-millisecond query latency.
+              No <code className="text-foreground">ALTER TABLE</code> migrations required. Attributes are stored as
+              GIN-indexed <code className="text-foreground">jsonb</code> in PostgreSQL with sub-millisecond query
+              latency.
             </p>
           </div>
 
@@ -57,7 +48,8 @@ export function TraitsGuide() {
               <span>Credential Mapping</span>
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Use <code className="text-foreground">autorix.io/credentials</code> tags to designate which traits act as login identifiers (e.g., email, username, phone).
+              Use <code className="text-foreground">autorix.io/credentials</code> tags to designate which traits act as
+              login identifiers (e.g., email, username, phone).
             </p>
           </div>
 
@@ -67,7 +59,8 @@ export function TraitsGuide() {
               <span>Strict Runtime Validation</span>
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Input data is strictly validated against JSON Schema Draft-07 before any identity is persisted to disk or session is minted.
+              Input data is strictly validated against JSON Schema Draft-07 before any identity is persisted to disk or
+              session is minted.
             </p>
           </div>
         </CardContent>
@@ -95,7 +88,11 @@ export function TraitsGuide() {
                 <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
                 <div>
                   <strong className="text-foreground font-medium">$schema & $id</strong>
-                  <p className="text-[11px]">Identifies the JSON Schema specification (<code className="text-foreground">http://json-schema.org/draft-07/schema#</code>) and the unique URI identifier for caching.</p>
+                  <p className="text-[11px]">
+                    Identifies the JSON Schema specification (
+                    <code className="text-foreground">http://json-schema.org/draft-07/schema#</code>) and the unique URI
+                    identifier for caching.
+                  </p>
                 </div>
               </div>
 
@@ -103,7 +100,10 @@ export function TraitsGuide() {
                 <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
                 <div>
                   <strong className="text-foreground font-medium">properties.traits</strong>
-                  <p className="text-[11px]">The container object holding all user attributes. Any field placed here becomes accessible in identity payloads as <code className="text-foreground">identity.traits.my_field</code>.</p>
+                  <p className="text-[11px]">
+                    The container object holding all user attributes. Any field placed here becomes accessible in
+                    identity payloads as <code className="text-foreground">identity.traits.my_field</code>.
+                  </p>
                 </div>
               </div>
 
@@ -111,7 +111,11 @@ export function TraitsGuide() {
                 <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
                 <div>
                   <strong className="text-foreground font-medium">autorix.io/credentials</strong>
-                  <p className="text-[11px]">Metadata extension. Placing <code className="text-foreground">{`"password": { "identifier": true }`}</code> on a field makes it a valid login handle in <code className="text-foreground">POST /self-service/login</code>.</p>
+                  <p className="text-[11px]">
+                    Metadata extension. Placing{" "}
+                    <code className="text-foreground">{`"password": { "identifier": true }`}</code> on a field makes it
+                    a valid login handle in <code className="text-foreground">POST /self-service/login</code>.
+                  </p>
                 </div>
               </div>
 
@@ -119,7 +123,10 @@ export function TraitsGuide() {
                 <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
                 <div>
                   <strong className="text-foreground font-medium">required array</strong>
-                  <p className="text-[11px]">Specifies mandatory traits (e.g. <code className="text-foreground">{`["email", "name"]`}</code>) that reject registration if missing.</p>
+                  <p className="text-[11px]">
+                    Specifies mandatory traits (e.g. <code className="text-foreground">{`["email", "name"]`}</code>)
+                    that reject registration if missing.
+                  </p>
                 </div>
               </div>
             </div>
@@ -248,7 +255,9 @@ export function TraitsGuide() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-mono">1</span>
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-mono">
+                  1
+                </span>
                 <span>Register a Custom Schema via Ego Admin API</span>
               </span>
               <CodeBlock
@@ -284,7 +293,9 @@ export function TraitsGuide() {
 
             <div className="space-y-1.5">
               <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-mono">2</span>
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-mono">
+                  2
+                </span>
                 <span>Onboard an Identity with that Schema</span>
               </span>
               <CodeBlock

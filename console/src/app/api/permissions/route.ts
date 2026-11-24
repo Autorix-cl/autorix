@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { proxyRequest } from "@/lib/api/proxy";
-import { deleteTuplesResponseSchema, paginatedTupleListSchema, writeTuplesResponseSchema } from "@/lib/api/schemas/nexus";
+import {
+  deleteTuplesResponseSchema,
+  paginatedTupleListSchema,
+  writeTuplesResponseSchema,
+} from "@/lib/api/schemas/nexus";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);

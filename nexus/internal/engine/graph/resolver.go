@@ -756,11 +756,7 @@ func (r *Resolver) expandThis(ctx context.Context, req core.ExpandRequest, visit
 // LookupSubjects finds all subject identities that possess relation to object,
 // accurately evaluating union/intersection set algebra and caveat restrictions.
 func (r *Resolver) LookupSubjects(ctx context.Context, req core.LookupSubjectsRequest) ([]core.Tuple, error) {
-	tree, err := r.Expand(ctx, core.ExpandRequest{
-		Namespace: req.Namespace,
-		Object:    req.Object,
-		Relation:  req.Relation,
-	})
+	tree, err := r.Expand(ctx, core.ExpandRequest(req))
 	if err != nil {
 		return nil, err
 	}

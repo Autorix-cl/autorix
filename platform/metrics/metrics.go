@@ -133,9 +133,8 @@ func init() {
 
 func registerCollector(c prometheus.Collector) {
 	if err := prometheus.Register(c); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			// Ignore already registered collectors in test runs or re-inits
-		}
+		// Ignore already registered collectors in test runs or re-inits
+		_ = err
 	}
 }
 

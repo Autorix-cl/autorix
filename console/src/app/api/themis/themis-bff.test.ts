@@ -34,7 +34,7 @@ describe("Themis BFF Proxy Routes", () => {
       new Response(JSON.stringify([{ id: "p1", name: "Policy 1", expression: "true", priority: 1, enabled: true }]), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const req = new NextRequest("http://localhost/api/themis/policies?tenant_id=default");
@@ -50,7 +50,7 @@ describe("Themis BFF Proxy Routes", () => {
       new Response(JSON.stringify({ id: "p1", name: "New Policy", expression: "true" }), {
         status: 201,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const req = new NextRequest("http://localhost/api/themis/policies", {
@@ -65,24 +65,40 @@ describe("Themis BFF Proxy Routes", () => {
 
   it("gets, updates, and deletes a single policy", async () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: "p1", name: "Policy 1" }), { status: 200, headers: { "Content-Type": "application/json" } })
+      new Response(JSON.stringify({ id: "p1", name: "Policy 1" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
     );
-    const getRes = await getPolicy(new NextRequest("http://localhost/api/themis/policies/p1"), { params: Promise.resolve({ id: "p1" }) });
+    const getRes = await getPolicy(new NextRequest("http://localhost/api/themis/policies/p1"), {
+      params: Promise.resolve({ id: "p1" }),
+    });
     expect(getRes.status).toBe(200);
 
     vi.mocked(global.fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: "p1", name: "Updated Policy" }), { status: 200, headers: { "Content-Type": "application/json" } })
+      new Response(JSON.stringify({ id: "p1", name: "Updated Policy" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
     );
     const putRes = await updatePolicy(
-      new NextRequest("http://localhost/api/themis/policies/p1", { method: "PUT", body: JSON.stringify({ name: "Updated Policy" }) }),
-      { params: Promise.resolve({ id: "p1" }) }
+      new NextRequest("http://localhost/api/themis/policies/p1", {
+        method: "PUT",
+        body: JSON.stringify({ name: "Updated Policy" }),
+      }),
+      { params: Promise.resolve({ id: "p1" }) },
     );
     expect(putRes.status).toBe(200);
 
     vi.mocked(global.fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ status: "deleted" }), { status: 200, headers: { "Content-Type": "application/json" } })
+      new Response(JSON.stringify({ status: "deleted" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
     );
-    const delRes = await deletePolicy(new NextRequest("http://localhost/api/themis/policies/p1"), { params: Promise.resolve({ id: "p1" }) });
+    const delRes = await deletePolicy(new NextRequest("http://localhost/api/themis/policies/p1"), {
+      params: Promise.resolve({ id: "p1" }),
+    });
     expect(delRes.status).toBe(200);
   });
 
@@ -92,14 +108,14 @@ describe("Themis BFF Proxy Routes", () => {
       new Response(JSON.stringify({ id: "p1", name: "Policy 1", enabled: true }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
     // 2nd call: PUT updated policy
     vi.mocked(global.fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ id: "p1", name: "Policy 1", enabled: false }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const req = new NextRequest("http://localhost/api/themis/policies/p1/toggle", {
@@ -118,7 +134,7 @@ describe("Themis BFF Proxy Routes", () => {
       new Response(JSON.stringify({ passed: true, error: "" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const dryRunReq = new NextRequest("http://localhost/api/themis/eval", {
@@ -138,8 +154,8 @@ describe("Themis BFF Proxy Routes", () => {
           total_evaluated: 1,
           results: [{ policy_id: "p1", policy_name: "Admin Rule", passed: true, expression: "role == 'admin'" }],
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const evalReq = new NextRequest("http://localhost/api/themis/eval", {
@@ -158,7 +174,7 @@ describe("Themis BFF Proxy Routes", () => {
       new Response(JSON.stringify({ valid: true, variables: ["request.role"], errors: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const req = new NextRequest("http://localhost/api/themis/validate", {
@@ -187,8 +203,8 @@ describe("Themis BFF Proxy Routes", () => {
             created_at: "2026-09-02T10:00:00Z",
           },
         ]),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const vRes = await listVersions(new NextRequest("http://localhost/api/themis/policies/p1/versions"), {
@@ -202,12 +218,12 @@ describe("Themis BFF Proxy Routes", () => {
       new Response(JSON.stringify({ id: "p1", name: "Rolled back" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const rbRes = await rollbackPolicy(
       new NextRequest("http://localhost/api/themis/policies/p1/rollback/1", { method: "POST" }),
-      { params: Promise.resolve({ id: "p1", version: "1" }) }
+      { params: Promise.resolve({ id: "p1", version: "1" }) },
     );
     expect(rbRes.status).toBe(200);
   });
@@ -226,8 +242,8 @@ describe("Themis BFF Proxy Routes", () => {
             updated_at: "2026-09-02T10:00:00Z",
           },
         ]),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const fRes = await listFixtures(new NextRequest("http://localhost/api/themis/policies/p1/fixtures"), {
@@ -254,13 +270,13 @@ describe("Themis BFF Proxy Routes", () => {
             },
           ],
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const tsRes = await runTestSuite(
       new NextRequest("http://localhost/api/themis/policies/p1/test-suite", { method: "POST" }),
-      { params: Promise.resolve({ id: "p1" }) }
+      { params: Promise.resolve({ id: "p1" }) },
     );
     expect(tsRes.status).toBe(200);
     const tsJson = await tsRes.json();
@@ -278,8 +294,8 @@ describe("Themis BFF Proxy Routes", () => {
           created_at: "2026-09-02T10:00:00Z",
           updated_at: "2026-09-02T10:00:00Z",
         }),
-        { status: 201, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const createFixRes = await createFixture(
@@ -287,7 +303,7 @@ describe("Themis BFF Proxy Routes", () => {
         method: "POST",
         body: JSON.stringify({ name: "fixture 2", expected_result: false, payload: {} }),
       }),
-      { params: Promise.resolve({ id: "p1" }) }
+      { params: Promise.resolve({ id: "p1" }) },
     );
     expect(createFixRes.status).toBe(201);
 
@@ -296,12 +312,12 @@ describe("Themis BFF Proxy Routes", () => {
       new Response(JSON.stringify({ status: "deleted" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const delFixRes = await deleteFixture(
       new NextRequest("http://localhost/api/themis/policies/p1/fixtures/fix_2", { method: "DELETE" }),
-      { params: Promise.resolve({ id: "p1", fixture_id: "fix_2" }) }
+      { params: Promise.resolve({ id: "p1", fixture_id: "fix_2" }) },
     );
     expect(delFixRes.status).toBe(200);
   });

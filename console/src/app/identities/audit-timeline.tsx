@@ -14,7 +14,11 @@ export interface AuditTimelineProps {
 
 export function AuditTimeline({ events }: AuditTimelineProps) {
   if (events.length === 0) {
-    return <div className="text-sm text-muted-foreground p-4 text-center border rounded-md border-dashed">No recent activity.</div>;
+    return (
+      <div className="text-sm text-muted-foreground p-4 text-center border rounded-md border-dashed">
+        No recent activity.
+      </div>
+    );
   }
 
   return (

@@ -12,7 +12,10 @@ test.describe("Nexus ReBAC Permissions Studio (Google Zanzibar)", () => {
     await expect(page.getByText(/Active Relation Tuples/i).first()).toBeVisible();
   });
 
-  test("evaluates a positive permission check and displays ALLOW decision result with traversal path", async ({ page, seedTuple }) => {
+  test("evaluates a positive permission check and displays ALLOW decision result with traversal path", async ({
+    page,
+    seedTuple,
+  }) => {
     const tuple = await seedTuple({
       namespace: "document",
       object: "annual-report-2026",
@@ -25,7 +28,7 @@ test.describe("Nexus ReBAC Permissions Studio (Google Zanzibar)", () => {
 
     await page.locator("#namespace").fill(tuple.namespace);
     await page.locator("#object").fill(tuple.object);
-    
+
     // Select relation from Radix combobox
     await page.locator("button#relation").click();
     await page.getByRole("option", { name: tuple.relation }).click();
@@ -41,7 +44,7 @@ test.describe("Nexus ReBAC Permissions Studio (Google Zanzibar)", () => {
   test("zero-trust default deny: evaluates unmapped relation and returns DENIED", async ({ page }) => {
     await page.locator("#namespace").fill("document");
     await page.locator("#object").fill("unmapped-secret-doc-999");
-    
+
     // Select relation from Radix combobox
     await page.locator("button#relation").click();
     await page.getByRole("option", { name: "owner" }).click();
@@ -81,4 +84,3 @@ test.describe("Nexus ReBAC Permissions Studio (Google Zanzibar)", () => {
     await page.screenshot({ path: `${destDir}/cloud-nexus-caveats.png` });
   });
 });
-

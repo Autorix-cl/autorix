@@ -71,9 +71,9 @@ describe("Auth BFF Security Routes", () => {
 
   it("POST /api/auth/saml/callback verifies assertion with Hermes /saml/acs and never mints fake ast_saml_ cookies on failure", async () => {
     cookieValues.set("saml_relay_state", "valid-relay-state");
-    const fetchMock = vi.fn().mockResolvedValueOnce(
-      new Response(JSON.stringify({ error: "invalid signature" }), { status: 400 }),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "invalid signature" }), { status: 400 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const form = new FormData();
@@ -84,7 +84,10 @@ describe("Auth BFF Security Routes", () => {
       new Request("https://console.example/api/auth/saml/callback", { method: "POST", body: form }),
     );
 
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/saml\/acs$/), expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/saml\/acs$/),
+      expect.objectContaining({ method: "POST" }),
+    );
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain("/login?error=saml_failed");
     expect(res.cookies.get("autorix_session")).toBeUndefined();

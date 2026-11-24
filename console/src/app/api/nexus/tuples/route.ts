@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyRequest } from "@/lib/api/proxy";
-import {
-  tupleListSchema,
-  writeTuplesResponseSchema,
-  deleteTuplesResponseSchema,
-} from "@/lib/api/schemas/nexus";
+import { tupleListSchema, writeTuplesResponseSchema, deleteTuplesResponseSchema } from "@/lib/api/schemas/nexus";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -96,4 +92,3 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
-

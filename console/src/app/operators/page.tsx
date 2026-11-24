@@ -62,12 +62,14 @@ export default function OperatorsPage() {
       }),
     {
       successMessage: (data) =>
-        data.is_active ? "Operator reactivated successfully." : "Operator account deactivated and active sessions revoked.",
+        data.is_active
+          ? "Operator reactivated successfully."
+          : "Operator account deactivated and active sessions revoked.",
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["operators"] });
         setDeactivateTarget(null);
       },
-    }
+    },
   );
 
   const deleteMutation = useApiMutation(
@@ -81,16 +83,12 @@ export default function OperatorsPage() {
         queryClient.invalidateQueries({ queryKey: ["operators"] });
         setDeleteTarget(null);
       },
-    }
+    },
   );
 
   return (
     <div className="space-y-6">
-      <OperatorBuilderSheet
-        isOpen={isBuilderOpen}
-        onOpenChange={setIsBuilderOpen}
-        onSuccess={() => refetch()}
-      />
+      <OperatorBuilderSheet isOpen={isBuilderOpen} onOpenChange={setIsBuilderOpen} onSuccess={() => refetch()} />
 
       {/* Cloud Service Header & Telemetry HUD */}
       <ServiceHeader
@@ -140,13 +138,7 @@ export default function OperatorsPage() {
                 <span>Provision Operator</span>
               </Button>
             </Can>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => refetch()}
-              className="h-8 gap-1.5 text-xs"
-            >
+            <Button type="button" variant="outline" size="sm" onClick={() => refetch()} className="h-8 gap-1.5 text-xs">
               <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
               <span>Refresh</span>
             </Button>
@@ -167,7 +159,9 @@ export default function OperatorsPage() {
           <div className="text-xs space-y-1">
             <h3 className="font-semibold text-amber-300">Break-Glass Sovereignty Policy</h3>
             <p className="text-slate-400">
-              Local credentials stored in Argus remain valid when upstream SSO providers (Janus / Ego / Hermes) are unreachable. Break-glass logins trigger high-priority audit events and are locked after 5 consecutive failed attempts.
+              Local credentials stored in Argus remain valid when upstream SSO providers (Janus / Ego / Hermes) are
+              unreachable. Break-glass logins trigger high-priority audit events and are locked after 5 consecutive
+              failed attempts.
             </p>
           </div>
         </div>
@@ -195,124 +189,127 @@ export default function OperatorsPage() {
           </Can>
         }
       >
-
-      {/* Operators List */}
-      <Card className="border-border/80 bg-card/60 backdrop-blur-sm shadow-xs">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-base font-semibold">Registered Operators</CardTitle>
-              <CardDescription className="text-xs">
-                Active administrative principals with access to the Autorix Control Plane
-              </CardDescription>
+        {/* Operators List */}
+        <Card className="border-border/80 bg-card/60 backdrop-blur-sm shadow-xs">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base font-semibold">Registered Operators</CardTitle>
+                <CardDescription className="text-xs">
+                  Active administrative principals with access to the Autorix Control Plane
+                </CardDescription>
+              </div>
+              {operators && (
+                <Badge variant="outline" className="font-mono text-xs">
+                  {operators.length} {operators.length === 1 ? "Operator" : "Operators"}
+                </Badge>
+              )}
             </div>
-            {operators && (
-              <Badge variant="outline" className="font-mono text-xs">
-                {operators.length} {operators.length === 1 ? "Operator" : "Operators"}
-              </Badge>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="py-12 text-center text-xs text-muted-foreground font-mono">
+                Loading operators from control plane registry...
+              </div>
+            ) : isError ? (
+              <div className="py-6">
+                <ErrorState error={error} onRetry={refetch} />
+              </div>
+            ) : !operators || operators.length === 0 ? (
+              <div className="py-12 text-center text-xs text-muted-foreground">No operators registered yet.</div>
+            ) : (
+              <div className="divide-y divide-border/60">
+                {operators.map((op) => (
+                  <div key={op.id} className="py-3.5 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-slate-800/80 border border-slate-700/60 flex items-center justify-center text-amber-400 font-mono font-bold text-xs">
+                        {op.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-foreground">{op.name}</span>
+                          {op.is_local ? (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/30 gap-1 font-mono"
+                            >
+                              <KeyRound className="w-2.5 h-2.5" />
+                              Break-Glass / Local
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] bg-blue-500/10 text-blue-400 border-blue-500/30 gap-1 font-mono"
+                            >
+                              <UserCheck className="w-2.5 h-2.5" />
+                              SSO Federated
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground font-mono">{op.email}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs uppercase font-mono px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border/80 font-medium">
+                        Role: {op.role}
+                      </span>
+                      <Badge variant={op.is_active ? "default" : "destructive"} className="text-[10px]">
+                        {op.is_active ? "Active" : "Deactivated"}
+                      </Badge>
+
+                      {/* Operator Lifecycle Actions */}
+                      <Can perform="operators:write">
+                        <div className="flex items-center gap-1.5 ml-2">
+                          {op.is_active ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setDeactivateTarget(op)}
+                              disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
+                              className="h-7 text-xs gap-1 text-rose-400 border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-300"
+                              title="Deactivate operator account"
+                            >
+                              <UserX className="w-3 h-3" aria-hidden="true" />
+                              <span>Deactivate</span>
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => toggleStatusMutation.mutate({ id: op.id, is_active: true })}
+                              disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
+                              className="h-7 text-xs gap-1 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300"
+                              title="Reactivate operator account"
+                            >
+                              <UserCheck className="w-3 h-3" aria-hidden="true" />
+                              <span>Reactivate</span>
+                            </Button>
+                          )}
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => setDeleteTarget(op)}
+                            disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
+                            className="h-7 w-7 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"
+                            aria-label={`Delete operator ${op.name}`}
+                            title="Delete operator permanently"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </Can>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="py-12 text-center text-xs text-muted-foreground font-mono">
-              Loading operators from control plane registry...
-            </div>
-          ) : isError ? (
-            <div className="py-6">
-              <ErrorState error={error} onRetry={refetch} />
-            </div>
-          ) : !operators || operators.length === 0 ? (
-            <div className="py-12 text-center text-xs text-muted-foreground">
-              No operators registered yet.
-            </div>
-          ) : (
-            <div className="divide-y divide-border/60">
-              {operators.map((op) => (
-                <div key={op.id} className="py-3.5 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-slate-800/80 border border-slate-700/60 flex items-center justify-center text-amber-400 font-mono font-bold text-xs">
-                      {op.name.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-foreground">{op.name}</span>
-                        {op.is_local ? (
-                          <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/30 gap-1 font-mono">
-                            <KeyRound className="w-2.5 h-2.5" />
-                            Break-Glass / Local
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-400 border-blue-500/30 gap-1 font-mono">
-                            <UserCheck className="w-2.5 h-2.5" />
-                            SSO Federated
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground font-mono">{op.email}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs uppercase font-mono px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border/80 font-medium">
-                      Role: {op.role}
-                    </span>
-                    <Badge variant={op.is_active ? "default" : "destructive"} className="text-[10px]">
-                      {op.is_active ? "Active" : "Deactivated"}
-                    </Badge>
-
-                    {/* Operator Lifecycle Actions */}
-                    <Can perform="operators:write">
-                      <div className="flex items-center gap-1.5 ml-2">
-                        {op.is_active ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setDeactivateTarget(op)}
-                            disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
-                            className="h-7 text-xs gap-1 text-rose-400 border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-300"
-                            title="Deactivate operator account"
-                          >
-                            <UserX className="w-3 h-3" aria-hidden="true" />
-                            <span>Deactivate</span>
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => toggleStatusMutation.mutate({ id: op.id, is_active: true })}
-                            disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
-                            className="h-7 text-xs gap-1 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300"
-                            title="Reactivate operator account"
-                          >
-                            <UserCheck className="w-3 h-3" aria-hidden="true" />
-                            <span>Reactivate</span>
-                          </Button>
-                        )}
-
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => setDeleteTarget(op)}
-                          disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
-                          className="h-7 w-7 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"
-                          aria-label={`Delete operator ${op.name}`}
-                          title="Delete operator permanently"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                        </Button>
-                      </div>
-                    </Can>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
       </CloudSection>
 
       {/* Deactivation Confirmation Modal */}
@@ -375,7 +372,8 @@ export default function OperatorsPage() {
               <strong className="text-foreground font-mono">{deleteTarget?.name}</strong> (
               <span className="font-mono text-muted-foreground">{deleteTarget?.email}</span>)?
               <br />
-              <span className="text-rose-400 font-semibold">This action cannot be undone.</span> Credentials, role bindings, and personal tokens will be purged.
+              <span className="text-rose-400 font-semibold">This action cannot be undone.</span> Credentials, role
+              bindings, and personal tokens will be purged.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">

@@ -27,10 +27,7 @@ export function createMacaroon(rootKeyId: string, rootSecret: string, location: 
 // Attenuate a Macaroon by adding a caveat
 export function addCaveat(macaroon: Macaroon, caveat: string): Macaroon {
   // A caveat updates the signature using the previous signature as the key
-  const newSignature = crypto
-    .createHmac("sha256", Buffer.from(macaroon.signature, "hex"))
-    .update(caveat)
-    .digest("hex");
+  const newSignature = crypto.createHmac("sha256", Buffer.from(macaroon.signature, "hex")).update(caveat).digest("hex");
 
   return {
     ...macaroon,
@@ -46,18 +43,12 @@ export function verifyMacaroon(macaroon: Macaroon, rootSecret: string): boolean 
 
   // 2. Reapply all caveats sequentially
   for (const caveat of macaroon.caveats) {
-    currentSig = crypto
-      .createHmac("sha256", Buffer.from(currentSig, "hex"))
-      .update(caveat)
-      .digest("hex");
+    currentSig = crypto.createHmac("sha256", Buffer.from(currentSig, "hex")).update(caveat).digest("hex");
   }
 
   // 3. Compare final signature safely (prevent timing attacks)
   try {
-    return crypto.timingSafeEqual(
-      Buffer.from(currentSig, "hex"),
-      Buffer.from(macaroon.signature, "hex")
-    );
+    return crypto.timingSafeEqual(Buffer.from(currentSig, "hex"), Buffer.from(macaroon.signature, "hex"));
   } catch {
     return false;
   }

@@ -489,7 +489,7 @@ func (c *Client) persistCredential() {
 // Argus's credential.HeartbeatSignature.
 func heartbeatSignature(secret, instanceUUID string, timestampUnix int64, nonce string, live, ready bool) string {
 	mac := hmac.New(sha256.New, []byte(secret))
-	fmt.Fprintf(mac, "%s|%d|%s|%t|%t", instanceUUID, timestampUnix, nonce, live, ready)
+	_, _ = fmt.Fprintf(mac, "%s|%d|%s|%t|%t", instanceUUID, timestampUnix, nonce, live, ready)
 	return hex.EncodeToString(mac.Sum(nil))
 }
 

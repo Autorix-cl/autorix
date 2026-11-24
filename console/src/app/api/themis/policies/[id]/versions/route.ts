@@ -10,6 +10,6 @@ export async function GET(req: NextRequest, { params }: Params) {
   return proxyRequest(
     "themis",
     `/policies/${encodeURIComponent(id)}/versions?tenant_id=${encodeURIComponent(tenantId)}`,
-    policyVersionListSchema
+    policyVersionListSchema,
   );
 }

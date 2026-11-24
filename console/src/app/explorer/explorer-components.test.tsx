@@ -24,8 +24,8 @@ describe("Cross-Engine Explorer UI Components", () => {
           oauth_grants: [],
           api_keys: [{ id: "k1", name: "Deploy Key", prefix: "av_live_****" }],
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     render(<UnifiedSubjectView />);
@@ -52,8 +52,8 @@ describe("Cross-Engine Explorer UI Components", () => {
             themis: { evaluated: true, policies_matched: 1, allowed: true },
           },
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     render(<EffectiveAccessExplorer />);
@@ -78,8 +78,8 @@ describe("Cross-Engine Explorer UI Components", () => {
           ],
           outcome: { allowed: true, status_code: 200, final_decision: "Forwarded", latency_total_ms: 1.5 },
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     render(<RequestSimulator />);
@@ -105,8 +105,8 @@ describe("Cross-Engine Explorer UI Components", () => {
             remediation_link: "/vulcan",
           },
         ]),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     render(<ConsistencyChecker />);
@@ -119,7 +119,7 @@ describe("Cross-Engine Explorer UI Components", () => {
 
   it("renders ExplorerPage with tabs", async () => {
     vi.mocked(global.fetch).mockResolvedValue(
-      new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } })
+      new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } }),
     );
 
     render(<ExplorerPage />);

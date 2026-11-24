@@ -37,12 +37,48 @@ interface EngineCardDef {
 
 const ENGINE_CARDS: EngineCardDef[] = [
   { type: "ego", title: "Ego (Identity)", desc: "Identity & trait management with MFA", icon: Users, port: ":4433" },
-  { type: "nexus", title: "Nexus (Zanzibar)", desc: "Fine-grained relationship authorization & graph queries", icon: Network, port: ":50051" },
-  { type: "janus", title: "Janus (OAuth2/OIDC)", desc: "Client lifecycle, JWKS & token introspection", icon: KeyRound, port: ":4444" },
-  { type: "aegis", title: "Aegis (Proxy)", desc: "Reverse proxy policy enforcement & path rewrites", icon: Shield, port: ":4455" },
-  { type: "vulcan", title: "Vulcan (API Keys)", desc: "API key issuance, macaroons & quotas", icon: Layers, port: ":4466" },
-  { type: "hermes", title: "Hermes (Enterprise)", desc: "SAML 2.0 federation & SCIM 2.0 sync", icon: Building2, port: ":4477" },
-  { type: "themis", title: "Themis (Policy)", desc: "CEL expression compilation & dry-run evaluation", icon: Scale, port: ":4488" },
+  {
+    type: "nexus",
+    title: "Nexus (Zanzibar)",
+    desc: "Fine-grained relationship authorization & graph queries",
+    icon: Network,
+    port: ":50051",
+  },
+  {
+    type: "janus",
+    title: "Janus (OAuth2/OIDC)",
+    desc: "Client lifecycle, JWKS & token introspection",
+    icon: KeyRound,
+    port: ":4444",
+  },
+  {
+    type: "aegis",
+    title: "Aegis (Proxy)",
+    desc: "Reverse proxy policy enforcement & path rewrites",
+    icon: Shield,
+    port: ":4455",
+  },
+  {
+    type: "vulcan",
+    title: "Vulcan (API Keys)",
+    desc: "API key issuance, macaroons & quotas",
+    icon: Layers,
+    port: ":4466",
+  },
+  {
+    type: "hermes",
+    title: "Hermes (Enterprise)",
+    desc: "SAML 2.0 federation & SCIM 2.0 sync",
+    icon: Building2,
+    port: ":4477",
+  },
+  {
+    type: "themis",
+    title: "Themis (Policy)",
+    desc: "CEL expression compilation & dry-run evaluation",
+    icon: Scale,
+    port: ":4488",
+  },
 ];
 
 export default function FleetOverviewPage() {
@@ -64,7 +100,14 @@ export default function FleetOverviewPage() {
         arn="arn:autorix:argus:prod:default:fleet/control-plane"
         actions={
           <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={refreshCapabilities} disabled={isLoading} className="h-8 gap-1.5 text-xs">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={refreshCapabilities}
+              disabled={isLoading}
+              className="h-8 gap-1.5 text-xs"
+            >
               <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} aria-hidden="true" />
               Refresh
             </Button>
@@ -111,7 +154,9 @@ export default function FleetOverviewPage() {
         <Card className="border-border/80 bg-card/60 backdrop-blur-xs">
           <CardHeader className="p-4 pb-2">
             <CardDescription className="text-xs">Cluster Health</CardDescription>
-            <CardTitle className={`text-2xl font-bold font-mono flex items-center justify-between ${healthyCount === 7 ? "text-emerald-400" : healthyCount > 0 ? "text-amber-400" : "text-muted-foreground"}`}>
+            <CardTitle
+              className={`text-2xl font-bold font-mono flex items-center justify-between ${healthyCount === 7 ? "text-emerald-400" : healthyCount > 0 ? "text-amber-400" : "text-muted-foreground"}`}
+            >
               <span>{Math.round((healthyCount / 7) * 100)}%</span>
               <Activity className="h-5 w-5 opacity-60" aria-hidden="true" />
             </CardTitle>

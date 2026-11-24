@@ -40,29 +40,28 @@ describe("CSRF origin verification", () => {
 });
 
 describe("API dot-path bypass prevention and auth allowlist", () => {
-  it.each([
-    "/api/identities/alice@example.com",
-    "/api/oauth2/scopes/profile.read",
-    "/api/files/export.svg",
-  ])("rejects unauthenticated GET %s with 401 even when path contains a dot", async (path) => {
-    const request = new NextRequest(`https://console.example${path}`, { method: "GET" });
-    const response = await middleware(request);
-    expect(response.status).toBe(401);
-  });
+  it.each(["/api/identities/alice@example.com", "/api/oauth2/scopes/profile.read", "/api/files/export.svg"])(
+    "rejects unauthenticated GET %s with 401 even when path contains a dot",
+    async (path) => {
+      const request = new NextRequest(`https://console.example${path}`, { method: "GET" });
+      const response = await middleware(request);
+      expect(response.status).toBe(401);
+    },
+  );
 
-  it.each([
-    "/api/identities/alice@example.com",
-    "/api/oauth2/scopes/profile.read",
-  ])("enforces CSRF on cross-origin POST %s with 403 even when path contains a dot", async (path) => {
-    const request = new NextRequest(`https://console.example${path}`, {
-      method: "POST",
-      headers: { Origin: "https://attacker.example" },
-    });
-    request.cookies.set("autorix_session", "session");
+  it.each(["/api/identities/alice@example.com", "/api/oauth2/scopes/profile.read"])(
+    "enforces CSRF on cross-origin POST %s with 403 even when path contains a dot",
+    async (path) => {
+      const request = new NextRequest(`https://console.example${path}`, {
+        method: "POST",
+        headers: { Origin: "https://attacker.example" },
+      });
+      request.cookies.set("autorix_session", "session");
 
-    const response = await middleware(request);
-    expect(response.status).toBe(403);
-  });
+      const response = await middleware(request);
+      expect(response.status).toBe(403);
+    },
+  );
 
   it("allows genuine non-API static assets without a session", async () => {
     const request = new NextRequest("https://console.example/logo.svg", { method: "GET" });

@@ -155,4 +155,3 @@ describe("Vulcan Engine Depth Schemas", () => {
     expect(verifyKeyResponseSchema.safeParse({ valid: false, error: "expired caveat" }).success).toBe(true);
   });
 });
-

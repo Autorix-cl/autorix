@@ -24,10 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { CodeBlock } from "@/components/ui/code-block";
-import {
-  complianceEvidenceItemSchema,
-  type ComplianceEvidenceItem,
-} from "@/lib/api/schemas/compliance";
+import { complianceEvidenceItemSchema, type ComplianceEvidenceItem } from "@/lib/api/schemas/compliance";
 import type { AuditVerification } from "@/lib/api/schemas/audit";
 import { healthResponseSchema } from "@/lib/api/schemas/health";
 import { fetchAndParse } from "@/lib/api/schema";
@@ -59,15 +56,14 @@ export default function CompliancePage() {
       }
       const json = await res.json();
       if (Array.isArray(json)) return json.map((it) => complianceEvidenceItemSchema.parse(it));
-      if (json.data && Array.isArray(json.data)) return json.data.map((it: unknown) => complianceEvidenceItemSchema.parse(it));
+      if (json.data && Array.isArray(json.data))
+        return json.data.map((it: unknown) => complianceEvidenceItemSchema.parse(it));
       return [];
     },
   });
 
   // Live cluster health & audit chain verification (never hardcoded)
-  const { data: healthData } = useApiQuery(["health"], () =>
-    fetchAndParse("/api/health", healthResponseSchema),
-  );
+  const { data: healthData } = useApiQuery(["health"], () => fetchAndParse("/api/health", healthResponseSchema));
   const { data: auditVerification } = useQuery<AuditVerification | null>({
     queryKey: ["audit", "verification"],
     queryFn: async () => {
@@ -104,11 +100,7 @@ export default function CompliancePage() {
 
   const healthyProbes = healthData?.services?.filter((s) => s.status === "healthy").length ?? 0;
   const totalProbes = healthData?.services?.length ?? 0;
-  const chainStatusLabel = !auditVerification
-    ? "UNVERIFIED"
-    : auditVerification.verified
-      ? "INTACT"
-      : "BROKEN";
+  const chainStatusLabel = !auditVerification ? "UNVERIFIED" : auditVerification.verified ? "INTACT" : "BROKEN";
 
   const handleGeneratePackage = async (framework: string) => {
     setIsGeneratingPackage(true);
@@ -257,9 +249,7 @@ export default function CompliancePage() {
                 <FileBadge className="w-5 h-5" />
               </div>
               <div>
-                <CardTitle className="text-base font-semibold">
-                  Auditor Evidence Package Generator
-                </CardTitle>
+                <CardTitle className="text-base font-semibold">Auditor Evidence Package Generator</CardTitle>
                 <CardDescription className="text-xs">
                   Generate a structured compliance bundle formatted for SOC 2 Type II and ISO 27001 external auditors
                 </CardDescription>
@@ -271,7 +261,10 @@ export default function CompliancePage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
             {/* Audit Period Selection */}
             <div>
-              <label htmlFor="compliance-audit-period" className="text-xs font-medium text-muted-foreground block mb-1.5">
+              <label
+                htmlFor="compliance-audit-period"
+                className="text-xs font-medium text-muted-foreground block mb-1.5"
+              >
                 Audit Reporting Period
               </label>
               <select
@@ -290,9 +283,7 @@ export default function CompliancePage() {
 
             {/* Included Evidence Modules */}
             <div className="sm:col-span-2 flex flex-col justify-center">
-              <span className="text-xs font-medium text-muted-foreground block mb-1.5">
-                Included Evidence Modules
-              </span>
+              <span className="text-xs font-medium text-muted-foreground block mb-1.5">Included Evidence Modules</span>
               <div className="flex flex-wrap gap-2 text-xs">
                 <Badge variant="outline" className="text-[11px] bg-muted/40 font-mono gap-1">
                   <CheckCircle2 className="w-3 h-3 text-emerald-400" />
@@ -451,9 +442,7 @@ export default function CompliancePage() {
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-semibold text-foreground">
-                              {control.control_name}
-                            </span>
+                            <span className="text-sm font-semibold text-foreground">{control.control_name}</span>
                             <Badge variant="outline" className="text-[10px] font-mono">
                               {control.framework}
                             </Badge>
@@ -463,9 +452,7 @@ export default function CompliancePage() {
                               </Badge>
                             )}
                           </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {control.description}
-                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{control.description}</p>
                         </div>
                       </div>
 
@@ -479,7 +466,11 @@ export default function CompliancePage() {
                           onClick={() => setExpandedControlId(isExpanded ? null : control.id)}
                           className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
                         >
-                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" /> : <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />}
+                          {isExpanded ? (
+                            <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />
+                          ) : (
+                            <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+                          )}
                           Evidence Proof
                         </Button>
                       </div>
@@ -493,9 +484,7 @@ export default function CompliancePage() {
                             <span className="text-muted-foreground text-[10px] block uppercase font-medium">
                               Evaluator Sentinel
                             </span>
-                            <span className="font-mono text-foreground font-medium">
-                              {control.evaluator}
-                            </span>
+                            <span className="font-mono text-foreground font-medium">{control.evaluator}</span>
                           </div>
                           <div>
                             <span className="text-muted-foreground text-[10px] block uppercase font-medium">

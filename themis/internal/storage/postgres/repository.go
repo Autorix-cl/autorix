@@ -42,7 +42,7 @@ func (r *Repository) Create(ctx context.Context, policy *core.Policy) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	err = tx.QueryRow(ctx, `
 		INSERT INTO policies (tenant_id, name, description, expression, priority, enabled, labels)
@@ -122,7 +122,6 @@ func (r *Repository) List(ctx context.Context, filter core.ListFilter) ([]core.P
 		}
 		query += fmt.Sprintf(" AND labels @> $%d::jsonb", argIdx)
 		args = append(args, labelsJSON)
-		argIdx++
 	}
 
 	query += " ORDER BY priority ASC, created_at ASC"
@@ -212,7 +211,6 @@ func (r *Repository) ListPage(ctx context.Context, filter core.ListFilter, limit
 		}
 		query += fmt.Sprintf(" AND labels @> $%d::jsonb", argIdx)
 		args = append(args, labelsJSON)
-		argIdx++
 	}
 
 	if cursor != "" {
@@ -276,7 +274,7 @@ func (r *Repository) Update(ctx context.Context, policy *core.Policy) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	err = tx.QueryRow(ctx, `
 		UPDATE policies
@@ -405,7 +403,7 @@ func (r *Repository) Rollback(ctx context.Context, tenantID, policyID string, ve
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin rollback tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	var v core.PolicyVersion
 	var labelsJSON []byte

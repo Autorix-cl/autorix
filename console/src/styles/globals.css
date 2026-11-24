@@ -140,7 +140,9 @@
 /* Glassmorphism & Enterprise Glows */
 .enterprise-card-glow {
   position: relative;
-  transition: border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .enterprise-card-glow:hover {
   border-color: hsl(var(--primary) / 0.4);
@@ -152,7 +154,9 @@
   background-image:
     radial-gradient(var(--mesh-dot) 1px, transparent 1px),
     radial-gradient(ellipse 80% 50% at 50% -10%, hsl(var(--primary) / 0.1), transparent 70%);
-  background-size: 24px 24px, 100% 100%;
+  background-size:
+    24px 24px,
+    100% 100%;
 }
 
 /* Modern Cloud Console Surfaces & Telemetry HUD */
@@ -160,7 +164,9 @@
   background: linear-gradient(180deg, hsl(var(--card) / 0.96) 0%, hsl(var(--card) / 0.78) 100%);
   backdrop-filter: blur(12px);
   border: 1px solid hsl(var(--border) / 0.75);
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.16), 0 0 0 1px hsl(var(--foreground) / 0.03) inset;
+  box-shadow:
+    0 1px 2px 0 rgba(0, 0, 0, 0.16),
+    0 0 0 1px hsl(var(--foreground) / 0.03) inset;
 }
 
 .light .cloud-surface {
@@ -171,7 +177,9 @@
 .cloud-hud-item {
   background: hsl(var(--muted) / 0.25);
   border: 1px solid hsl(var(--border) / 0.5);
-  transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .cloud-hud-item:hover {
   background: hsl(var(--muted) / 0.4);

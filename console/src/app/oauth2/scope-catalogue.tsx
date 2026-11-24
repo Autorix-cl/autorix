@@ -19,11 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { fetchAndParse } from "@/lib/api/schema";
-import {
-  oauth2ScopeListSchema,
-  oauth2ScopeSchema,
-  type OAuth2Scope,
-} from "@/lib/api/schemas/oauth2";
+import { oauth2ScopeListSchema, oauth2ScopeSchema, type OAuth2Scope } from "@/lib/api/schemas/oauth2";
 import { LoadingState } from "@/components/state/loading-state";
 import { EmptyState } from "@/components/state/empty-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -47,9 +43,7 @@ export function ScopeCatalogue() {
     isLoading,
     isError,
     refetch,
-  } = useApiQuery(["oauth2-scopes"], () =>
-    fetchAndParse<OAuth2Scope[]>("/api/oauth2/scopes", oauth2ScopeListSchema)
-  );
+  } = useApiQuery(["oauth2-scopes"], () => fetchAndParse<OAuth2Scope[]>("/api/oauth2/scopes", oauth2ScopeListSchema));
 
   const scopes = scopesRaw ?? [];
 
@@ -65,19 +59,15 @@ export function ScopeCatalogue() {
       .map((c) => c.trim())
       .filter(Boolean);
 
-    const res = await fetchAndParse(
-      "/api/oauth2/scopes",
-      oauth2ScopeSchema,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim(),
-          claims,
-        }),
-      }
-    );
+    const res = await fetchAndParse("/api/oauth2/scopes", oauth2ScopeSchema, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: name.trim(),
+        description: description.trim(),
+        claims,
+      }),
+    });
 
     setIsSubmitting(false);
 
@@ -96,11 +86,9 @@ export function ScopeCatalogue() {
   const handleDelete = async (scopeName: string) => {
     setIsDeleting(true);
     try {
-      const res = await fetchAndParse(
-        `/api/oauth2/scopes/${encodeURIComponent(scopeName)}`,
-        z.unknown(),
-        { method: "DELETE" }
-      );
+      const res = await fetchAndParse(`/api/oauth2/scopes/${encodeURIComponent(scopeName)}`, z.unknown(), {
+        method: "DELETE",
+      });
 
       if (!res.ok) {
         toast.error(res.error.message || "Failed to delete scope");
@@ -143,7 +131,10 @@ export function ScopeCatalogue() {
           {isLoading && <LoadingState label="Loading scopes catalogue..." />}
 
           {isError && (
-            <div role="alert" className="p-4 rounded border border-destructive/20 bg-destructive/10 text-destructive text-sm">
+            <div
+              role="alert"
+              className="p-4 rounded border border-destructive/20 bg-destructive/10 text-destructive text-sm"
+            >
               Failed to load scope catalogue from Janus.
             </div>
           )}
@@ -176,12 +167,8 @@ export function ScopeCatalogue() {
               <TableBody>
                 {scopes.map((s) => (
                   <TableRow key={s.name}>
-                    <TableCell className="font-mono font-medium text-sm">
-                      {s.name}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {s.description || "—"}
-                    </TableCell>
+                    <TableCell className="font-mono font-medium text-sm">{s.name}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{s.description || "—"}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {s.claims && s.claims.length > 0 ? (
@@ -284,12 +271,7 @@ export function ScopeCatalogue() {
             </div>
 
             <DialogFooter className="pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsCreateOpen(false)}
-                disabled={isSubmitting}
-              >
+              <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)} disabled={isSubmitting}>
                 Cancel
               </Button>
               <Button type="submit" disabled={isSubmitting || !name.trim()}>

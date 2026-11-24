@@ -19,9 +19,7 @@ export function GrantsPanel() {
     isLoading,
     isError,
     refetch,
-  } = useApiQuery(["oauth2-grants"], () =>
-    fetchAndParse<OAuth2Grant[]>("/api/oauth2/grants", oauth2GrantListSchema)
-  );
+  } = useApiQuery(["oauth2-grants"], () => fetchAndParse<OAuth2Grant[]>("/api/oauth2/grants", oauth2GrantListSchema));
 
   const grants = grantsRaw ?? [];
 
@@ -71,15 +69,9 @@ export function GrantsPanel() {
             <TableBody>
               {grants.map((g) => (
                 <TableRow key={g.grant_id}>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {g.grant_id}
-                  </TableCell>
-                  <TableCell className="font-medium text-sm">
-                    {g.subject}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {g.client_id}
-                  </TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{g.grant_id}</TableCell>
+                  <TableCell className="font-medium text-sm">{g.subject}</TableCell>
+                  <TableCell className="font-mono text-xs">{g.client_id}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {g.scopes?.map((s) => (
@@ -89,9 +81,7 @@ export function GrantsPanel() {
                       ))}
                     </div>
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {formatDateTime(g.created_at)}
-                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{formatDateTime(g.created_at)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

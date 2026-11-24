@@ -32,12 +32,7 @@ import { CodeBlock } from "@/components/ui/code-block";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { useApiMutation } from "@/lib/query/use-api-mutation";
 import { fetchAndParse } from "@/lib/api/schema";
-import {
-  ruleListSchema,
-  testMatchResponseSchema,
-  type Rule,
-  type PipelineTrace,
-} from "@/lib/api/schemas/aegis";
+import { ruleListSchema, testMatchResponseSchema, type Rule, type PipelineTrace } from "@/lib/api/schemas/aegis";
 import { LoadingState } from "@/components/state/loading-state";
 import { EmptyState } from "@/components/state/empty-state";
 import { ErrorState } from "@/components/state/error-state";
@@ -133,7 +128,7 @@ export default function ProxyRulesPage() {
         setMatchedRule(data.matched && data.rule ? toRuleItem(data.rule) : null);
         setPipelineTrace(data.trace ?? null);
       },
-    }
+    },
   );
 
   const handleTestMatch = () => {
@@ -210,7 +205,7 @@ export default function ProxyRulesPage() {
         r.upstream.url.toLowerCase().includes(q) ||
         r.authenticators.some((a) => a.handler.toLowerCase().includes(q)) ||
         (r.authorizer?.handler || "").toLowerCase().includes(q) ||
-        r.mutators.some((m) => m.handler.toLowerCase().includes(q))
+        r.mutators.some((m) => m.handler.toLowerCase().includes(q)),
     );
   }, [apiRules, searchFilter]);
 
@@ -244,9 +239,7 @@ export default function ProxyRulesPage() {
       <div className="space-y-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-              {t("proxyRules.title")}
-            </h1>
+            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("proxyRules.title")}</h1>
             <p className="text-xs text-muted-foreground mt-1">{t("proxyRules.subtitle")}</p>
           </div>
         </div>
@@ -416,16 +409,19 @@ export default function ProxyRulesPage() {
                               >
                                 <ArrowUp className="h-3 w-3" />
                               </Button>
-                              <span className="text-[10px] font-mono font-bold text-muted-foreground">
-                                {idx + 1}
-                              </span>
+                              <span className="text-[10px] font-mono font-bold text-muted-foreground">{idx + 1}</span>
                               <Button
                                 type="button"
                                 size="icon"
                                 variant="ghost"
                                 className="h-6 w-6"
                                 aria-label={`Move rule ${rule.id} down`}
-                                disabled={!canWriteRules || idx === filteredRules.length - 1 || reorderMutation.isPending || !!searchFilter}
+                                disabled={
+                                  !canWriteRules ||
+                                  idx === filteredRules.length - 1 ||
+                                  reorderMutation.isPending ||
+                                  !!searchFilter
+                                }
                                 onClick={() => moveRule(idx, "down")}
                                 title={searchFilter ? "Clear filter to reorder" : "Move Down"}
                               >
@@ -466,11 +462,7 @@ export default function ProxyRulesPage() {
                                 <span className="text-[11px]">ID: {rule.id}</span>
                               </div>
 
-                              {isShadowed && (
-                                <p className="text-[11px] text-amber-400 font-medium">
-                                  ⚠ {shadowReason}
-                                </p>
-                              )}
+                              {isShadowed && <p className="text-[11px] text-amber-400 font-medium">⚠ {shadowReason}</p>}
                             </div>
                           </div>
 
@@ -600,7 +592,8 @@ export default function ProxyRulesPage() {
                       <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
                         <Server className="h-3.5 w-3.5 text-blue-400" />
                         <span>
-                          {t("proxyRules.upstreamLabel")}: <strong className="text-foreground">{matchedRule.upstream}</strong>
+                          {t("proxyRules.upstreamLabel")}:{" "}
+                          <strong className="text-foreground">{matchedRule.upstream}</strong>
                         </span>
                       </div>
                     </div>
@@ -609,7 +602,9 @@ export default function ProxyRulesPage() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div className="rounded-lg border border-border/60 bg-card p-3 space-y-1.5">
                         <div className="text-[10px] font-bold uppercase text-blue-400">{t("proxyRules.step1")}</div>
-                        <div className="text-xs font-semibold text-foreground font-mono">{matchedRule.authenticator}</div>
+                        <div className="text-xs font-semibold text-foreground font-mono">
+                          {matchedRule.authenticator}
+                        </div>
                         <div className="text-[11px] text-muted-foreground">
                           Verifies cryptographic claims &amp; token validity
                         </div>
@@ -656,15 +651,9 @@ export default function ProxyRulesPage() {
                             >
                               <div className="flex items-center gap-2">
                                 <span className="text-muted-foreground">{idx + 1}.</span>
-                                <span className="font-semibold uppercase text-[11px] text-primary">
-                                  {step.stage}
-                                </span>
-                                {step.handler && (
-                                  <span className="text-muted-foreground">({step.handler})</span>
-                                )}
-                                {step.details && (
-                                  <span className="text-xs text-foreground/80">{step.details}</span>
-                                )}
+                                <span className="font-semibold uppercase text-[11px] text-primary">{step.stage}</span>
+                                {step.handler && <span className="text-muted-foreground">({step.handler})</span>}
+                                {step.details && <span className="text-xs text-foreground/80">{step.details}</span>}
                                 {step.target_url && (
                                   <span className="text-xs text-blue-400 flex items-center gap-1">
                                     <ArrowRight className="w-3 h-3" />
@@ -690,7 +679,8 @@ export default function ProxyRulesPage() {
                   </div>
                 ) : (
                   <div className="rounded-xl border border-dashed border-border/80 bg-muted/10 p-6 text-center text-xs text-muted-foreground">
-                    Enter an HTTP method and request path, then run a simulation to inspect matching Aegis rules and pipeline stages.
+                    Enter an HTTP method and request path, then run a simulation to inspect matching Aegis rules and
+                    pipeline stages.
                   </div>
                 )}
               </CardContent>
@@ -708,12 +698,7 @@ export default function ProxyRulesPage() {
             badgeVariant="cyan"
             actions={
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExportJson}
-                  className="h-8 gap-1.5 text-xs"
-                >
+                <Button variant="outline" size="sm" onClick={handleExportJson} className="h-8 gap-1.5 text-xs">
                   <Download className="h-3.5 w-3.5" />
                   <span>Export JSON</span>
                 </Button>

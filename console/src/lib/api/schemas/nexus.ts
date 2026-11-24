@@ -73,7 +73,7 @@ export const decisionNodeSchema: z.ZodType<DecisionNode> = z.lazy(() =>
     caveat: caveatResultSchema.optional(),
     rewrite_type: z.string().optional(),
     children: z.array(decisionNodeSchema).optional(),
-  })
+  }),
 );
 
 export const checkResponseSchema = z.object({
@@ -98,7 +98,7 @@ export const expandTreeNodeSchema: z.ZodType<ExpandTreeNode> = z.lazy(() =>
     tuple: tupleSchema.optional(),
     subjects: z.array(z.string()).optional(),
     children: z.array(expandTreeNodeSchema).optional(),
-  })
+  }),
 );
 
 export const expandResponseSchema = z.object({
@@ -113,7 +113,7 @@ export const lookupSubjectsResponseSchema = z.object({
       namespace: z.string(),
       object: z.string(),
       relation: z.string().optional(),
-    })
+    }),
   ),
 });
 export type LookupSubjectsResponse = z.infer<typeof lookupSubjectsResponseSchema>;
@@ -139,7 +139,7 @@ export const rewriteRuleSchema: z.ZodType<RewriteRule> = z.lazy(() =>
     tupleset_relation: z.string().optional(),
     computed_relation: z.string().optional(),
     children: z.array(rewriteRuleSchema).optional(),
-  })
+  }),
 );
 
 export const relationDefinitionSchema = z.object({
@@ -165,4 +165,3 @@ export const caveatSchema = z.object({
 export type CaveatDefinition = z.infer<typeof caveatSchema>;
 
 export const caveatListSchema = z.array(caveatSchema);
-

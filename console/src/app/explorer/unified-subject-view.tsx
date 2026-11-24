@@ -5,16 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  User,
-  Search,
-  Key,
-  Layers,
-  Network,
-  Laptop,
-  Building2,
-  Loader2,
-} from "lucide-react";
+import { User, Search, Key, Layers, Network, Laptop, Building2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { UnifiedSubject } from "@/lib/api/schemas/explorer";
 
@@ -180,11 +171,7 @@ export function UnifiedSubjectView() {
                           {r.relation}
                         </Badge>
                       </div>
-                      {r.caveat && (
-                        <div className="text-[10px] text-amber-500">
-                          caveat: {r.caveat}
-                        </div>
-                      )}
+                      {r.caveat && <div className="text-[10px] text-amber-500">caveat: {r.caveat}</div>}
                     </div>
                   ))
                 )}

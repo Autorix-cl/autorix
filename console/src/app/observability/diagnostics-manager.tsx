@@ -223,12 +223,7 @@ export function DiagnosticsManager() {
                   </Select>
                 </div>
 
-                <Button
-                  size="sm"
-                  onClick={runProbe}
-                  disabled={isProbing}
-                  className="h-8 gap-1.5 text-xs mt-4"
-                >
+                <Button size="sm" onClick={runProbe} disabled={isProbing} className="h-8 gap-1.5 text-xs mt-4">
                   {isProbing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
                   Execute Probe
                 </Button>
@@ -273,7 +268,9 @@ export function DiagnosticsManager() {
                         {renderStageIcon(probeResult.tls_status)}
                       </div>
                       <p className="text-[11px] font-mono text-muted-foreground">
-                        {probeResult.tls_status === "skipped" ? "Mesh mTLS / Clear" : `${probeResult.tls_latency_ms} ms`}
+                        {probeResult.tls_status === "skipped"
+                          ? "Mesh mTLS / Clear"
+                          : `${probeResult.tls_latency_ms} ms`}
                       </p>
                     </div>
 
@@ -367,25 +364,28 @@ export function DiagnosticsManager() {
               </thead>
               <tbody className="divide-y divide-border">
                 {migrations.map((mig) => {
-                  const isUpToDate = mig.current_schema_version === mig.expected_schema_version && mig.status !== "behind" && mig.status !== "error";
+                  const isUpToDate =
+                    mig.current_schema_version === mig.expected_schema_version &&
+                    mig.status !== "behind" &&
+                    mig.status !== "error";
                   return (
-                  <tr key={mig.engine_type} className="hover:bg-muted/20">
-                    <td className="px-4 py-2.5 font-semibold uppercase tracking-wide">{mig.engine_type}</td>
-                    <td className="px-3 py-2.5 font-mono text-muted-foreground">{mig.instance_id}</td>
-                    <td className="px-3 py-2.5 font-mono">v{mig.current_schema_version}</td>
-                    <td className="px-3 py-2.5 font-mono">v{mig.expected_schema_version}</td>
-                    <td className="px-3 py-2.5">
-                      <Badge
-                        variant={isUpToDate ? "default" : "warning"}
-                        className={`text-[10px] px-1.5 py-0 ${isUpToDate ? "bg-emerald-600" : ""}`}
-                      >
-                        {isUpToDate ? "Up to date" : mig.status || "Pending"}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-muted-foreground font-mono">
-                      {new Date(mig.last_migrated_at).toLocaleDateString()}
-                    </td>
-                  </tr>
+                    <tr key={mig.engine_type} className="hover:bg-muted/20">
+                      <td className="px-4 py-2.5 font-semibold uppercase tracking-wide">{mig.engine_type}</td>
+                      <td className="px-3 py-2.5 font-mono text-muted-foreground">{mig.instance_id}</td>
+                      <td className="px-3 py-2.5 font-mono">v{mig.current_schema_version}</td>
+                      <td className="px-3 py-2.5 font-mono">v{mig.expected_schema_version}</td>
+                      <td className="px-3 py-2.5">
+                        <Badge
+                          variant={isUpToDate ? "default" : "warning"}
+                          className={`text-[10px] px-1.5 py-0 ${isUpToDate ? "bg-emerald-600" : ""}`}
+                        >
+                          {isUpToDate ? "Up to date" : mig.status || "Pending"}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-muted-foreground font-mono">
+                        {new Date(mig.last_migrated_at).toLocaleDateString()}
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>

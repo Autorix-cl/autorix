@@ -140,7 +140,7 @@ func GenerateMeshPKI(targetDir string, services []string) error {
 		return err
 	}
 
-	if err := os.WriteFile(filepath.Join(targetDir, "ca.crt"), caPair.CertPEM, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(targetDir, "ca.crt"), caPair.CertPEM, 0600); err != nil {
 		return fmt.Errorf("write ca.crt: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(targetDir, "ca.key"), caPair.KeyPEM, 0600); err != nil {
@@ -153,7 +153,7 @@ func GenerateMeshPKI(targetDir string, services []string) error {
 			return err
 		}
 
-		if err := os.WriteFile(filepath.Join(targetDir, fmt.Sprintf("%s.crt", svc)), svcPair.CertPEM, 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(targetDir, fmt.Sprintf("%s.crt", svc)), svcPair.CertPEM, 0600); err != nil {
 			return fmt.Errorf("write %s.crt: %w", svc, err)
 		}
 		if err := os.WriteFile(filepath.Join(targetDir, fmt.Sprintf("%s.key", svc)), svcPair.KeyPEM, 0600); err != nil {

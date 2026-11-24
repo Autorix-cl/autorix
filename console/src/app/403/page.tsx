@@ -16,7 +16,8 @@ export default function ForbiddenPage() {
 
         <h1 className="text-2xl font-bold text-white mb-2">Insufficient Role Privileges</h1>
         <p className="text-sm text-slate-400 mb-8 max-w-sm mx-auto">
-          Your operator role does not have the required permissions to perform this action or view this resource. Contact your cluster owner to adjust your role assignments.
+          Your operator role does not have the required permissions to perform this action or view this resource.
+          Contact your cluster owner to adjust your role assignments.
         </p>
 
         <div className="flex items-center justify-center gap-3">

@@ -38,7 +38,13 @@ export function ThemisPoliciesTable() {
   const [selectedPolicyForVersions, setSelectedPolicyForVersions] = React.useState<Policy | null>(null);
   const [pendingDelete, setPendingDelete] = React.useState<Policy | null>(null);
 
-  const { data: policies = [], isLoading, isError, error, refetch } = useQuery<Policy[]>({
+  const {
+    data: policies = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery<Policy[]>({
     queryKey: ["themis-policies"],
     queryFn: async () => {
       const res = await fetch("/api/themis/policies");
@@ -122,9 +128,7 @@ export function ThemisPoliciesTable() {
                 onCheckedChange={(c) => toggleMutateRef.current({ id: policy.id, enabled: c })}
                 disabled={!canWrite || togglePending}
               />
-              <span className="text-xs text-muted-foreground">
-                {policy.enabled ? "Enabled" : "Disabled"}
-              </span>
+              <span className="text-xs text-muted-foreground">{policy.enabled ? "Enabled" : "Disabled"}</span>
             </div>
           );
         },
@@ -191,12 +195,7 @@ export function ThemisPoliciesTable() {
 
   return (
     <>
-      <DataTable
-        columns={columns}
-        data={policies}
-        isLoading={isLoading}
-        searchKey="name"
-      />
+      <DataTable columns={columns} data={policies} isLoading={isLoading} searchKey="name" />
 
       <ConfirmDialog
         open={Boolean(pendingDelete)}

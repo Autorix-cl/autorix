@@ -68,7 +68,7 @@ func (t *ThemisClient) Evaluate(ctx context.Context, req EvaluatePolicyRequest) 
 	if err != nil {
 		return nil, fmt.Errorf("themis policy evaluation failed: %w", err)
 	}
-	defer httpResp.Body.Close()
+	defer func() { _ = httpResp.Body.Close() }()
 
 	if httpResp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("themis returned status code %d", httpResp.StatusCode)

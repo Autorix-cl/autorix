@@ -44,7 +44,7 @@ describe("DynamicSchemaForm", () => {
         schema={mockSchema}
         value={{ email: "test@autorix.io", name: { first: "Ada" } }}
         onChange={onChange}
-      />
+      />,
     );
 
     // Primary identifier badge
@@ -62,9 +62,7 @@ describe("DynamicSchemaForm", () => {
 
     // Change interaction
     fireEvent.change(emailInput, { target: { value: "new@autorix.io" } });
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ email: "new@autorix.io" })
-    );
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ email: "new@autorix.io" }));
   });
 
   it("renders enum selects and specialized input formats", () => {
@@ -96,7 +94,7 @@ describe("DynamicSchemaForm", () => {
         schema={extendedSchema}
         value={{ department: "Security", phone: "+15551234" }}
         onChange={onChange}
-      />
+      />,
     );
 
     const select = screen.getByLabelText(/department/i) as HTMLSelectElement;
@@ -104,9 +102,7 @@ describe("DynamicSchemaForm", () => {
     expect(select.value).toBe("Security");
 
     fireEvent.change(select, { target: { value: "Engineering" } });
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ department: "Engineering" })
-    );
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ department: "Engineering" }));
 
     const phoneInput = screen.getByLabelText(/phone number/i) as HTMLInputElement;
     expect(phoneInput.type).toBe("tel");

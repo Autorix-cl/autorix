@@ -40,7 +40,7 @@ func (a *ArgusClient) VerifyAuditTrail(ctx context.Context) (*AuditVerificationR
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("argus verify returned status: %d", resp.StatusCode)

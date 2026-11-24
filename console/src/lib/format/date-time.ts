@@ -1,8 +1,4 @@
-export function formatDateTime(
-  date: Date | string | number,
-  locale: "en" | "es" = "en",
-  timezone?: string
-): string {
+export function formatDateTime(date: Date | string | number, locale: "en" | "es" = "en", timezone?: string): string {
   const d = typeof date === "object" ? date : new Date(date);
   return new Intl.DateTimeFormat(locale === "es" ? "es-ES" : "en-US", {
     year: "numeric",
@@ -15,10 +11,7 @@ export function formatDateTime(
   }).format(d);
 }
 
-export function formatRelativeTime(
-  date: Date | string | number,
-  locale: "en" | "es" = "en"
-): string {
+export function formatRelativeTime(date: Date | string | number, locale: "en" | "es" = "en"): string {
   const d = typeof date === "object" ? date : new Date(date);
   const now = Date.now();
   const diffSeconds = Math.round((d.getTime() - now) / 1000);

@@ -22,9 +22,7 @@ export default function EngineObservabilityPage() {
         </Button>
       </div>
       <div>
-        <h1 className="text-xl font-bold tracking-tight uppercase">
-          {engineType} Engine Telemetry
-        </h1>
+        <h1 className="text-xl font-bold tracking-tight uppercase">{engineType} Engine Telemetry</h1>
         <p className="text-xs text-muted-foreground mt-0.5">
           Dedicated saturation, percentiles, error rate and domain metrics
         </p>

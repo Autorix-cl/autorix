@@ -57,7 +57,6 @@ function toClientApp(c: OAuth2Client): ClientApp {
   };
 }
 
-
 export default function OAuth2Page() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -76,7 +75,6 @@ export default function OAuth2Page() {
   const [isDetailOpen, setIsDetailOpen] = React.useState(false);
 
   const isPublic = clientType === "public";
-
 
   const {
     data: clientsRaw,
@@ -137,7 +135,10 @@ export default function OAuth2Page() {
       clientSecret,
       isPublic,
       scopes: scopes.trim().split(/\s+/).filter(Boolean),
-      redirectUris: redirectUris.trim().split(/[\s,]+/).filter(Boolean),
+      redirectUris: redirectUris
+        .trim()
+        .split(/[\s,]+/)
+        .filter(Boolean),
       allowedAudiences: allowedAudiences.trim().split(/\s+/).filter(Boolean),
     });
   };
@@ -212,7 +213,13 @@ export default function OAuth2Page() {
           },
         ]}
         actions={
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading} className="h-8 gap-1.5 text-xs">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={loading}
+            className="h-8 gap-1.5 text-xs"
+          >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             <span>{t("common.refresh")}</span>
           </Button>
@@ -332,7 +339,8 @@ export default function OAuth2Page() {
                     perform="oauth2:write"
                     fallback={
                       <p className="text-xs text-muted-foreground text-center py-2">
-                        Read-only role — registering OAuth2 clients requires <code className="font-mono">oauth2:write</code>.
+                        Read-only role — registering OAuth2 clients requires{" "}
+                        <code className="font-mono">oauth2:write</code>.
                       </p>
                     }
                   >
@@ -394,7 +402,10 @@ export default function OAuth2Page() {
                 {/* Filter */}
                 <div className="flex items-center gap-2 w-full sm:w-72">
                   <div className="relative w-full">
-                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                    <Search
+                      className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground"
+                      aria-hidden="true"
+                    />
                     <Input
                       aria-label={t("oauth2.searchPlaceholder")}
                       placeholder={t("oauth2.searchPlaceholder")}
@@ -475,7 +486,9 @@ export default function OAuth2Page() {
                             ))}
                           </div>
                         </TableCell>
-                        <TableCell className="font-mono text-[11px] text-muted-foreground">{c.scopes.join(" ")}</TableCell>
+                        <TableCell className="font-mono text-[11px] text-muted-foreground">
+                          {c.scopes.join(" ")}
+                        </TableCell>
                         <TableCell>
                           <Badge variant={c.isPublic ? "info" : "purple"} className="text-[10px]">
                             {c.isPublic ? "Public (PKCE)" : "Confidential"}

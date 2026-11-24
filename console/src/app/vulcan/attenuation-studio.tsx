@@ -43,10 +43,7 @@ export function AttenuationStudio() {
   const selectedKey = keys.find((k) => k.id === keyId);
 
   const addCaveat = (presetValue?: string) => {
-    setCaveats([
-      ...caveats,
-      { id: Math.random().toString(36).substring(7), value: presetValue || "" },
-    ]);
+    setCaveats([...caveats, { id: Math.random().toString(36).substring(7), value: presetValue || "" }]);
   };
 
   const removeCaveat = (id: string) => {
@@ -67,7 +64,8 @@ export function AttenuationStudio() {
 
     setIsGenerating(true);
     try {
-      const csrfMatch = typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/) : null;
+      const csrfMatch =
+        typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/) : null;
       const csrf = csrfMatch ? decodeURIComponent(csrfMatch[1]) : undefined;
       const res = await fetch("/api/vulcan/macaroons/attenuate", {
         method: "POST",
@@ -108,7 +106,8 @@ export function AttenuationStudio() {
             Macaroon Attenuation Provenance (Narrowing Chain)
           </CardTitle>
           <CardDescription className="text-xs">
-            Visualizes how successive caveats cryptographically narrow authority without requiring coordination with the issuer.
+            Visualizes how successive caveats cryptographically narrow authority without requiring coordination with the
+            issuer.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -146,12 +145,8 @@ export function AttenuationStudio() {
                     )}
                     Caveat #{idx + 1}
                   </div>
-                  <div className="font-mono text-[11px] text-foreground truncate">
-                    {c.value || "(empty caveat)"}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    Attenuates scope cryptographically
-                  </p>
+                  <div className="font-mono text-[11px] text-foreground truncate">{c.value || "(empty caveat)"}</div>
+                  <p className="text-[10px] text-muted-foreground">Attenuates scope cryptographically</p>
                 </div>
               </div>
             ))}
@@ -163,9 +158,7 @@ export function AttenuationStudio() {
                 <Shield className="w-3.5 h-3.5" />
                 Delegated Token
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                HMAC-SHA256 Bound
-              </p>
+              <p className="text-[11px] text-muted-foreground">HMAC-SHA256 Bound</p>
               <div className="text-[10px] font-mono text-emerald-500">
                 {caveats.length} restriction{caveats.length === 1 ? "" : "s"} enforced
               </div>
@@ -190,7 +183,9 @@ export function AttenuationStudio() {
           <CardContent className="space-y-5 text-xs">
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="attenuate-root-key" className="text-xs">Root Key</Label>
+                <Label htmlFor="attenuate-root-key" className="text-xs">
+                  Root Key
+                </Label>
                 <Select value={keyId} onValueChange={setKeyId}>
                   <SelectTrigger id="attenuate-root-key" className="h-8 text-xs">
                     <SelectValue placeholder="Select an active root key" />
@@ -213,7 +208,10 @@ export function AttenuationStudio() {
               <div className="space-y-1.5">
                 <Label htmlFor="attenuate-root-secret" className="flex justify-between items-center text-xs">
                   <span>Root Secret</span>
-                  <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20 px-1.5 py-0">
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20 px-1.5 py-0"
+                  >
                     <ShieldAlert className="w-2.5 h-2.5 mr-1" aria-hidden="true" /> Signed via Vulcan BFF
                   </Badge>
                 </Label>

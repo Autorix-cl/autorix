@@ -34,13 +34,55 @@ function isPublicAuthPath(pathname: string | null): boolean {
 }
 
 const DEFAULT_ENGINES: Record<EngineType, EngineCapabilityInfo> = {
-  ego: { type: "ego", displayName: "Ego (Identity)", status: "healthy", instanceCount: 1, capabilities: ["identities", "traits", "mfa"] },
-  nexus: { type: "nexus", displayName: "Nexus (Zanzibar)", status: "healthy", instanceCount: 1, capabilities: ["tuples", "expand", "explain"] },
-  janus: { type: "janus", displayName: "Janus (OAuth2/OIDC)", status: "healthy", instanceCount: 1, capabilities: ["clients", "tokens", "jwks"] },
-  aegis: { type: "aegis", displayName: "Aegis (Proxy)", status: "healthy", instanceCount: 1, capabilities: ["rules", "traffic", "handlers"] },
-  vulcan: { type: "vulcan", displayName: "Vulcan (API Keys)", status: "healthy", instanceCount: 1, capabilities: ["keys", "macaroons", "quotas"] },
-  hermes: { type: "hermes", displayName: "Hermes (Enterprise)", status: "healthy", instanceCount: 1, capabilities: ["saml", "scim", "certificates"] },
-  themis: { type: "themis", displayName: "Themis (Policy/CEL)", status: "healthy", instanceCount: 1, capabilities: ["policies", "cel", "dryrun"] },
+  ego: {
+    type: "ego",
+    displayName: "Ego (Identity)",
+    status: "healthy",
+    instanceCount: 1,
+    capabilities: ["identities", "traits", "mfa"],
+  },
+  nexus: {
+    type: "nexus",
+    displayName: "Nexus (Zanzibar)",
+    status: "healthy",
+    instanceCount: 1,
+    capabilities: ["tuples", "expand", "explain"],
+  },
+  janus: {
+    type: "janus",
+    displayName: "Janus (OAuth2/OIDC)",
+    status: "healthy",
+    instanceCount: 1,
+    capabilities: ["clients", "tokens", "jwks"],
+  },
+  aegis: {
+    type: "aegis",
+    displayName: "Aegis (Proxy)",
+    status: "healthy",
+    instanceCount: 1,
+    capabilities: ["rules", "traffic", "handlers"],
+  },
+  vulcan: {
+    type: "vulcan",
+    displayName: "Vulcan (API Keys)",
+    status: "healthy",
+    instanceCount: 1,
+    capabilities: ["keys", "macaroons", "quotas"],
+  },
+  hermes: {
+    type: "hermes",
+    displayName: "Hermes (Enterprise)",
+    status: "healthy",
+    instanceCount: 1,
+    capabilities: ["saml", "scim", "certificates"],
+  },
+  themis: {
+    type: "themis",
+    displayName: "Themis (Policy/CEL)",
+    status: "healthy",
+    instanceCount: 1,
+    capabilities: ["policies", "cel", "dryrun"],
+  },
 };
 
 function buildEnginesWithStatus(status: EngineHealthStatus): Record<EngineType, EngineCapabilityInfo> {
@@ -177,18 +219,16 @@ export function CapabilityProvider({ children }: { children: React.ReactNode }) 
   const isEngineConnected = React.useCallback(
     (type: EngineType) => {
       const eng = engines[type];
-      return eng
-        ? eng.status !== "not_connected" && eng.status !== "unreachable" && eng.status !== "unknown"
-        : false;
+      return eng ? eng.status !== "not_connected" && eng.status !== "unreachable" && eng.status !== "unknown" : false;
     },
-    [engines]
+    [engines],
   );
 
   const getEngineStatus = React.useCallback(
     (type: EngineType) => {
       return engines[type]?.status || "not_connected";
     },
-    [engines]
+    [engines],
   );
 
   return (

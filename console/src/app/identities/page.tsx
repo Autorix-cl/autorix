@@ -3,7 +3,18 @@
 import * as React from "react";
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Users, Plus, UserCheck, Search, RefreshCw, UploadCloud, Download, FileCode, Shield, BookOpen } from "lucide-react";
+import {
+  Users,
+  Plus,
+  UserCheck,
+  Search,
+  RefreshCw,
+  UploadCloud,
+  Download,
+  FileCode,
+  Shield,
+  BookOpen,
+} from "lucide-react";
 import { ServiceHeader } from "@/components/layout/service-header";
 import { CloudSection } from "@/components/layout/cloud-section";
 
@@ -95,15 +106,17 @@ function IdentitiesPageContent() {
     isError,
     error,
     refetch,
-  } = useApiQuery(
-    ["identities", { q: searchQuery, cursor, limit: pageSize }],
-    () => fetchAndParse<PaginatedIdentities>(
+  } = useApiQuery(["identities", { q: searchQuery, cursor, limit: pageSize }], () =>
+    fetchAndParse<PaginatedIdentities>(
       `/api/identities?q=${encodeURIComponent(searchQuery)}&cursor=${encodeURIComponent(cursor)}&limit=${pageSize}`,
-      paginatedIdentityListSchema
-    )
+      paginatedIdentityListSchema,
+    ),
   );
 
-  const identities: IdentityItem[] = React.useMemo(() => (identitiesRaw?.data ?? []).map(toIdentityItem), [identitiesRaw]);
+  const identities: IdentityItem[] = React.useMemo(
+    () => (identitiesRaw?.data ?? []).map(toIdentityItem),
+    [identitiesRaw],
+  );
 
   React.useEffect(() => {
     if (!requestedId || selectedIdentity?.id === requestedId) return;
@@ -211,24 +224,16 @@ function IdentitiesPageContent() {
 
   return (
     <div className="space-y-6">
-      <IdentitySheet 
-        identity={selectedIdentity} 
-        isOpen={!!selectedIdentity} 
-        onOpenChange={(open) => !open && setSelectedIdentity(null)} 
+      <IdentitySheet
+        identity={selectedIdentity}
+        isOpen={!!selectedIdentity}
+        onOpenChange={(open) => !open && setSelectedIdentity(null)}
         onIdentityUpdated={() => refetch()}
       />
 
-      <IdentityBuilderSheet
-        isOpen={isBuilderOpen}
-        onOpenChange={setIsBuilderOpen}
-        onSuccess={() => refetch()}
-      />
+      <IdentityBuilderSheet isOpen={isBuilderOpen} onOpenChange={setIsBuilderOpen} onSuccess={() => refetch()} />
 
-      <BulkImportDialog
-        isOpen={isBulkImportOpen}
-        onOpenChange={setIsBulkImportOpen}
-        onSuccess={() => refetch()}
-      />
+      <BulkImportDialog isOpen={isBulkImportOpen} onOpenChange={setIsBulkImportOpen} onSuccess={() => refetch()} />
 
       {/* Cloud Service Header & Telemetry HUD */}
       <ServiceHeader
@@ -378,9 +383,9 @@ function IdentitiesPageContent() {
                 ) : isError ? (
                   <ErrorState error={error} onRetry={refetch} />
                 ) : (
-                  <DataTable 
-                    columns={columns} 
-                    data={identities} 
+                  <DataTable
+                    columns={columns}
+                    data={identities}
                     isLoading={isLoading || isFetching}
                     manualPagination={true}
                     pageIndex={cursorHistory.length}

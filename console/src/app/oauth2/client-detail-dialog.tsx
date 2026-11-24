@@ -19,11 +19,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Can } from "@/lib/auth/use-permission";
 import { formatDateTime } from "@/lib/format/date-time";
 import { fetchAndParse } from "@/lib/api/schema";
-import {
-  rotateSecretResponseSchema,
-  type OAuth2Client,
-  type RotateSecretResponse,
-} from "@/lib/api/schemas/oauth2";
+import { rotateSecretResponseSchema, type OAuth2Client, type RotateSecretResponse } from "@/lib/api/schemas/oauth2";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -34,12 +30,7 @@ interface ClientDetailDialogProps {
   onDeleted?: () => void;
 }
 
-export function ClientDetailDialog({
-  client,
-  open,
-  onOpenChange,
-  onDeleted,
-}: ClientDetailDialogProps) {
+export function ClientDetailDialog({ client, open, onOpenChange, onDeleted }: ClientDetailDialogProps) {
   const queryClient = useQueryClient();
   const [overlapSeconds, setOverlapSeconds] = React.useState("86400"); // 24 hours default
   const [rotatedSecret, setRotatedSecret] = React.useState<string | null>(null);
@@ -67,7 +58,7 @@ export function ClientDetailDialog({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ overlap_seconds: parseInt(overlapSeconds, 10) }),
-        }
+        },
       );
       if (!res.ok) {
         throw new Error(res.error.message || "Failed to rotate secret");
@@ -88,11 +79,9 @@ export function ClientDetailDialog({
   const deleteMutation = useMutation({
     mutationFn: async () => {
       if (!client) throw new Error("No client selected");
-      const res = await fetchAndParse(
-        `/api/oauth2/clients/${encodeURIComponent(client.client_id)}`,
-        z.unknown(),
-        { method: "DELETE" }
-      );
+      const res = await fetchAndParse(`/api/oauth2/clients/${encodeURIComponent(client.client_id)}`, z.unknown(), {
+        method: "DELETE",
+      });
       if (!res.ok) {
         throw new Error(res.error.message || "Failed to delete client");
       }
@@ -161,9 +150,7 @@ export function ClientDetailDialog({
                   New Secret Generated — Store it now!
                 </div>
                 <div className="flex items-center gap-2 bg-background border p-2 rounded">
-                  <code className="font-mono text-xs flex-1 break-all select-all">
-                    {rotatedSecret}
-                  </code>
+                  <code className="font-mono text-xs flex-1 break-all select-all">{rotatedSecret}</code>
                   <Button
                     type="button"
                     size="icon"
@@ -175,9 +162,7 @@ export function ClientDetailDialog({
                     {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  This secret will not be displayed again.
-                </p>
+                <p className="text-xs text-muted-foreground">This secret will not be displayed again.</p>
               </div>
             )}
 

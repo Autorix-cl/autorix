@@ -81,8 +81,8 @@ export function Wizard({
                     isCompleted
                       ? "bg-primary text-primary-foreground"
                       : isCurrent
-                      ? "border-2 border-primary bg-primary/10 text-primary"
-                      : "border border-border bg-muted text-muted-foreground"
+                        ? "border-2 border-primary bg-primary/10 text-primary"
+                        : "border border-border bg-muted text-muted-foreground"
                   }`}
                 >
                   {isCompleted ? <Check className="h-3.5 w-3.5" /> : idx + 1}
@@ -94,9 +94,7 @@ export function Wizard({
                 </div>
                 {idx < steps.length - 1 && (
                   <div
-                    className={`h-0.5 flex-1 transition-colors ${
-                      idx < currentStepIndex ? "bg-primary" : "bg-border"
-                    }`}
+                    className={`h-0.5 flex-1 transition-colors ${idx < currentStepIndex ? "bg-primary" : "bg-border"}`}
                   />
                 )}
               </div>

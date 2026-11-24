@@ -36,7 +36,13 @@ import { Can } from "@/lib/auth/use-permission";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { useApiMutation } from "@/lib/query/use-api-mutation";
 import { fetchAndParse } from "@/lib/api/schema";
-import { paginatedTupleListSchema, checkResponseSchema, deleteTuplesResponseSchema, type Tuple, type PaginatedTuples } from "@/lib/api/schemas/nexus";
+import {
+  paginatedTupleListSchema,
+  checkResponseSchema,
+  deleteTuplesResponseSchema,
+  type Tuple,
+  type PaginatedTuples,
+} from "@/lib/api/schemas/nexus";
 import { ErrorState } from "@/components/state/error-state";
 import { NotConnectedState } from "@/components/state/not-connected-state";
 import { NotConnectedEngine } from "@/components/resources/not-connected-engine";
@@ -105,9 +111,11 @@ export default function PermissionsPage() {
     isError: isTuplesError,
     error: tuplesError,
     refetch: refetchTuples,
-  } = useApiQuery(
-    ["nexus-tuples", { cursor, limit: pageSize }],
-    () => fetchAndParse<PaginatedTuples>(`/api/permissions?cursor=${encodeURIComponent(cursor)}&limit=${pageSize}`, paginatedTupleListSchema)
+  } = useApiQuery(["nexus-tuples", { cursor, limit: pageSize }], () =>
+    fetchAndParse<PaginatedTuples>(
+      `/api/permissions?cursor=${encodeURIComponent(cursor)}&limit=${pageSize}`,
+      paginatedTupleListSchema,
+    ),
   );
 
   const tuples: ZanzibarTupleItem[] = React.useMemo(() => (tuplesRaw?.data ?? []).map(toZanzibarTuple), [tuplesRaw]);
@@ -125,7 +133,7 @@ export default function PermissionsPage() {
         setPendingDeleteTuple(null);
         queryClient.invalidateQueries({ queryKey: ["nexus-tuples"] });
       },
-    }
+    },
   );
 
   const columns = React.useMemo(() => getColumns((tuple) => setPendingDeleteTuple(tuple)), []);
@@ -353,7 +361,12 @@ export default function PermissionsPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
                         <Label htmlFor="namespace">{t("permissions.namespaceLabel")}</Label>
-                        <Input id="namespace" value={namespace} onChange={(e) => setNamespace(e.target.value)} required />
+                        <Input
+                          id="namespace"
+                          value={namespace}
+                          onChange={(e) => setNamespace(e.target.value)}
+                          required
+                        />
                       </div>
 
                       <div className="space-y-1.5">

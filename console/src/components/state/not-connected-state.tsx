@@ -21,12 +21,7 @@ export function NotConnectedState({ engineName, onRetry }: { engineName: string;
         {t("state.notConnectedDescription", { engine: engineName })}
       </p>
       {onRetry ? (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onRetry}
-          className="mt-3"
-        >
+        <Button variant="outline" size="sm" onClick={onRetry} className="mt-3">
           {t("state.retry")}
         </Button>
       ) : null}

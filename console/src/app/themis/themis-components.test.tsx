@@ -38,8 +38,8 @@ describe("Themis Depth Components", () => {
             created_at: "2026-09-02T10:00:00Z",
           },
         ]),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     render(
@@ -49,7 +49,7 @@ describe("Themis Depth Components", () => {
         isOpen={true}
         onOpenChange={vi.fn()}
         onRolledBack={handleRolledBack}
-      />
+      />,
     );
 
     await waitFor(() => {
@@ -62,7 +62,7 @@ describe("Themis Depth Components", () => {
       new Response(JSON.stringify({ status: "success" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const rollbackBtn = screen.getByRole("button", { name: /^Rollback$/i });
@@ -75,7 +75,7 @@ describe("Themis Depth Components", () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         "/api/themis/policies/pol_1/rollback/1",
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(handleRolledBack).toHaveBeenCalled();
     });
@@ -94,18 +94,11 @@ describe("Themis Depth Components", () => {
             payload: { role: "admin", mfa: true },
           },
         ]),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
-    render(
-      <PolicyTestSuiteDialog
-        policyId="pol_1"
-        policyName="Admin Rule"
-        isOpen={true}
-        onOpenChange={vi.fn()}
-      />
-    );
+    render(<PolicyTestSuiteDialog policyId="pol_1" policyName="Admin Rule" isOpen={true} onOpenChange={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getByText("Admin MFA fixture")).toBeDefined();
@@ -132,8 +125,8 @@ describe("Themis Depth Components", () => {
             },
           ],
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const runBtn = screen.getByRole("button", { name: /Run All Tests/i });
@@ -142,7 +135,7 @@ describe("Themis Depth Components", () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         "/api/themis/policies/pol_1/test-suite",
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(screen.getByText("All Test Scenarios Passed")).toBeDefined();
     });

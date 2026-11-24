@@ -26,11 +26,7 @@ function renderWithClient(ui: React.ReactElement) {
       mutations: { retry: false },
     },
   });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      {ui}
-    </QueryClientProvider>
-  );
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
 }
 
 describe("Nexus Depth UI Components", () => {
@@ -99,8 +95,8 @@ describe("Nexus Depth UI Components", () => {
               subjectId: "alice",
             },
           ]),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
       );
 
       renderWithClient(<RelationshipGraph initialObjectId="document:doc_123" />);
@@ -133,8 +129,8 @@ describe("Nexus Depth UI Components", () => {
               created_at: "2026-09-02T10:00:00Z",
             },
           ]),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
       );
 
       renderWithClient(<CaveatRegistry />);
@@ -171,7 +167,7 @@ describe("Nexus Depth UI Components", () => {
           onDelete={vi.fn()}
           onAdd={vi.fn()}
           onBulkAdd={handleBulkAdd}
-        />
+        />,
       );
 
       const importBtn = screen.getByRole("button", { name: /Bulk Import/i });

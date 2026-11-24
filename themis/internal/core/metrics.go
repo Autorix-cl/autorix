@@ -22,14 +22,6 @@ var (
 )
 
 func init() {
-	if err := prometheus.Register(themisEvaluationDuration); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			// ignore
-		}
-	}
-	if err := prometheus.Register(themisEvaluationTotal); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			// ignore
-		}
-	}
+	_ = prometheus.Register(themisEvaluationDuration)
+	_ = prometheus.Register(themisEvaluationTotal)
 }

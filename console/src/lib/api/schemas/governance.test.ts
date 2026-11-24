@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  organisationSchema,
-  projectSchema,
-  environmentSchema,
-} from "./governance";
+import { organisationSchema, projectSchema, environmentSchema } from "./governance";
 
 describe("Governance Schemas (P8-S3)", () => {
   it("validates organisation schema", () => {

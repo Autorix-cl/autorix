@@ -12,14 +12,7 @@ import {
   Square,
   RefreshCw,
 } from "lucide-react";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableHead,
-  TableRow,
-  TableCell,
-} from "@/components/ui/table";
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ResourceDescriptor } from "@/lib/resources/descriptor";
@@ -62,9 +55,7 @@ export function ResourceTable<T extends Record<string, unknown> & { id: string }
     // Search filter
     if (queryState.search.trim()) {
       const q = queryState.search.toLowerCase();
-      list = list.filter((item) =>
-        Object.values(item).some((val) => String(val).toLowerCase().includes(q))
-      );
+      list = list.filter((item) => Object.values(item).some((val) => String(val).toLowerCase().includes(q)));
     }
 
     // Sorting
@@ -140,9 +131,7 @@ export function ResourceTable<T extends Record<string, unknown> & { id: string }
   const handleExportCSV = () => {
     if (filteredData.length === 0) return;
     const headers = descriptor.columns.map((col) => col.key);
-    const rows = filteredData.map((row) =>
-      headers.map((h) => escapeCsvCell(row[h])).join(",")
-    );
+    const rows = filteredData.map((row) => headers.map((h) => escapeCsvCell(row[h])).join(","));
     const csvContent = [headers.map((h) => escapeCsvCell(h)).join(","), ...rows].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -274,13 +263,19 @@ export function ResourceTable<T extends Record<string, unknown> & { id: string }
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={descriptor.columns.length + 1} className="py-12 text-center text-xs text-muted-foreground font-mono">
+                <TableCell
+                  colSpan={descriptor.columns.length + 1}
+                  className="py-12 text-center text-xs text-muted-foreground font-mono"
+                >
                   Loading {descriptor.pluralName.toLowerCase()}...
                 </TableCell>
               </TableRow>
             ) : paginatedData.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={descriptor.columns.length + 1} className="py-12 text-center text-xs text-muted-foreground">
+                <TableCell
+                  colSpan={descriptor.columns.length + 1}
+                  className="py-12 text-center text-xs text-muted-foreground"
+                >
                   No {descriptor.pluralName.toLowerCase()} found matching current filters.
                 </TableCell>
               </TableRow>
@@ -326,9 +321,7 @@ export function ResourceTable<T extends Record<string, unknown> & { id: string }
                     </TableCell>
                     {descriptor.columns.map((col) => (
                       <TableCell key={col.key}>
-                        {col.render
-                          ? col.render(record[col.key], record)
-                          : String(record[col.key] ?? "-")}
+                        {col.render ? col.render(record[col.key], record) : String(record[col.key] ?? "-")}
                       </TableCell>
                     ))}
                   </TableRow>
@@ -345,7 +338,9 @@ export function ResourceTable<T extends Record<string, unknown> & { id: string }
           Showing {paginatedData.length} of {totalCount} {descriptor.pluralName.toLowerCase()}
         </div>
         <div className="flex items-center gap-2">
-          <span>Page {queryState.page} of {totalPages}</span>
+          <span>
+            Page {queryState.page} of {totalPages}
+          </span>
           <Button
             variant="outline"
             size="sm"

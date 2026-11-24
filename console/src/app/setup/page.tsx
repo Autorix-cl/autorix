@@ -113,7 +113,8 @@ export default function SetupPage() {
             Autorix Control Plane
           </h1>
           <p className="text-sm text-slate-400 mt-2 max-w-md mx-auto">
-            Establish the root owner account for your zero-trust IAM cluster. This one-time setup claims the cluster using your server bootstrap token.
+            Establish the root owner account for your zero-trust IAM cluster. This one-time setup claims the cluster
+            using your server bootstrap token.
           </p>
         </div>
 
@@ -125,7 +126,9 @@ export default function SetupPage() {
             </div>
             <div>
               <h2 className="text-base font-medium text-white">Create Root Owner</h2>
-              <p className="text-xs text-slate-400">Owner role holds full cluster sovereignty and break-glass capabilities.</p>
+              <p className="text-xs text-slate-400">
+                Owner role holds full cluster sovereignty and break-glass capabilities.
+              </p>
             </div>
           </div>
 
@@ -147,7 +150,9 @@ export default function SetupPage() {
                   <Terminal className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
                   Bootstrap Token
                 </label>
-                <span id="setup-token-hint" className="text-[11px] font-mono text-slate-500">From Argus startup logs (abt_...)</span>
+                <span id="setup-token-hint" className="text-[11px] font-mono text-slate-500">
+                  From Argus startup logs (abt_...)
+                </span>
               </div>
               <input
                 id="setup-token"
@@ -169,7 +174,9 @@ export default function SetupPage() {
             {/* Operator Name & Email */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
-                <label htmlFor="setup-name" className="block text-xs font-medium text-slate-300 mb-1.5">Full Name</label>
+                <label htmlFor="setup-name" className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Full Name
+                </label>
                 <input
                   id="setup-name"
                   name="name"
@@ -183,7 +190,9 @@ export default function SetupPage() {
                 />
               </div>
               <div>
-                <label htmlFor="setup-email" className="block text-xs font-medium text-slate-300 mb-1.5">Work Email</label>
+                <label htmlFor="setup-email" className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Work Email
+                </label>
                 <input
                   id="setup-email"
                   name="email"
@@ -204,7 +213,10 @@ export default function SetupPage() {
             {/* Password & Confirm */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
-                <label htmlFor="setup-password" className="text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <label
+                  htmlFor="setup-password"
+                  className="text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5"
+                >
                   <Lock className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
                   Master Password
                 </label>
@@ -222,7 +234,9 @@ export default function SetupPage() {
                 />
               </div>
               <div>
-                <label htmlFor="setup-confirm-password" className="block text-xs font-medium text-slate-300 mb-1.5">Confirm Password</label>
+                <label htmlFor="setup-confirm-password" className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Confirm Password
+                </label>
                 <input
                   id="setup-confirm-password"
                   name="confirm_password"

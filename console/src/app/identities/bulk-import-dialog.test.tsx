@@ -27,8 +27,8 @@ describe("BulkImportDialog", () => {
           errors: [{ row: 2, email: "invalid", error: "Missing or invalid email address" }],
           dry_run: true,
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     render(<BulkImportDialog isOpen={true} onOpenChange={vi.fn()} />);
@@ -44,7 +44,7 @@ describe("BulkImportDialog", () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         "/api/identities/bulk-import",
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({ method: "POST" }),
       );
       expect(screen.getByText(/1 Valid/i)).toBeDefined();
       expect(screen.getByText(/1 Errors/i)).toBeDefined();
@@ -65,8 +65,8 @@ describe("BulkImportDialog", () => {
           errors: [],
           dry_run: false,
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     render(<BulkImportDialog isOpen={true} onOpenChange={handleOpenChange} onSuccess={handleSuccess} />);
@@ -85,7 +85,7 @@ describe("BulkImportDialog", () => {
         expect.objectContaining({
           method: "POST",
           body: expect.stringContaining('"dry_run":false'),
-        })
+        }),
       );
       expect(handleSuccess).toHaveBeenCalled();
       expect(handleOpenChange).toHaveBeenCalledWith(false);

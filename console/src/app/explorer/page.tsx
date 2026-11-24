@@ -31,7 +31,11 @@ export default function ExplorerPage() {
         </div>
 
         {/* View Switcher Tabs */}
-        <div role="tablist" aria-label="Explorer views" className="flex flex-wrap items-center gap-1.5 bg-muted/40 p-1 rounded-lg border">
+        <div
+          role="tablist"
+          aria-label="Explorer views"
+          className="flex flex-wrap items-center gap-1.5 bg-muted/40 p-1 rounded-lg border"
+        >
           <Button
             type="button"
             role="tab"

@@ -2,7 +2,6 @@ import { ThemisPoliciesTable } from "./policies-table";
 import { DryRunPlayground } from "./dry-run-playground";
 import { PolicyBuilderSheet } from "./policy-builder-sheet";
 
-
 export default function ThemisPage() {
   return (
     <div className="flex-1 space-y-4 p-8 pt-6 overflow-auto">
@@ -17,7 +16,7 @@ export default function ThemisPage() {
           <PolicyBuilderSheet />
         </div>
       </div>
-      
+
       <div className="space-y-4">
         <ThemisPoliciesTable />
         <DryRunPlayground />

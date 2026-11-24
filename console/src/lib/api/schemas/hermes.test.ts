@@ -157,4 +157,3 @@ describe("Hermes Engine Depth Schemas", () => {
     expect(scimSyncHistoryListSchema.safeParse([syncItem]).success).toBe(true);
   });
 });
-

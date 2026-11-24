@@ -14,7 +14,7 @@ export async function PUT(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json(
       { error: "invalid reorder request: ids array required", details: parsed.error.issues },
-      { status: 400 }
+      { status: 400 },
     );
   }
 

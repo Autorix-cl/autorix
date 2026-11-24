@@ -11,7 +11,14 @@ import { Plus, Copy, AlertTriangle, Check } from "lucide-react";
 import { CreateKeySchema, CreateKeyInput } from "@/lib/schemas/vulcan";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const DEFAULT_SCOPES = [
@@ -89,20 +96,20 @@ export function KeyBuilderSheet() {
     },
     onError: (err: Error) => {
       toast.error(err.message);
-    }
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const payload = {
       name,
       expires_in: expiresIn,
       scopes,
     };
-    
+
     const result = CreateKeySchema.safeParse(payload);
-    
+
     if (!result.success) {
       const fieldErrors: Record<string, string> = {};
       for (const issue of result.error.issues) {
@@ -113,7 +120,7 @@ export function KeyBuilderSheet() {
       setErrors(fieldErrors);
       return;
     }
-    
+
     setErrors({});
     createMutation.mutate(result.data as CreateKeyInput);
   };
@@ -132,10 +139,13 @@ export function KeyBuilderSheet() {
 
   return (
     <>
-      <Sheet open={open} onOpenChange={(o) => {
-        setOpen(o);
-        if (!o) resetForm();
-      }}>
+      <Sheet
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o);
+          if (!o) resetForm();
+        }}
+      >
         <SheetTrigger asChild>
           <Button>
             <Plus className="w-4 h-4 mr-2" />
@@ -149,19 +159,19 @@ export function KeyBuilderSheet() {
               Generate a new Root Key to interact with the Autorix engines programmatically.
             </SheetDescription>
           </SheetHeader>
-          
+
           <form onSubmit={handleSubmit} className="space-y-6 mt-6">
             <div className="space-y-2">
               <Label htmlFor="name">Key Name</Label>
-              <Input 
-                id="name" 
-                placeholder="e.g. Production Backend" 
+              <Input
+                id="name"
+                placeholder="e.g. Production Backend"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
               {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="expires">Expiration</Label>
               <Select value={expiresIn} onValueChange={setExpiresIn}>
@@ -183,19 +193,19 @@ export function KeyBuilderSheet() {
               <div className="space-y-2 border rounded-md p-4 bg-muted/30">
                 {availableScopes.map((scope) => (
                   <div key={scope.id} className="flex items-center space-x-2">
-                    <Checkbox 
-                      id={`scope-${scope.id}`} 
+                    <Checkbox
+                      id={`scope-${scope.id}`}
                       checked={scopes.includes(scope.id)}
                       onCheckedChange={(checked) => {
                         if (checked) {
                           setScopes([...scopes, scope.id]);
                         } else {
-                          setScopes(scopes.filter(s => s !== scope.id));
+                          setScopes(scopes.filter((s) => s !== scope.id));
                         }
                       }}
                     />
-                    <label 
-                      htmlFor={`scope-${scope.id}`} 
+                    <label
+                      htmlFor={`scope-${scope.id}`}
                       className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                     >
                       {scope.label} <span className="text-muted-foreground ml-1 font-mono text-xs">({scope.id})</span>
@@ -205,7 +215,7 @@ export function KeyBuilderSheet() {
               </div>
               {errors.scopes && <p className="text-sm text-destructive">{errors.scopes}</p>}
             </div>
-            
+
             <div className="pt-4 flex justify-end">
               <Button type="submit" disabled={createMutation.isPending}>
                 {createMutation.isPending ? "Generating..." : "Generate Key"}
@@ -216,28 +226,29 @@ export function KeyBuilderSheet() {
       </Sheet>
 
       <Dialog open={showSecretModal} onOpenChange={handleCloseSecretModal}>
-        <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+        <DialogContent
+          className="sm:max-w-md"
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center text-amber-500">
               <AlertTriangle className="w-5 h-5 mr-2" />
               Save your secret key
             </DialogTitle>
             <DialogDescription>
-              Please copy this API key and store it securely. For security reasons, <strong className="text-foreground">we will never show it to you again</strong> after you close this dialog.
+              Please copy this API key and store it securely. For security reasons,{" "}
+              <strong className="text-foreground">we will never show it to you again</strong> after you close this
+              dialog.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="flex items-center space-x-2 mt-4">
             <div className="grid flex-1 gap-2">
               <Label htmlFor="secret" className="sr-only">
                 Secret
               </Label>
-              <Input
-                id="secret"
-                defaultValue={newSecret}
-                readOnly
-                className="font-mono text-sm bg-muted"
-              />
+              <Input id="secret" defaultValue={newSecret} readOnly className="font-mono text-sm bg-muted" />
             </div>
             <Tooltip delayDuration={300}>
               <TooltipTrigger asChild>
@@ -251,7 +262,7 @@ export function KeyBuilderSheet() {
               </TooltipContent>
             </Tooltip>
           </div>
-          
+
           <DialogFooter className="sm:justify-end mt-4">
             <Button type="button" variant="default" onClick={handleCloseSecretModal}>
               I have saved the key

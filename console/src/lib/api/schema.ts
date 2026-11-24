@@ -50,7 +50,10 @@ export function pagedListSchema<T extends z.ZodTypeAny>(itemSchema: T) {
  */
 export function paginatedListSchema<T extends z.ZodTypeAny>(itemSchema: T) {
   return z.object({
-    data: z.array(itemSchema).nullable().transform((val) => val ?? []),
+    data: z
+      .array(itemSchema)
+      .nullable()
+      .transform((val) => val ?? []),
     has_more: z.boolean().optional().default(false),
     next_cursor: z.string().optional().default(""),
   });

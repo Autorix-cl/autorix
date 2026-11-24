@@ -42,8 +42,8 @@ describe("Vulcan BFF Proxy Routes", () => {
             updated_at: "2026-09-02T10:00:00Z",
           },
         ]),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const res = await listKeys(new NextRequest("http://localhost/api/vulcan/keys"));
@@ -76,8 +76,8 @@ describe("Vulcan BFF Proxy Routes", () => {
             signature: "sig123",
           },
         }),
-        { status: 201, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const req = new NextRequest("http://localhost/api/vulcan/keys", {
@@ -97,7 +97,7 @@ describe("Vulcan BFF Proxy Routes", () => {
       new Response(JSON.stringify({ id: "k-1", name: "Key 1", scopes: ["read"] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
     const getRes = await getKey(new NextRequest("http://localhost/api/vulcan/keys/k-1"), {
       params: Promise.resolve({ id: "k-1" }),
@@ -109,14 +109,14 @@ describe("Vulcan BFF Proxy Routes", () => {
       new Response(JSON.stringify({ id: "k-1", name: "Renamed Key" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
     const patchRes = await updateKey(
       new NextRequest("http://localhost/api/vulcan/keys/k-1", {
         method: "PATCH",
         body: JSON.stringify({ name: "Renamed Key" }),
       }),
-      { params: Promise.resolve({ id: "k-1" }) }
+      { params: Promise.resolve({ id: "k-1" }) },
     );
     expect(patchRes.status).toBe(200);
 
@@ -125,7 +125,7 @@ describe("Vulcan BFF Proxy Routes", () => {
       new Response(JSON.stringify({ status: "revoked" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
     const delRes = await deleteKey(new NextRequest("http://localhost/api/vulcan/keys/k-1", { method: "DELETE" }), {
       params: Promise.resolve({ id: "k-1" }),
@@ -157,8 +157,8 @@ describe("Vulcan BFF Proxy Routes", () => {
             signature: "sig456",
           },
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
 
     const req = new NextRequest("http://localhost/api/vulcan/keys/k-1/rotate", {
@@ -178,7 +178,7 @@ describe("Vulcan BFF Proxy Routes", () => {
       new Response(JSON.stringify([{ name: "billing:read", description: "Read billing info" }]), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
     const listRes = await listScopes();
     expect(listRes.status).toBe(200);
@@ -190,13 +190,13 @@ describe("Vulcan BFF Proxy Routes", () => {
       new Response(JSON.stringify({ name: "billing:write", description: "Manage billing" }), {
         status: 201,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
     const postRes = await createScope(
       new NextRequest("http://localhost/api/vulcan/scopes", {
         method: "POST",
         body: JSON.stringify({ name: "billing:write", description: "Manage billing" }),
-      })
+      }),
     );
     expect(postRes.status).toBe(201);
 
@@ -205,11 +205,11 @@ describe("Vulcan BFF Proxy Routes", () => {
       new Response(JSON.stringify({ status: "deleted" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
     const delRes = await deleteScope(
       new NextRequest("http://localhost/api/vulcan/scopes/billing:write", { method: "DELETE" }),
-      { params: Promise.resolve({ name: "billing:write" }) }
+      { params: Promise.resolve({ name: "billing:write" }) },
     );
     expect(delRes.status).toBe(200);
   });
@@ -219,7 +219,7 @@ describe("Vulcan BFF Proxy Routes", () => {
       new Response(JSON.stringify({ valid: true }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const req = new NextRequest("http://localhost/api/vulcan/verify", {

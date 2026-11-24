@@ -65,11 +65,17 @@ func TestServerAndClientMTLS(t *testing.T) {
 	clientCertFile := filepath.Join(tmpDir, "client.pem")
 	clientKeyFile := filepath.Join(tmpDir, "client.key")
 
-	os.WriteFile(caFile, caCert, 0600)
-	os.WriteFile(serverCertFile, serverCert, 0600)
-	os.WriteFile(serverKeyFile, serverKey, 0600)
-	os.WriteFile(clientCertFile, clientCert, 0600)
-	os.WriteFile(clientKeyFile, clientKey, 0600)
+	for name, content := range map[string][]byte{
+		caFile:         caCert,
+		serverCertFile: serverCert,
+		serverKeyFile:  serverKey,
+		clientCertFile: clientCert,
+		clientKeyFile:  clientKey,
+	} {
+		if err := os.WriteFile(name, content, 0600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
 
 	serverTLS, err := NewServerTLSConfig(ServerConfig{
 		CertFile:    serverCertFile,

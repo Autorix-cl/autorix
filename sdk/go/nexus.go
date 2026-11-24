@@ -89,7 +89,7 @@ func (n *NexusClient) Check(ctx context.Context, req CheckRequest) (bool, error)
 		// Fail-closed on network error
 		return false, fmt.Errorf("nexus authorization check failed: %w", err)
 	}
-	defer httpResp.Body.Close()
+	defer func() { _ = httpResp.Body.Close() }()
 
 	if httpResp.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("nexus returned unexpected status: %d", httpResp.StatusCode)
@@ -156,7 +156,7 @@ func (n *NexusClient) Expand(ctx context.Context, namespace, object, relation st
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("nexus expand returned unexpected status: %d", resp.StatusCode)
@@ -199,7 +199,7 @@ func (n *NexusClient) LookupResources(ctx context.Context, namespace, relation, 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("nexus lookup resources returned unexpected status: %d", resp.StatusCode)

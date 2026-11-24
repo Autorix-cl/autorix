@@ -12,15 +12,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [platform, nexus, ego, janus, aegis, vulcan, hermes, themis, argus, sdk/go]
+        service: [platform, nexus, ego, janus, aegis, vulcan, hermes, themis, argus, sdk/go, terraform-provider-autorix]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go 1.24
+      - name: Set up Go 1.26
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26.6'
           cache: true
 
       - name: Check gofmt
@@ -39,9 +39,9 @@ jobs:
           go vet ./...
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.12.2
           working-directory: ${{ matrix.service }}
           args: --config ${{ github.workspace }}/.golangci.yml
 
@@ -50,15 +50,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [platform, nexus, ego, janus, aegis, vulcan, hermes, themis, argus, sdk/go]
+        service: [platform, nexus, ego, janus, aegis, vulcan, hermes, themis, argus, sdk/go, terraform-provider-autorix]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go 1.24
+      - name: Set up Go 1.26
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26.6'
           cache: true
 
       - name: Run unit tests
@@ -95,10 +95,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go 1.24
+      - name: Set up Go 1.26
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26.6'
           cache: true
 
       - name: Run integration tests (testcontainers spins its own Postgres)
@@ -189,15 +189,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [platform, nexus, ego, janus, aegis, vulcan, hermes, themis, argus, sdk/go]
+        service: [platform, nexus, ego, janus, aegis, vulcan, hermes, themis, argus, sdk/go, terraform-provider-autorix]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go 1.24
+      - name: Set up Go 1.26
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26.6'
           cache: true
 
       - name: Check coverage floor

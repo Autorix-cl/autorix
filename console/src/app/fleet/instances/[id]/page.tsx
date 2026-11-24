@@ -89,7 +89,13 @@ export default function FleetInstanceDetailPage() {
             <p className="text-xs text-muted-foreground">{error || `Instance "${id}" could not be found.`}</p>
           </div>
           <div className="flex items-center justify-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => router.push("/fleet/instances")} className="text-xs">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => router.push("/fleet/instances")}
+              className="text-xs"
+            >
               Back to Instances
             </Button>
             <Button type="button" size="sm" onClick={fetchInstance} className="text-xs">

@@ -8,7 +8,10 @@ test.describe("Argus Audit & Governance Studio", () => {
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/audit log|governance|audit/i);
     await expect(page.getByText(/hash chain|verified|tamper/i).first()).toBeVisible();
     await expect(
-      page.getByRole("table").or(page.locator("table")).or(page.getByText(/No audit records found/i))
+      page
+        .getByRole("table")
+        .or(page.locator("table"))
+        .or(page.getByText(/No audit records found/i)),
     ).toBeVisible();
   });
 
@@ -17,7 +20,9 @@ test.describe("Argus Audit & Governance Studio", () => {
     await page.waitForLoadState("networkidle");
 
     // Click on the view details action on the first audit row
-    const viewBtn = page.locator("button:has(svg.lucide-eye), button[aria-label*='view'], button:has-text('View')").first();
+    const viewBtn = page
+      .locator("button:has(svg.lucide-eye), button[aria-label*='view'], button:has-text('View')")
+      .first();
     if (await viewBtn.isVisible()) {
       await viewBtn.click();
       await expect(page.getByRole("dialog")).toBeVisible();

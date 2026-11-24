@@ -33,11 +33,7 @@ import type { z } from "zod";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { useApiMutation } from "@/lib/query/use-api-mutation";
 import { fetchAndParse } from "@/lib/api/schema";
-import {
-  paginatedPolicyListSchema,
-  evaluateResponseSchema,
-  type Policy,
-} from "@/lib/api/schemas/themis";
+import { paginatedPolicyListSchema, evaluateResponseSchema, type Policy } from "@/lib/api/schemas/themis";
 import { ErrorState } from "@/components/state/error-state";
 import { NotConnectedState } from "@/components/state/not-connected-state";
 import { NotConnectedEngine } from "@/components/resources/not-connected-engine";
@@ -73,7 +69,7 @@ const SAMPLE_EVAL_PAYLOAD = JSON.stringify(
     },
   },
   null,
-  2
+  2,
 );
 
 const STANDARD_CEL_PATTERNS = [
@@ -91,7 +87,8 @@ const STANDARD_CEL_PATTERNS = [
   },
   {
     title: "Financial Approval Limit",
-    expression: "request.amount < 10000 || (request.auth.claims.department == 'finance' && request.auth.claims.role == 'director')",
+    expression:
+      "request.amount < 10000 || (request.auth.claims.department == 'finance' && request.auth.claims.role == 'director')",
     description: "Enforces dollar threshold or delegated executive approval.",
     category: "Business Rules",
   },
@@ -369,7 +366,10 @@ export default function PoliciesPage() {
                   {/* Filter Search */}
                   <div className="flex items-center gap-2 w-full sm:w-72">
                     <div className="relative w-full">
-                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                      <Search
+                        className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                       <Input
                         aria-label={t("themis.searchPlaceholder")}
                         placeholder={t("themis.searchPlaceholder")}
@@ -524,10 +524,7 @@ export default function PoliciesPage() {
                         <span>Evaluation Outcome</span>
                       </div>
                       {evalResult && (
-                        <Badge
-                          variant={evalResult.AllPassed ? "success" : "destructive"}
-                          className="gap-1 text-[10px]"
-                        >
+                        <Badge variant={evalResult.AllPassed ? "success" : "destructive"} className="gap-1 text-[10px]">
                           {evalResult.AllPassed ? (
                             <CheckCircle2 className="h-3 w-3" />
                           ) : (
@@ -597,7 +594,8 @@ export default function PoliciesPage() {
                         <Code2 className="w-8 h-8 text-muted-foreground/50 mx-auto" />
                         <p className="text-xs font-medium text-foreground">No Evaluation Executed Yet</p>
                         <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
-                          Click &ldquo;{t("themis.evalBtn")}&rdquo; to evaluate the JSON context against all active CEL rules.
+                          Click &ldquo;{t("themis.evalBtn")}&rdquo; to evaluate the JSON context against all active CEL
+                          rules.
                         </p>
                       </div>
                     )}
@@ -627,9 +625,7 @@ export default function PoliciesPage() {
               {STANDARD_CEL_PATTERNS.map((p, idx) => (
                 <div key={idx} className="p-3.5 rounded-lg border border-border/80 bg-card/60 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">
-                      {p.category}
-                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">{p.category}</span>
                     <CopySnippetButton text={p.expression} label={p.title} />
                   </div>
                   <div className="font-semibold text-xs text-foreground">{p.title}</div>

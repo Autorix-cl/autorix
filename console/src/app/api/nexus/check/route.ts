@@ -34,10 +34,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!namespace || !object || !relation) {
-      return NextResponse.json(
-        { error: "namespace, object, and relation are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "namespace, object, and relation are required" }, { status: 400 });
     }
 
     return proxyRequest("nexus", "/check", checkResponseSchema, {
@@ -59,4 +56,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
-

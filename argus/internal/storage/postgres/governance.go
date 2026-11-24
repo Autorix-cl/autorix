@@ -19,12 +19,11 @@ import (
 // Audit Log & Hash Chaining (P8-S1)
 // ---------------------------------------------------------------------
 
-const (
-	// auditChainAdvisoryLockID serializes audit chain head reads and inserts
-	// inside RecordAudit so concurrent writes never fork prev_hash.
-	auditChainAdvisoryLockID int64 = 0x6172677573617564
-	maxAuditExportLimit            = 10000
-)
+// auditChainAdvisoryLockID serializes audit chain head reads and inserts
+// inside RecordAudit so concurrent writes never fork prev_hash.
+const auditChainAdvisoryLockID int64 = 0x6172677573617564
+
+const maxAuditExportLimit = 10000
 
 func decodeAuditStateJSON(raw []byte) (map[string]interface{}, error) {
 	if len(raw) == 0 {
@@ -504,7 +503,6 @@ func (r *Repository) ListConfigRevisions(ctx context.Context, engine, resourceTy
 	if resourceID != "" {
 		query += fmt.Sprintf(" AND resource_id = $%d", argIdx)
 		args = append(args, resourceID)
-		argIdx++
 	}
 
 	query += " ORDER BY revision_num DESC, created_at DESC"

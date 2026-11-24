@@ -14,17 +14,17 @@ const mockEvents = [
     action: "mfa.removed",
     actor: "system",
     timestamp: "2023-10-11 14:20:00",
-  }
+  },
 ];
 
 describe("AuditTimeline", () => {
   it("renders a list of audit events correctly", () => {
     render(<AuditTimeline events={mockEvents} />);
-    
+
     // Should render actions
     expect(screen.getByText("user.suspended")).toBeInTheDocument();
     expect(screen.getByText("mfa.removed")).toBeInTheDocument();
-    
+
     // Should render actors
     expect(screen.getByText(/admin@autorix\.com/)).toBeInTheDocument();
     expect(screen.getByText(/system/)).toBeInTheDocument();

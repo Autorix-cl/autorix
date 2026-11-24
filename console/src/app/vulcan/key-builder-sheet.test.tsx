@@ -6,9 +6,9 @@ import { KeyBuilderSheet } from "./key-builder-sheet";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // Mock matchMedia for Radix UI
-Object.defineProperty(window, 'matchMedia', {
+Object.defineProperty(window, "matchMedia", {
   writable: true,
-  value: vi.fn().mockImplementation(query => ({
+  value: vi.fn().mockImplementation((query) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -34,7 +34,7 @@ describe("KeyBuilderSheet", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <KeyBuilderSheet />
-      </QueryClientProvider>
+      </QueryClientProvider>,
     );
     expect(screen.getByRole("button", { name: /Create API Key/i })).toBeInTheDocument();
   });

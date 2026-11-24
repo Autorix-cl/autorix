@@ -7,16 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  ShieldCheck,
-  Network,
-  Scale,
-  Shield,
-  Play,
-  CheckCircle2,
-  XCircle,
-  Loader2,
-} from "lucide-react";
+import { ShieldCheck, Network, Scale, Shield, Play, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { EffectiveAccessResult } from "@/lib/api/schemas/explorer";
 
@@ -88,7 +79,9 @@ export function EffectiveAccessExplorer() {
         <CardContent>
           <form onSubmit={handleEvaluate} className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs items-end">
             <div className="space-y-1">
-              <Label htmlFor="ea-subject" className="text-[11px]">Subject</Label>
+              <Label htmlFor="ea-subject" className="text-[11px]">
+                Subject
+              </Label>
               <Input
                 id="ea-subject"
                 value={subject}
@@ -98,7 +91,9 @@ export function EffectiveAccessExplorer() {
               />
             </div>
             <div className="space-y-1 md:col-span-2">
-              <Label htmlFor="ea-resource" className="text-[11px]">Target Resource Path</Label>
+              <Label htmlFor="ea-resource" className="text-[11px]">
+                Target Resource Path
+              </Label>
               <Input
                 id="ea-resource"
                 value={resource}
@@ -109,7 +104,9 @@ export function EffectiveAccessExplorer() {
             </div>
             <div className="flex gap-2">
               <div className="space-y-1 w-24">
-                <Label htmlFor="ea-action" className="text-[11px]">Action</Label>
+                <Label htmlFor="ea-action" className="text-[11px]">
+                  Action
+                </Label>
                 <Select value={action} onValueChange={setAction}>
                   <SelectTrigger id="ea-action" className="h-8 text-xs font-mono">
                     <SelectValue />
@@ -174,7 +171,10 @@ export function EffectiveAccessExplorer() {
                     <Shield className="w-3.5 h-3.5 text-blue-400" />
                     Aegis Ingress
                   </span>
-                  <Badge variant={result.engine_breakdown.aegis.matched ? "default" : "destructive"} className="text-[9px] px-1 py-0">
+                  <Badge
+                    variant={result.engine_breakdown.aegis.matched ? "default" : "destructive"}
+                    className="text-[9px] px-1 py-0"
+                  >
                     {result.engine_breakdown.aegis.matched ? "Matched" : "No Match"}
                   </Badge>
                 </div>
@@ -199,9 +199,7 @@ export function EffectiveAccessExplorer() {
                   </span>
                   <Badge
                     variant={result.engine_breakdown.nexus.allowed ? "default" : "destructive"}
-                    className={`text-[9px] px-1 py-0 ${
-                      result.engine_breakdown.nexus.allowed ? "bg-emerald-500" : ""
-                    }`}
+                    className={`text-[9px] px-1 py-0 ${result.engine_breakdown.nexus.allowed ? "bg-emerald-500" : ""}`}
                   >
                     {result.engine_breakdown.nexus.allowed ? "Allowed" : "Denied"}
                   </Badge>
@@ -230,9 +228,7 @@ export function EffectiveAccessExplorer() {
                   </span>
                   <Badge
                     variant={result.engine_breakdown.themis.allowed ? "default" : "destructive"}
-                    className={`text-[9px] px-1 py-0 ${
-                      result.engine_breakdown.themis.allowed ? "bg-emerald-500" : ""
-                    }`}
+                    className={`text-[9px] px-1 py-0 ${result.engine_breakdown.themis.allowed ? "bg-emerald-500" : ""}`}
                   >
                     {result.engine_breakdown.themis.allowed ? "All Passed" : "Policy Failed"}
                   </Badge>
@@ -240,7 +236,8 @@ export function EffectiveAccessExplorer() {
               </CardHeader>
               <CardContent className="p-3 pt-0 text-[11px] font-mono space-y-1">
                 <div className="text-muted-foreground truncate">
-                  Policies: <span className="text-foreground">{result.engine_breakdown.themis.policies_matched} evaluated</span>
+                  Policies:{" "}
+                  <span className="text-foreground">{result.engine_breakdown.themis.policies_matched} evaluated</span>
                 </div>
                 {result.engine_breakdown.themis.failed_policy && (
                   <div className="text-destructive truncate">

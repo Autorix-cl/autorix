@@ -12,4 +12,3 @@ export async function DELETE(_req: NextRequest, { params }: RouteParams) {
     method: "DELETE",
   });
 }
-

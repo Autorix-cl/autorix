@@ -94,10 +94,7 @@ export function ThemeProvider({
     [storageKey],
   );
 
-  const value = React.useMemo(
-    () => ({ theme, setTheme, resolvedTheme }),
-    [theme, setTheme, resolvedTheme],
-  );
+  const value = React.useMemo(() => ({ theme, setTheme, resolvedTheme }), [theme, setTheme, resolvedTheme]);
 
   return (
     <ThemeProviderContext.Provider {...props} value={value}>

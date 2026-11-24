@@ -36,7 +36,7 @@ func TestDoRequest_InjectsHeadersAndExecutes(t *testing.T) {
 			t.Errorf("expected application/json content type, got %s", r.Header.Get("Content-Type"))
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	}))
 	defer server.Close()
 
@@ -49,7 +49,7 @@ func TestDoRequest_InjectsHeadersAndExecutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 OK, got %d", resp.StatusCode)
@@ -75,7 +75,7 @@ func TestDoRequest_WithCustomClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if gotAuth != "Bearer test-secret" {
 		t.Errorf("expected bearer auth, got %q", gotAuth)
@@ -89,14 +89,13 @@ func TestDoRequest_WithCustomClient(t *testing.T) {
 }
 
 func TestGetEnv_Fallback(t *testing.T) {
-	os.Unsetenv("TEST_AUTORIX_VAR")
+	_ = os.Unsetenv("TEST_AUTORIX_VAR")
 	val := getEnv("TEST_AUTORIX_VAR", "default_val")
 	if val != "default_val" {
 		t.Errorf("expected default_val, got %s", val)
 	}
 
-	os.Setenv("TEST_AUTORIX_VAR", "custom")
-	defer os.Unsetenv("TEST_AUTORIX_VAR")
+	t.Setenv("TEST_AUTORIX_VAR", "custom")
 	val = getEnv("TEST_AUTORIX_VAR", "default_val")
 	if val != "custom" {
 		t.Errorf("expected custom, got %s", val)

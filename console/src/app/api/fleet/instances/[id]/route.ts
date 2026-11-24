@@ -1,10 +1,7 @@
 import { z } from "zod";
 import { proxyRequest } from "@/lib/api/proxy";
 
-export async function GET(
-  request: Request,
-  props: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   return proxyRequest("argus", `/v1/instances/${encodeURIComponent(params.id)}`, z.unknown(), {
     method: "GET",
@@ -12,10 +9,7 @@ export async function GET(
   });
 }
 
-export async function DELETE(
-  request: Request,
-  props: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(request: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   return proxyRequest("argus", `/v1/instances/${encodeURIComponent(params.id)}`, z.unknown(), {
     method: "DELETE",

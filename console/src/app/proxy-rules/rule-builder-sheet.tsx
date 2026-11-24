@@ -3,14 +3,7 @@
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Check, ArrowRight, ArrowLeft } from "lucide-react";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,7 +39,9 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
   const [authorizerConfig, setAuthorizerConfig] = React.useState("{}");
 
   const [mutatorHandler, setMutatorHandler] = React.useState("header");
-  const [mutatorConfig, setMutatorConfig] = React.useState('{\n  "headers": {\n    "X-Forwarded-User": "{subject}"\n  }\n}');
+  const [mutatorConfig, setMutatorConfig] = React.useState(
+    '{\n  "headers": {\n    "X-Forwarded-User": "{subject}"\n  }\n}',
+  );
 
   const [upstreamUrl, setUpstreamUrl] = React.useState("http://backend-service:8080");
   const [stripPrefix, setStripPrefix] = React.useState("/api/v1");
@@ -55,13 +50,11 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
   const queryClient = useQueryClient();
 
   const { data: catalogue } = useApiQuery(["proxy-rules-handlers"], () =>
-    fetchAndParse("/api/proxy-rules/handlers", handlerCatalogueSchema)
+    fetchAndParse("/api/proxy-rules/handlers", handlerCatalogueSchema),
   );
 
   const toggleMethod = (method: string) => {
-    setSelectedMethods((prev) =>
-      prev.includes(method) ? prev.filter((m) => m !== method) : [...prev, method]
-    );
+    setSelectedMethods((prev) => (prev.includes(method) ? prev.filter((m) => m !== method) : [...prev, method]));
   };
 
   const authJsonState = React.useMemo(() => {
@@ -100,39 +93,42 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
     }
   }, [mutatorConfig]);
 
-  const previewRule: Rule = React.useMemo(() => ({
-    id: ruleId.trim() || "rule-sample",
-    description: description.trim(),
-    match: {
-      url: urlPattern.trim() || "/<.*>",
-      methods: selectedMethods.length > 0 ? selectedMethods : ["GET"],
-    },
-    authenticators: authHandler !== "none" ? [{ handler: authHandler, config: authJsonState.value }] : [],
-    authorizer: {
-      handler: authorizerHandler,
-      config: authorizerJsonState.value,
-    },
-    mutators: mutatorHandler !== "none" ? [{ handler: mutatorHandler, config: mutatorJsonState.value }] : [],
-    upstream: {
-      url: upstreamUrl.trim() || "http://localhost:8080",
-      ...(stripPrefix.trim() ? { strip_prefix: stripPrefix.trim() } : {}),
-      ...(rewritePath.trim() ? { rewrite: rewritePath.trim() } : {}),
-    },
-  }), [
-    ruleId,
-    description,
-    urlPattern,
-    selectedMethods,
-    authHandler,
-    authJsonState.value,
-    authorizerHandler,
-    authorizerJsonState.value,
-    mutatorHandler,
-    mutatorJsonState.value,
-    upstreamUrl,
-    stripPrefix,
-    rewritePath,
-  ]);
+  const previewRule: Rule = React.useMemo(
+    () => ({
+      id: ruleId.trim() || "rule-sample",
+      description: description.trim(),
+      match: {
+        url: urlPattern.trim() || "/<.*>",
+        methods: selectedMethods.length > 0 ? selectedMethods : ["GET"],
+      },
+      authenticators: authHandler !== "none" ? [{ handler: authHandler, config: authJsonState.value }] : [],
+      authorizer: {
+        handler: authorizerHandler,
+        config: authorizerJsonState.value,
+      },
+      mutators: mutatorHandler !== "none" ? [{ handler: mutatorHandler, config: mutatorJsonState.value }] : [],
+      upstream: {
+        url: upstreamUrl.trim() || "http://localhost:8080",
+        ...(stripPrefix.trim() ? { strip_prefix: stripPrefix.trim() } : {}),
+        ...(rewritePath.trim() ? { rewrite: rewritePath.trim() } : {}),
+      },
+    }),
+    [
+      ruleId,
+      description,
+      urlPattern,
+      selectedMethods,
+      authHandler,
+      authJsonState.value,
+      authorizerHandler,
+      authorizerJsonState.value,
+      mutatorHandler,
+      mutatorJsonState.value,
+      upstreamUrl,
+      stripPrefix,
+      rewritePath,
+    ],
+  );
 
   const createMutation = useMutation({
     mutationFn: async (rule: Rule) => {
@@ -233,8 +229,8 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
                 currentStep === s.step
                   ? "text-primary"
                   : currentStep > s.step
-                  ? "text-muted-foreground"
-                  : "text-muted-foreground/50"
+                    ? "text-muted-foreground"
+                    : "text-muted-foreground/50"
               }`}
             >
               {currentStep > s.step && <Check className="w-3 h-3 text-emerald-500" />}
@@ -277,7 +273,9 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
                   placeholder="e.g. /api/v1/documents/<.*>"
                   required
                 />
-                <p className="text-xs text-muted-foreground">Supports Oathkeeper globs like <code>/path/&lt;.*&gt;</code> or <code>/path/*</code>.</p>
+                <p className="text-xs text-muted-foreground">
+                  Supports Oathkeeper globs like <code>/path/&lt;.*&gt;</code> or <code>/path/*</code>.
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -450,7 +448,9 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
                   onChange={(e) => setStripPrefix(e.target.value)}
                   placeholder="e.g. /api/v1"
                 />
-                <p className="text-xs text-muted-foreground">Strips matching prefix before forwarding request to backend.</p>
+                <p className="text-xs text-muted-foreground">
+                  Strips matching prefix before forwarding request to backend.
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -461,7 +461,9 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
                   onChange={(e) => setRewritePath(e.target.value)}
                   placeholder="e.g. /v2/documents/$1"
                 />
-                <p className="text-xs text-muted-foreground">Rewrites inbound capture groups to target upstream format.</p>
+                <p className="text-xs text-muted-foreground">
+                  Rewrites inbound capture groups to target upstream format.
+                </p>
               </div>
             </div>
           )}
@@ -472,7 +474,9 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
               <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Live Rule Payload Preview
               </Label>
-              <Badge variant="outline" className="text-[10px]">JSON</Badge>
+              <Badge variant="outline" className="text-[10px]">
+                JSON
+              </Badge>
             </div>
             <CodeBlock code={JSON.stringify(previewRule, null, 2)} language="json" />
           </div>
@@ -484,7 +488,9 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Previous
               </Button>
-            ) : <div />}
+            ) : (
+              <div />
+            )}
 
             {currentStep < 5 ? (
               <Button type="button" onClick={() => setCurrentStep((s) => s + 1)}>
@@ -492,7 +498,11 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             ) : (
-              <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              <Button
+                type="submit"
+                disabled={createMutation.isPending}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
                 {createMutation.isPending ? "Creating..." : "Save Rule"}
               </Button>
             )}
