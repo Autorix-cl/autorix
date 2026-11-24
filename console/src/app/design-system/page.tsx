@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { notFound } from "next/navigation";
 import {
   Palette,
   Type,
@@ -19,6 +20,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 export default function DesignSystemPage() {
   const [density, setDensity] = React.useState<"comfortable" | "compact">("comfortable");
+  if (process.env.NODE_ENV === "production") {
+    notFound();
+  }
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-16">
@@ -27,7 +31,7 @@ export default function DesignSystemPage() {
         <div>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-primary/20 bg-primary/5 text-primary text-xs font-mono mb-2">
             <Sparkles className="w-3 h-3" />
-            DESIGN SYSTEM & COMPONENT GALLERY (P4-S1)
+            DESIGN SYSTEM &amp; COMPONENT GALLERY
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Autorix Design Tokens & Primitives</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -116,7 +120,7 @@ export default function DesignSystemPage() {
         <TabsContent value="semantic" className="space-y-6">
           <Card className="border-border/80 bg-card/60">
             <CardHeader>
-              <CardTitle className="text-base font-semibold">Semantic Status Scales (P4-S1-T3)</CardTitle>
+              <CardTitle className="text-base font-semibold">Semantic Status Scales</CardTitle>
               <CardDescription className="text-xs">Accessible status indicators paired with iconography for color-blind clarity</CardDescription>
             </CardHeader>
             <CardContent>
@@ -151,7 +155,7 @@ export default function DesignSystemPage() {
         <TabsContent value="typography" className="space-y-6">
           <Card className="border-border/80 bg-card/60">
             <CardHeader>
-              <CardTitle className="text-base font-semibold">Typography Scale & Tabular Numerals (P4-S1-T4)</CardTitle>
+              <CardTitle className="text-base font-semibold">Typography Scale &amp; Tabular Numerals</CardTitle>
               <CardDescription className="text-xs">Standard type hierarchy with proportional lining numbers and monospace fonts</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

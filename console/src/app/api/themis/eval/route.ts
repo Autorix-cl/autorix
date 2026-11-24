@@ -84,9 +84,6 @@ export async function POST(req: Request) {
       results,
       all_passed: data.all_passed,
     });
-
-
-    return res;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Evaluation failed";
     return NextResponse.json({ error: message }, { status: 500 });

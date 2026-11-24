@@ -32,6 +32,14 @@ import {
 import { CodeBlock } from "@/components/ui/code-block";
 import { redactObject } from "@/lib/api/redact";
 import { auditEntrySchema, type AuditEntry, type AuditVerification } from "@/lib/api/schemas/audit";
+import { formatDateTime } from "@/lib/format/date-time";
+import { toast } from "sonner";
+
+function escapeCsvCell(value: unknown): string {
+  const str = String(value ?? "");
+  const neutralized = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+  return `"${neutralized.replace(/"/g, '""')}"`;
+}
 
 export default function AuditPage() {
   const [searchTerm, setSearchTerm] = React.useState("");
@@ -44,6 +52,8 @@ export default function AuditPage() {
   const {
     data: auditEntries,
     isLoading: isLogsLoading,
+    isError: isLogsError,
+    error: logsError,
     refetch: refetchLogs,
   } = useQuery<AuditEntry[]>({
     queryKey: ["audit", "logs", actionFilter, resourceFilter, outcomeFilter],
@@ -55,7 +65,8 @@ export default function AuditPage() {
 
       const res = await fetch(`/api/audit?${params.toString()}`);
       if (!res.ok) {
-        return [];
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `Failed to load audit log (HTTP ${res.status})`);
       }
       const json = await res.json();
       if (Array.isArray(json)) return json.map((entry) => auditEntrySchema.parse(entry));
@@ -64,24 +75,19 @@ export default function AuditPage() {
     },
   });
 
-  // Fetch Hash Chain Verification
+  // Fetch Hash Chain Verification — fail honestly if unreachable or tampered
   const {
     data: verification,
     isLoading: isVerifying,
+    isError: isVerifyError,
     refetch: verifyChain,
   } = useQuery<AuditVerification>({
     queryKey: ["audit", "verification"],
     queryFn: async () => {
       const res = await fetch("/api/audit/verify");
       if (!res.ok) {
-        return {
-          verified: true,
-          chain_length: 0,
-          head_hash: "",
-          genesis_hash: "",
-          verified_at: new Date().toISOString(),
-          algorithm: "SHA-256",
-        };
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `Hash chain verification unavailable (HTTP ${res.status})`);
       }
       return res.json();
     },
@@ -106,14 +112,33 @@ export default function AuditPage() {
     });
   }, [logs, searchTerm, actionFilter, resourceFilter, outcomeFilter]);
 
-  const handleExport = (format: "csv" | "json") => {
+  const handleExport = async (format: "csv" | "json") => {
+    const filename = `autorix-audit-log-${new Date().toISOString().slice(0, 10)}.${format}`;
+    // Try server-side export endpoint first to obtain complete unfiltered ledger
+    try {
+      const res = await fetch(`/api/audit/export?format=${format}`);
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success(`Exported audit trail as ${format.toUpperCase()}`);
+        return;
+      }
+    } catch {
+      // Fall back to exporting currently loaded filtered records below
+    }
+
     if (format === "json") {
       const jsonContent = JSON.stringify(filteredLogs, null, 2);
       const blob = new Blob([jsonContent], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `autorix-audit-log-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
     } else {
@@ -129,16 +154,26 @@ export default function AuditPage() {
         l.outcome,
         l.hash || "",
       ]);
-      const csvContent = [headers.join(","), ...rows.map((r) => r.map((cell) => `"${cell}"`).join(","))].join("\n");
+      const csvContent = [
+        headers.map((h) => escapeCsvCell(h)).join(","),
+        ...rows.map((r) => r.map((cell) => escapeCsvCell(cell)).join(",")),
+      ].join("\n");
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `autorix-audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
     }
+    toast.info(`Exported ${filteredLogs.length} filtered audit record(s) locally`);
   };
+
+  const chainState: "verified" | "tampered" | "unverified" = isVerifyError || !verification
+    ? "unverified"
+    : verification.verified
+      ? "verified"
+      : "tampered";
 
   const getActionBadge = (action: string) => {
     switch (action.toUpperCase()) {
@@ -193,32 +228,43 @@ export default function AuditPage() {
         description="Append-only, tamper-evident cryptographic hash chain recording all mutations, authentication events, and authorization decisions."
         icon={ScrollText}
         iconColor="text-blue-400"
-        statusText="CRYPTOGRAPHIC-HASH-CHAIN-INTACT"
-        statusVariant="info"
+        statusText={
+          chainState === "verified"
+            ? "CRYPTOGRAPHIC-HASH-CHAIN-INTACT"
+            : chainState === "tampered"
+              ? "HASH-CHAIN-INTEGRITY-VIOLATION"
+              : "HASH-CHAIN-UNVERIFIED"
+        }
+        statusVariant={chainState === "verified" ? "success" : chainState === "tampered" ? "rose" : "warning"}
         metrics={[
           {
             label: "Audit Ledger",
-            value: auditEntries?.length ?? 0,
-            hint: "Total Hash Chain Events",
+            value: isLogsError ? "—" : (auditEntries?.length ?? 0),
+            hint: "Loaded Audit Events",
             icon: ScrollText,
           },
           {
-            label: "Chain Integrity",
-            value: "SHA-256",
-            hint: "Tamper-Evident Linking",
+            label: "Chain Length",
+            value: verification ? verification.chain_length : "—",
+            hint: "SHA-256 Linked Records",
             icon: Hash,
           },
           {
-            label: "Retention Policy",
-            value: "365 Days",
-            hint: "Immutable Append-Only",
-            icon: Clock,
+            label: "Chain Status",
+            value:
+              chainState === "verified"
+                ? "Verified"
+                : chainState === "tampered"
+                  ? "Tampered"
+                  : "Unverified",
+            hint: "Cryptographic Proof State",
+            icon: ShieldCheck,
           },
           {
-            label: "Verification Engine",
-            value: "Active",
-            hint: "Zero-Knowledge Checksum",
-            icon: ShieldCheck,
+            label: "Algorithm",
+            value: verification?.algorithm || "SHA-256",
+            hint: "Immutable Append-Only",
+            icon: Clock,
           },
         ]}
         actions={
@@ -256,45 +302,92 @@ export default function AuditPage() {
       />
 
       {/* Cryptographic Tamper-Evidence Verification Card */}
-      <Card className="border-border/80 bg-card/60 backdrop-blur-sm shadow-xs">
+      <Card
+        className={
+          chainState === "tampered"
+            ? "border-destructive/60 bg-destructive/5 backdrop-blur-sm shadow-xs"
+            : chainState === "unverified"
+              ? "border-amber-500/40 bg-amber-500/5 backdrop-blur-sm shadow-xs"
+              : "border-border/80 bg-card/60 backdrop-blur-sm shadow-xs"
+        }
+      >
         <CardContent className="p-4 sm:p-5">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-start sm:items-center gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
-                <ShieldCheck className="w-5 h-5" />
+              <div
+                className={
+                  chainState === "verified"
+                    ? "w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0"
+                    : chainState === "tampered"
+                      ? "w-10 h-10 rounded-xl bg-destructive/15 border border-destructive/40 flex items-center justify-center text-destructive shrink-0"
+                      : "w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0"
+                }
+              >
+                {chainState === "verified" ? (
+                  <ShieldCheck className="w-5 h-5" aria-hidden="true" />
+                ) : chainState === "tampered" ? (
+                  <XCircle className="w-5 h-5" aria-hidden="true" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5" aria-hidden="true" />
+                )}
               </div>
               <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-sm font-semibold text-foreground">
-                    Tamper-Evident Hash Chain Verified
+                    {chainState === "verified"
+                      ? "Tamper-Evident Hash Chain Verified"
+                      : chainState === "tampered"
+                        ? "Audit Hash Chain Verification Failed"
+                        : "Audit Chain Verification Unavailable"}
                   </h3>
-                  <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-[10px] font-mono">
-                    SHA-256 INTACT
-                  </Badge>
+                  {chainState === "verified" ? (
+                    <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-[10px] font-mono">
+                      SHA-256 INTACT
+                    </Badge>
+                  ) : chainState === "tampered" ? (
+                    <Badge variant="destructive" className="text-[10px] font-mono">
+                      INTEGRITY BROKEN
+                    </Badge>
+                  ) : (
+                    <Badge variant="warning" className="text-[10px] font-mono">
+                      UNVERIFIED
+                    </Badge>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Cryptographic integrity validated across{" "}
-                  <span className="font-mono text-foreground font-semibold">
-                    {verification?.chain_length ?? 1042} records
-                  </span>
-                  . Zero broken links or state alterations detected.
+                  {chainState === "verified" && verification ? (
+                    <>
+                      Cryptographic integrity validated across{" "}
+                      <span className="font-mono text-foreground font-semibold">
+                        {verification.chain_length} records
+                      </span>
+                      . Zero broken links or state alterations detected.
+                    </>
+                  ) : chainState === "tampered" ? (
+                    "One or more audit records failed SHA-256 chain verification. Investigate potential tampering immediately."
+                  ) : (
+                    "Could not verify the audit hash chain against Argus. Do not treat ledger integrity as confirmed until verification succeeds."
+                  )}
                 </p>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-mono text-muted-foreground pt-1">
-                  <span>Head: {verification?.head_hash?.slice(0, 16) ?? "a4f8e91c7b3d2e0f"}...</span>
-                  <span>Algorithm: {verification?.algorithm ?? "SHA-256"}</span>
-                  <span>Verified: {new Date(verification?.verified_at ?? Date.now()).toLocaleTimeString()}</span>
-                </div>
+                {verification && (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-mono text-muted-foreground pt-1">
+                    <span>Head: {verification.head_hash ? `${verification.head_hash.slice(0, 16)}...` : "—"}</span>
+                    <span>Algorithm: {verification.algorithm || "SHA-256"}</span>
+                    {verification.verified_at && <span>Verified: {formatDateTime(verification.verified_at)}</span>}
+                  </div>
+                )}
               </div>
             </div>
 
             <Button
+              type="button"
               variant="outline"
               size="sm"
               onClick={() => verifyChain()}
               disabled={isVerifying}
               className="gap-1.5 text-xs shrink-0 self-start md:self-center"
             >
-              <ShieldCheck className={`h-3.5 w-3.5 ${isVerifying ? "animate-spin" : "text-emerald-400"}`} />
+              <ShieldCheck className={`h-3.5 w-3.5 ${isVerifying ? "animate-spin" : "text-emerald-400"}`} aria-hidden="true" />
               {isVerifying ? "Verifying..." : "Re-Verify Chain"}
             </Button>
           </div>
@@ -307,8 +400,9 @@ export default function AuditPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             {/* Search Input */}
             <div className="lg:col-span-2 relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <Input
+                aria-label="Search audit records"
                 placeholder="Search actor, resource, action, request ID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -319,6 +413,7 @@ export default function AuditPage() {
             {/* Action Select */}
             <div>
               <select
+                aria-label="Filter by action"
                 value={actionFilter}
                 onChange={(e) => setActionFilter(e.target.value)}
                 className="w-full h-9 rounded-md border border-input bg-background/80 px-3 py-1.5 text-xs text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
@@ -335,6 +430,7 @@ export default function AuditPage() {
             {/* Resource Select */}
             <div>
               <select
+                aria-label="Filter by resource type"
                 value={resourceFilter}
                 onChange={(e) => setResourceFilter(e.target.value)}
                 className="w-full h-9 rounded-md border border-input bg-background/80 px-3 py-1.5 text-xs text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
@@ -351,6 +447,7 @@ export default function AuditPage() {
             {/* Outcome Select */}
             <div>
               <select
+                aria-label="Filter by outcome"
                 value={outcomeFilter}
                 onChange={(e) => setOutcomeFilter(e.target.value)}
                 className="w-full h-9 rounded-md border border-input bg-background/80 px-3 py-1.5 text-xs text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
@@ -385,6 +482,16 @@ export default function AuditPage() {
             <div className="py-16 text-center text-xs text-muted-foreground font-mono">
               Loading cryptographic audit logs...
             </div>
+          ) : isLogsError ? (
+            <div role="alert" className="py-16 px-4 text-center space-y-2">
+              <AlertTriangle className="w-6 h-6 text-amber-400 mx-auto" aria-hidden="true" />
+              <p className="text-xs font-medium text-foreground">
+                {logsError instanceof Error ? logsError.message : "Failed to load audit records."}
+              </p>
+              <Button type="button" variant="outline" size="sm" onClick={() => refetchLogs()} className="text-xs h-7">
+                Retry
+              </Button>
+            </div>
           ) : filteredLogs.length === 0 ? (
             <div className="py-16 text-center text-xs text-muted-foreground">
               No audit records found matching your filters.
@@ -394,14 +501,14 @@ export default function AuditPage() {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-border/60 bg-muted/30 text-muted-foreground font-medium">
-                    <th className="py-3 px-4">Timestamp</th>
-                    <th className="py-3 px-4">Actor</th>
-                    <th className="py-3 px-4">Action</th>
-                    <th className="py-3 px-4">Resource Target</th>
-                    <th className="py-3 px-4">Env</th>
-                    <th className="py-3 px-4">Outcome</th>
-                    <th className="py-3 px-4">Record Hash</th>
-                    <th className="py-3 px-4 text-right">Inspection</th>
+                    <th scope="col" className="py-3 px-4">Timestamp</th>
+                    <th scope="col" className="py-3 px-4">Actor</th>
+                    <th scope="col" className="py-3 px-4">Action</th>
+                    <th scope="col" className="py-3 px-4">Resource Target</th>
+                    <th scope="col" className="py-3 px-4">Env</th>
+                    <th scope="col" className="py-3 px-4">Outcome</th>
+                    <th scope="col" className="py-3 px-4">Record Hash</th>
+                    <th scope="col" className="py-3 px-4 text-right">Inspection</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40 font-mono">
@@ -409,19 +516,9 @@ export default function AuditPage() {
                     <tr key={entry.id} className="hover:bg-accent/40 transition-colors">
                       <td className="py-3.5 px-4 text-muted-foreground whitespace-nowrap">
                         <div className="flex items-center gap-1.5 font-sans">
-                          <Clock className="w-3 h-3 text-muted-foreground/70" />
-                          <span className="text-foreground">
-                            {new Date(entry.timestamp).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              second: "2-digit",
-                            })}
-                          </span>
-                          <span className="text-muted-foreground text-[10px]">
-                            {new Date(entry.timestamp).toLocaleDateString([], {
-                              month: "short",
-                              day: "numeric",
-                            })}
+                          <Clock className="w-3 h-3 text-muted-foreground/70" aria-hidden="true" />
+                          <span className="text-foreground text-[11px] font-mono">
+                            {formatDateTime(entry.timestamp)}
                           </span>
                         </div>
                       </td>
@@ -483,7 +580,7 @@ export default function AuditPage() {
                 <div className="flex items-center gap-2 mb-1">
                   {getActionBadge(selectedEntry.action)}
                   <span className="text-xs font-mono text-muted-foreground">
-                    Sequence #{selectedEntry.sequence || 1042}
+                    Sequence #{selectedEntry.sequence ?? "—"}
                   </span>
                 </div>
                 <DialogTitle className="text-lg font-bold">
@@ -557,7 +654,7 @@ export default function AuditPage() {
                     State Mutation Diff (Secrets Redacted)
                   </h4>
                   <span className="text-[10px] text-muted-foreground font-mono">
-                    P8-S1-T4 Redaction Enforcement
+                    Automatic secret redaction active
                   </span>
                 </div>
 

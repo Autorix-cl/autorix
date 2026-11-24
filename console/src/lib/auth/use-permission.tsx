@@ -1,12 +1,16 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { usePathname } from "next/navigation";
 import type { Operator, OperatorRole } from "./types";
 import { hasPermission } from "./types";
 import { redirectToLogin } from "../api/client";
 
-const PUBLIC_ROUTES = ["/login", "/setup", "/session-expired", "/403"];
+const PUBLIC_ROUTES = ["/login", "/setup", "/403"];
+
+function isPublicPath(path: string): boolean {
+  return PUBLIC_ROUTES.some((p) => path === p || path.startsWith(p + "/"));
+}
 
 interface AuthContextType {
   operator: Operator | null;
@@ -30,6 +34,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const pathname = usePathname();
   const currentPath = pathname || "";
+  const isPublic = isPublicPath(currentPath);
+  const currentPathRef = useRef(currentPath);
+  currentPathRef.current = currentPath;
+  const wasPublicRef = useRef<boolean | null>(null);
 
   const checkSession = useCallback(async (): Promise<boolean> => {
     try {
@@ -42,11 +50,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
       setOperator(null);
-      const isPublic = PUBLIC_ROUTES.some(
-        (p) => currentPath === p || currentPath?.startsWith(p + "/")
-      );
-      if (!isPublic) {
-        redirectToLogin(currentPath);
+      const activePath = currentPathRef.current;
+      if (!isPublicPath(activePath)) {
+        redirectToLogin(activePath);
       }
       return false;
     } catch {
@@ -55,18 +61,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPath]);
+  }, []);
 
   useEffect(() => {
-    checkSession();
-  }, [checkSession]);
+    const previouslyPublic = wasPublicRef.current;
+    wasPublicRef.current = isPublic;
+
+    // Fetch once on mount, or when transitioning from a public auth page into the protected app
+    if (previouslyPublic === null || (previouslyPublic && !isPublic)) {
+      checkSession();
+    }
+  }, [isPublic, checkSession]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const isPublic = PUBLIC_ROUTES.some(
-      (p) => currentPath === p || currentPath?.startsWith(p + "/")
-    );
-    if (isPublic) return;
+    if (typeof window === "undefined" || isPublic) return;
 
     // Check session on window focus / visibility change
     const onFocus = () => {
@@ -91,7 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       clearInterval(interval);
     };
-  }, [currentPath, checkSession]);
+  }, [isPublic, checkSession]);
 
   const can = (permission: string): boolean => {
     if (!operator) return false;

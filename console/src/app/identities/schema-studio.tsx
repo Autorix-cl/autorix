@@ -24,8 +24,15 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { CodeEditor } from "@/components/ui/code-editor";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DynamicSchemaForm, type DynamicSchemaFormProps } from "./schema-form";
 import { toast } from "sonner";
+
+function readCsrfCookie(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const match = document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
 
 export interface SchemaStudioProps {
   onSchemaCreated?: (schemaId: string) => void;
@@ -261,6 +268,7 @@ export function SchemaStudio({ onSchemaCreated }: SchemaStudioProps) {
 
   const [selectedSchemaId, setSelectedSchemaId] = React.useState<string>("default");
   const [isCreatingNew, setIsCreatingNew] = React.useState<boolean>(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState<boolean>(false);
   const lastLoadedSchemaIdRef = React.useRef<string | null>(null);
 
   // Schema form state
@@ -392,9 +400,13 @@ export function SchemaStudio({ onSchemaCreated }: SchemaStudioProps) {
       const url = existing ? `/api/identities/schemas/${schemaId}` : "/api/identities/schemas";
       const method = existing ? "PATCH" : "POST";
 
+      const csrf = readCsrfCookie();
       const res = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        },
         body: JSON.stringify({
           id: schemaId,
           name: schemaName,
@@ -421,20 +433,21 @@ export function SchemaStudio({ onSchemaCreated }: SchemaStudioProps) {
     }
   };
 
-  const handleDeleteSchema = async () => {
+  const handleDeleteSchema = () => {
     if (schemaId === "default") {
       toast.error("The 'default' schema is the engine system fallback and cannot be deleted");
       return;
     }
+    setConfirmDeleteOpen(true);
+  };
 
-    if (!confirm(`Are you sure you want to permanently delete identity schema '${schemaId}'?`)) {
-      return;
-    }
-
+  const executeDeleteSchema = async () => {
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/identities/schemas/${schemaId}`, {
+      const csrf = readCsrfCookie();
+      const res = await fetch(`/api/identities/schemas/${encodeURIComponent(schemaId)}`, {
         method: "DELETE",
+        headers: csrf ? { "X-CSRF-Token": csrf } : undefined,
       });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -442,6 +455,7 @@ export function SchemaStudio({ onSchemaCreated }: SchemaStudioProps) {
       }
 
       toast.success(`Schema '${schemaId}' deleted`);
+      setConfirmDeleteOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["identity-schemas"] });
       setSelectedSchemaId("default");
       setIsCreatingNew(false);
@@ -731,6 +745,16 @@ export function SchemaStudio({ onSchemaCreated }: SchemaStudioProps) {
           </Card>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        onOpenChange={setConfirmDeleteOpen}
+        title="Delete Identity Schema"
+        description={`Are you sure you want to permanently delete identity schema "${schemaId}"?`}
+        confirmLabel="Delete Schema"
+        isLoading={isDeleting}
+        onConfirm={executeDeleteSchema}
+      />
     </div>
   );
 }

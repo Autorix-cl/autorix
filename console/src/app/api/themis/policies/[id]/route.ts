@@ -7,14 +7,14 @@ type Params = { params: Promise<{ id: string }> };
 export async function GET(req: NextRequest, { params }: Params) {
   const { id } = await params;
   const tenantId = req.nextUrl.searchParams.get("tenant_id") || "default";
-  return proxyRequest("themis", `/policies/${id}?tenant_id=${encodeURIComponent(tenantId)}`, z.any());
+  return proxyRequest("themis", `/policies/${encodeURIComponent(id)}?tenant_id=${encodeURIComponent(tenantId)}`, z.any());
 }
 
 export async function PUT(req: NextRequest, { params }: Params) {
   const { id } = await params;
   try {
     const body = await req.json();
-    return proxyRequest("themis", `/policies/${id}`, z.any(), {
+    return proxyRequest("themis", `/policies/${encodeURIComponent(id)}`, z.any(), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -28,7 +28,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   const { id } = await params;
   const tenantId = req.nextUrl.searchParams.get("tenant_id") || "default";
-  return proxyRequest("themis", `/policies/${id}?tenant_id=${encodeURIComponent(tenantId)}`, z.any(), {
+  return proxyRequest("themis", `/policies/${encodeURIComponent(id)}?tenant_id=${encodeURIComponent(tenantId)}`, z.any(), {
     method: "DELETE",
   });
 }

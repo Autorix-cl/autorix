@@ -31,6 +31,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CodeBlock } from "@/components/ui/code-block";
 import { DataTable } from "@/components/ui/data-table";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Can } from "@/lib/auth/use-permission";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { useApiMutation } from "@/lib/query/use-api-mutation";
 import { fetchAndParse } from "@/lib/api/schema";
@@ -91,6 +93,7 @@ export default function PermissionsPage() {
   const [cursor, setCursor] = React.useState("");
   const [cursorHistory, setCursorHistory] = React.useState<string[]>([]);
   const [isBuilderOpen, setIsBuilderOpen] = React.useState(false);
+  const [pendingDeleteTuple, setPendingDeleteTuple] = React.useState<ZanzibarTupleItem | null>(null);
 
   const { data: schema, isLoading: isLoadingSchema } = useNexusSchema();
   const { mutateAsync: saveSchema } = useSaveNexusSchema();
@@ -119,12 +122,13 @@ export default function PermissionsPage() {
     {
       successMessage: () => "Tuple deleted successfully.",
       onSuccess: () => {
+        setPendingDeleteTuple(null);
         queryClient.invalidateQueries({ queryKey: ["nexus-tuples"] });
       },
     }
   );
 
-  const columns = React.useMemo(() => getColumns((tuple) => deleteMutation.mutate(tuple)), [deleteMutation]);
+  const columns = React.useMemo(() => getColumns((tuple) => setPendingDeleteTuple(tuple)), []);
 
   const checkMutation = useApiMutation(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- startedAt is stripped from the request body on purpose
@@ -260,31 +264,36 @@ export default function PermissionsPage() {
           },
           {
             label: "Engine Gateway",
-            value: "Port 4434",
-            hint: "gRPC & HTTP/2",
+            value: "Port 8080",
+            hint: "REST :8080 · gRPC :50051",
             icon: Activity,
           },
         ]}
         actions={
           <div className="flex items-center gap-2">
             <Button
+              type="button"
               variant="outline"
               size="icon-sm"
               onClick={() => refetchTuples()}
               disabled={isFetchingTuples || isLoadingTuples}
+              aria-label={t("common.refresh")}
               title={t("common.refresh")}
               className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isFetchingTuples ? "animate-spin" : ""}`} />
             </Button>
-            <Button
-              size="sm"
-              onClick={() => setIsBuilderOpen(true)}
-              className="h-8 gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 text-white font-medium shadow-sm shrink-0"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>{t("permissions.newTupleButton")}</span>
-            </Button>
+            <Can perform="permissions:write">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setIsBuilderOpen(true)}
+                className="h-8 gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 text-white font-medium shadow-sm shrink-0"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>{t("permissions.newTupleButton")}</span>
+              </Button>
+            </Can>
           </div>
         }
       />
@@ -488,14 +497,17 @@ export default function PermissionsPage() {
                       <RefreshCw className={`h-3.5 w-3.5 ${isFetchingTuples ? "animate-spin" : ""}`} />
                       <span>{t("common.refresh")}</span>
                     </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => setIsBuilderOpen(true)}
-                      className="h-8 gap-1 text-xs bg-purple-600 hover:bg-purple-700 text-white"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      <span>Add Tuple</span>
-                    </Button>
+                    <Can perform="permissions:write">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => setIsBuilderOpen(true)}
+                        className="h-8 gap-1 text-xs bg-purple-600 hover:bg-purple-700 text-white"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Add Tuple</span>
+                      </Button>
+                    </Can>
                   </div>
                 </div>
               </CardHeader>
@@ -577,6 +589,28 @@ export default function PermissionsPage() {
           </CloudSection>
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteTuple)}
+        onOpenChange={(open) => !open && setPendingDeleteTuple(null)}
+        title="Delete Relation Tuple"
+        description={
+          <>
+            Remove tuple{" "}
+            <strong className="font-mono">
+              {pendingDeleteTuple?.namespace}:{pendingDeleteTuple?.object}#{pendingDeleteTuple?.relation}@
+              {pendingDeleteTuple?.subject}
+            </strong>{" "}
+            from Nexus?
+          </>
+        }
+        confirmLabel="Delete Tuple"
+        variant="destructive"
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (pendingDeleteTuple) deleteMutation.mutate(pendingDeleteTuple);
+        }}
+      />
     </div>
   );
 }

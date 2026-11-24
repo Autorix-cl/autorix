@@ -15,7 +15,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       // payload is optional
     }
 
-    return proxyRequest("vulcan", `/admin/keys/${id}/rotate`, rotateKeyResponseSchema, {
+    return proxyRequest("vulcan", `/admin/keys/${encodeURIComponent(id)}/rotate`, rotateKeyResponseSchema, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ grace_period: gracePeriod }),

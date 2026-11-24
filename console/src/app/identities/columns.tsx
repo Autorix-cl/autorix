@@ -3,6 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { MoreHorizontal } from "lucide-react";
 import { Identity } from "@/lib/api/schemas/identity";
 
@@ -16,6 +17,25 @@ export interface IdentityItem {
 }
 
 export const getColumns = (onSelect: (identity: IdentityItem) => void): ColumnDef<IdentityItem, unknown>[] => [
+  {
+    id: "select",
+    header: ({ table }) => (
+      <Checkbox
+        checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && "indeterminate")}
+        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+        aria-label="Select all identities on this page"
+      />
+    ),
+    cell: ({ row }) => (
+      <Checkbox
+        checked={row.getIsSelected()}
+        onCheckedChange={(value) => row.toggleSelected(!!value)}
+        aria-label={`Select identity ${row.original.email}`}
+      />
+    ),
+    enableSorting: false,
+    enableHiding: false,
+  },
   {
     accessorKey: "id",
     header: "ID",
@@ -38,10 +58,13 @@ export const getColumns = (onSelect: (identity: IdentityItem) => void): ColumnDe
     accessorKey: "state",
     header: "State",
     cell: ({ row }) => {
-      const state = row.original.state;
+      const state = (row.original.state || "inactive").toLowerCase();
       return (
-        <Badge variant={state === "active" ? "success" : "secondary"} className="text-[10px]">
-          {state === "active" ? "Active" : "Inactive"}
+        <Badge
+          variant={state === "active" ? "success" : state === "suspended" ? "destructive" : "secondary"}
+          className="text-[10px] capitalize"
+        >
+          {state}
         </Badge>
       );
     },
@@ -56,9 +79,14 @@ export const getColumns = (onSelect: (identity: IdentityItem) => void): ColumnDe
     cell: ({ row }) => {
       const identity = row.original;
       return (
-        <Button variant="ghost" className="h-8 w-8 p-0" onClick={() => onSelect(identity)}>
-          <span className="sr-only">Open menu</span>
-          <MoreHorizontal className="h-4 w-4" />
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-8 w-8 p-0"
+          onClick={() => onSelect(identity)}
+          aria-label={`Inspect identity ${identity.email}`}
+        >
+          <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
         </Button>
       );
     },

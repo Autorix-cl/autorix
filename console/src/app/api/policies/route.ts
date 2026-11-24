@@ -54,10 +54,12 @@ export async function GET(req: NextRequest) {
       new Date(b.CreatedAt).getTime() - new Date(a.CreatedAt).getTime(),
   );
 
+  const nextCursor = json.next_cursor ?? json.cursor ?? "";
   return NextResponse.json({
     data,
     has_more: json.has_more ?? false,
-    cursor: json.cursor,
+    cursor: json.cursor ?? nextCursor,
+    next_cursor: nextCursor,
   });
 }
 

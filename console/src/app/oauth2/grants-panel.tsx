@@ -11,6 +11,7 @@ import { fetchAndParse } from "@/lib/api/schema";
 import { oauth2GrantListSchema, type OAuth2Grant } from "@/lib/api/schemas/oauth2";
 import { LoadingState } from "@/components/state/loading-state";
 import { EmptyState } from "@/components/state/empty-state";
+import { formatDateTime } from "@/lib/format/date-time";
 
 export function GrantsPanel() {
   const {
@@ -36,7 +37,7 @@ export function GrantsPanel() {
             Active user consents granted to OAuth2 clients and authorized scope delegations.
           </CardDescription>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
+        <Button type="button" variant="outline" size="sm" aria-label="Refresh grants" onClick={() => refetch()}>
           <RefreshCw className="w-4 h-4" />
         </Button>
       </CardHeader>
@@ -89,7 +90,7 @@ export function GrantsPanel() {
                     </div>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {new Date(g.created_at).toLocaleString()}
+                    {formatDateTime(g.created_at)}
                   </TableCell>
                 </TableRow>
               ))}

@@ -1,45 +1,76 @@
-import { getServiceUrl } from "../api-config";
+import { BACKEND_URLS, getServiceUrl, JANUS_ADMIN_URL } from "../api-config";
+
+const SSO_REQUEST_TIMEOUT_MS = 8_000;
 
 export interface OidcDiscovery {
   issuer: string;
   authorization_endpoint: string;
   token_endpoint: string;
+  userinfo_endpoint?: string;
+  introspection_endpoint?: string;
   jwks_uri: string;
   response_types_supported: string[];
   subject_types_supported: string[];
   id_token_signing_alg_values_supported: string[];
 }
 
+export function getPublicJanusUrl(): string {
+  return (process.env.NEXT_PUBLIC_JANUS_URL || "http://localhost:4444").replace(/\/+$/, "");
+}
+
+function buildFallbackDiscovery(): OidcDiscovery {
+  const internalJanusUrl = getServiceUrl("janus").replace(/\/+$/, "");
+  const publicJanusUrl = getPublicJanusUrl();
+  return {
+    issuer: publicJanusUrl,
+    authorization_endpoint: `${publicJanusUrl}/oauth2/auth`,
+    token_endpoint: `${internalJanusUrl}/oauth2/token`,
+    userinfo_endpoint: `${internalJanusUrl}/oauth2/userinfo`,
+    introspection_endpoint: `${internalJanusUrl}/oauth2/introspect`,
+    jwks_uri: `${internalJanusUrl}/.well-known/jwks.json`,
+    response_types_supported: ["code"],
+    subject_types_supported: ["public"],
+    id_token_signing_alg_values_supported: ["RS256", "ES256"],
+  };
+}
+
+function toBrowserAuthorizationEndpoint(endpoint: string, internalJanusUrl: string, publicJanusUrl: string): string {
+  const backendJanusUrl = BACKEND_URLS.janus.replace(/\/+$/, "");
+  for (const internalOrigin of [internalJanusUrl, backendJanusUrl]) {
+    if (internalOrigin && endpoint.startsWith(internalOrigin)) {
+      return `${publicJanusUrl}${endpoint.slice(internalOrigin.length)}`;
+    }
+  }
+  return endpoint;
+}
+
 export async function getJanusDiscovery(): Promise<OidcDiscovery | null> {
+  const internalJanusUrl = getServiceUrl("janus").replace(/\/+$/, "");
+  const publicJanusUrl = getPublicJanusUrl();
+
   try {
-    const janusUrl = getServiceUrl("janus");
-    const res = await fetch(`${janusUrl}/oauth2/openid-configuration`, {
+    const res = await fetch(`${internalJanusUrl}/.well-known/openid-configuration`, {
       cache: "no-store",
+      signal: AbortSignal.timeout(SSO_REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) {
-      // Fallback standard Janus discovery paths
-      return {
-        issuer: janusUrl,
-        authorization_endpoint: `${janusUrl}/oauth2/auth`,
-        token_endpoint: `${janusUrl}/oauth2/token`,
-        jwks_uri: `${janusUrl}/oauth2/jwks`,
-        response_types_supported: ["code"],
-        subject_types_supported: ["public"],
-        id_token_signing_alg_values_supported: ["RS256", "ES256"],
-      };
+      return buildFallbackDiscovery();
     }
-    return await res.json();
-  } catch {
-    const janusUrl = getServiceUrl("janus");
+    const discovery = (await res.json()) as OidcDiscovery;
     return {
-      issuer: janusUrl,
-      authorization_endpoint: `${janusUrl}/oauth2/auth`,
-      token_endpoint: `${janusUrl}/oauth2/token`,
-      jwks_uri: `${janusUrl}/oauth2/jwks`,
-      response_types_supported: ["code"],
-      subject_types_supported: ["public"],
-      id_token_signing_alg_values_supported: ["RS256", "ES256"],
+      ...discovery,
+      authorization_endpoint: toBrowserAuthorizationEndpoint(
+        discovery.authorization_endpoint || `${publicJanusUrl}/oauth2/auth`,
+        internalJanusUrl,
+        publicJanusUrl,
+      ),
+      token_endpoint: discovery.token_endpoint || `${internalJanusUrl}/oauth2/token`,
+      userinfo_endpoint: discovery.userinfo_endpoint || `${internalJanusUrl}/oauth2/userinfo`,
+      introspection_endpoint: discovery.introspection_endpoint || `${internalJanusUrl}/oauth2/introspect`,
+      jwks_uri: discovery.jwks_uri || `${internalJanusUrl}/.well-known/jwks.json`,
     };
+  } catch {
+    return buildFallbackDiscovery();
   }
 }
 
@@ -67,24 +98,25 @@ export async function generatePkceChallenge(verifier: string): Promise<string> {
 }
 
 /**
- * Self-registers console client in Janus if missing (P3-S3-T2).
+ * Self-registers console client in Janus over the private admin listener if missing (P3-S3-T2).
  */
 export async function registerConsoleOAuthClient(): Promise<void> {
   try {
-    const janusUrl = getServiceUrl("janus");
-    await fetch(`${janusUrl}/oauth2/clients`, {
+    const adminBase = JANUS_ADMIN_URL.replace(/\/+$/, "");
+    await fetch(`${adminBase}/admin/clients`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(SSO_REQUEST_TIMEOUT_MS),
       body: JSON.stringify({
         client_id: "autorix-console",
         client_name: "Autorix Control Plane Console",
         redirect_uris: ["/api/auth/sso/callback"],
         grant_types: ["authorization_code", "refresh_token"],
         response_types: ["code"],
-        token_endpoint_auth_method: "none", // Public PKCE client
+        token_endpoint_auth_method: "none",
       }),
     });
   } catch {
-    // Janus will accept the client or use pre-seeded client ID
+    // Janus may already have the pre-seeded client ID
   }
 }

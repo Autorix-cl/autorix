@@ -8,7 +8,7 @@ interface RouteParams {
 
 export async function DELETE(_req: NextRequest, { params }: RouteParams) {
   const { name } = await params;
-  return proxyRequest("janus", `/admin/scopes/${name}`, z.unknown(), {
+  return proxyRequest("janus", `/admin/scopes/${encodeURIComponent(name)}`, z.unknown(), {
     method: "DELETE",
   });
 }

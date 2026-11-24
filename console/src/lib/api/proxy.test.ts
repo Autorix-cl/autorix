@@ -23,6 +23,11 @@ describe("proxyRequest", () => {
   describe.each([
     ["janus", "/admin/clients"],
     ["aegis", "/rules"],
+    ["argus", "/v1/instances"],
+    ["nexus", "/tuples"],
+    ["themis", "/policies"],
+    ["vulcan", "/keys"],
+    ["hermes", "/admin/saml/providers"],
   ] as const)("%s mandatory BFF permissions", (service, path) => {
     it("rejects requests without a validated session before contacting upstream", async () => {
       vi.mocked(getCurrentOperator).mockResolvedValue(null);
@@ -60,6 +65,71 @@ describe("proxyRequest", () => {
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "w1", count: 3 }))));
       expect((await proxyRequest(service, path, widgetSchema, { method })).status).toBe(200);
     });
+  });
+
+  it("enforces mandatory session and identities permissions on ego", async () => {
+    vi.mocked(getCurrentOperator).mockResolvedValue(null);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await proxyRequest("ego", "/admin/identities", widgetSchema)).status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    vi.mocked(getCurrentOperator).mockResolvedValue({ role: "auditor" } as Operator);
+    expect((await proxyRequest("ego", "/admin/identities", widgetSchema, { method: "POST" })).status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("enforces mandatory session and observability permissions on prometheus", async () => {
+    vi.mocked(getCurrentOperator).mockResolvedValue(null);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await proxyRequest("prometheus", "/api/v1/query", widgetSchema)).status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "admin/identities",
+    "//evil.example/admin",
+    "/admin/../secret",
+    "/admin/%2e%2e/secret",
+    "/admin/%252e%252e/secret",
+    "/admin/foo%2fbar",
+    "/admin/foo\\bar",
+    "/admin/foo\0bar",
+  ])("rejects invalid or traversal upstream path %s with 400 before fetching", async (badPath) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await proxyRequest("ego", badPath, widgetSchema);
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("omits x-autorix-console-token when env var is unset and sets it only when configured", async () => {
+    const prev = process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN;
+    try {
+      delete process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN;
+      const fetchMock = vi
+        .fn()
+        .mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ id: "w1", count: 1 }))));
+      vi.stubGlobal("fetch", fetchMock);
+
+      await proxyRequest("ego", "/widgets", widgetSchema);
+      const headersWithoutEnv = fetchMock.mock.calls[0][1].headers as Headers;
+      expect(headersWithoutEnv.get("x-autorix-console-token")).toBeNull();
+      expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+
+      process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN = "runtime-secret-token";
+      await proxyRequest("ego", "/widgets", widgetSchema);
+      const headersWithEnv = fetchMock.mock.calls[1][1].headers as Headers;
+      expect(headersWithEnv.get("x-autorix-console-token")).toBe("runtime-secret-token");
+    } finally {
+      if (prev === undefined) {
+        delete process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN;
+      } else {
+        process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN = prev;
+      }
+    }
   });
 
   it("routes Janus administration to the private listener", async () => {

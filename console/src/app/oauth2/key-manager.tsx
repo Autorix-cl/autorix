@@ -16,10 +16,13 @@ import {
   type RotateKeysResponse,
 } from "@/lib/api/schemas/oauth2";
 import { LoadingState } from "@/components/state/loading-state";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Can } from "@/lib/auth/use-permission";
 
 export function KeyManager() {
   const queryClient = useQueryClient();
   const [successInfo, setSuccessInfo] = React.useState<RotateKeysResponse | null>(null);
+  const [confirmRotateOpen, setConfirmRotateOpen] = React.useState(false);
 
   const {
     data: jwks,
@@ -44,6 +47,7 @@ export function KeyManager() {
       return res.data;
     },
     onSuccess: (data) => {
+      setConfirmRotateOpen(false);
       setSuccessInfo(data);
       queryClient.invalidateQueries({ queryKey: ["oauth2-jwks"] });
     },
@@ -66,21 +70,24 @@ export function KeyManager() {
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <Button type="button" variant="outline" size="sm" aria-label="Refresh JWKS keystore" onClick={() => refetch()}>
               <RefreshCw className="w-4 h-4" />
             </Button>
-            <Button
-              size="sm"
-              onClick={() => rotateMutation.mutate()}
-              disabled={rotateMutation.isPending}
-            >
-              {rotateMutation.isPending ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <RotateCcw className="w-4 h-4 mr-2" />
-              )}
-              Rotate Signing Key
-            </Button>
+            <Can perform="oauth2:write">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setConfirmRotateOpen(true)}
+                disabled={rotateMutation.isPending}
+              >
+                {rotateMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                )}
+                Rotate Signing Key
+              </Button>
+            </Can>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -146,6 +153,16 @@ export function KeyManager() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={confirmRotateOpen}
+        onOpenChange={setConfirmRotateOpen}
+        title="Rotate Primary JWKS Signing Key"
+        description="Generate a new primary RS256 signing key in Janus? Existing keys remain published for verification during the rollover window, and newly issued JWTs will use the new kid."
+        confirmLabel="Rotate Signing Key"
+        isLoading={rotateMutation.isPending}
+        onConfirm={() => rotateMutation.mutate()}
+      />
     </div>
   );
 }

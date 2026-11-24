@@ -20,6 +20,13 @@ export interface FleetNotification {
   read: boolean;
 }
 
+const MAX_STORED_NOTIFICATION_IDS = 200;
+
+function trimIdSet(ids: Set<string>): string[] {
+  const arr = Array.from(ids);
+  return arr.length > MAX_STORED_NOTIFICATION_IDS ? arr.slice(-MAX_STORED_NOTIFICATION_IDS) : arr;
+}
+
 export function NotificationCenter() {
   const [notifications, setNotifications] = React.useState<FleetNotification[]>([]);
   const [readIds, setReadIds] = React.useState<Set<string>>(new Set());
@@ -31,11 +38,13 @@ export function NotificationCenter() {
     try {
       const storedRead = localStorage.getItem("autorix_read_notifications");
       if (storedRead) {
-        setReadIds(new Set(JSON.parse(storedRead)));
+        const parsed = JSON.parse(storedRead);
+        if (Array.isArray(parsed)) setReadIds(new Set(parsed.slice(-MAX_STORED_NOTIFICATION_IDS)));
       }
       const storedDismissed = localStorage.getItem("autorix_dismissed_notifications");
       if (storedDismissed) {
-        setDismissedIds(new Set(JSON.parse(storedDismissed)));
+        const parsed = JSON.parse(storedDismissed);
+        if (Array.isArray(parsed)) setDismissedIds(new Set(parsed.slice(-MAX_STORED_NOTIFICATION_IDS)));
       }
     } catch {
       // Ignore storage errors
@@ -43,6 +52,9 @@ export function NotificationCenter() {
   }, []);
 
   const fetchNotifications = React.useCallback(async () => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      return;
+    }
     try {
       const res = await fetch("/api/notifications");
       if (res.ok) {
@@ -61,7 +73,16 @@ export function NotificationCenter() {
   React.useEffect(() => {
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 15000);
-    return () => clearInterval(interval);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchNotifications();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [fetchNotifications]);
 
   const activeNotifications = notifications
@@ -76,9 +97,10 @@ export function NotificationCenter() {
   const markAllRead = () => {
     const nextRead = new Set(readIds);
     activeNotifications.forEach((n) => nextRead.add(n.id));
-    setReadIds(nextRead);
+    const trimmed = trimIdSet(nextRead);
+    setReadIds(new Set(trimmed));
     try {
-      localStorage.setItem("autorix_read_notifications", JSON.stringify(Array.from(nextRead)));
+      localStorage.setItem("autorix_read_notifications", JSON.stringify(trimmed));
     } catch {
       // Ignore
     }
@@ -88,9 +110,10 @@ export function NotificationCenter() {
     e.stopPropagation();
     const nextDismissed = new Set(dismissedIds);
     nextDismissed.add(id);
-    setDismissedIds(nextDismissed);
+    const trimmed = trimIdSet(nextDismissed);
+    setDismissedIds(new Set(trimmed));
     try {
-      localStorage.setItem("autorix_dismissed_notifications", JSON.stringify(Array.from(nextDismissed)));
+      localStorage.setItem("autorix_dismissed_notifications", JSON.stringify(trimmed));
     } catch {
       // Ignore
     }
@@ -100,18 +123,19 @@ export function NotificationCenter() {
     <DropdownMenu onOpenChange={(open) => open && fetchNotifications()}>
       <DropdownMenuTrigger asChild>
         <Button
+          type="button"
           variant="ghost"
           size="icon-sm"
           className="h-8 w-8 relative text-muted-foreground hover:text-foreground"
-          aria-label="Notifications"
+          aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications"}
         >
-          <Bell className="h-4 w-4" />
+          <Bell className="h-4 w-4" aria-hidden="true" />
           {unreadCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-background" />
+            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-background" aria-hidden="true" />
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-84 p-0 overflow-hidden bg-card border-border/80 shadow-xl">
+      <DropdownMenuContent align="end" className="w-80 sm:w-96 p-0 overflow-hidden bg-card border-border/80 shadow-xl">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border/60 bg-muted/30">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-foreground">Fleet Notifications</span>

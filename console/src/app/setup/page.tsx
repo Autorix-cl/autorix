@@ -130,8 +130,11 @@ export default function SetupPage() {
           </div>
 
           {error && (
-            <div className="mb-6 p-3.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-sm flex items-start gap-2.5">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-400" />
+            <div
+              role="alert"
+              className="mb-6 p-3.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-sm flex items-start gap-2.5"
+            >
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-400" aria-hidden="true" />
               <span>{error}</span>
             </div>
           )}
@@ -140,14 +143,21 @@ export default function SetupPage() {
             {/* Bootstrap Token */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
-                  <Terminal className="w-3.5 h-3.5 text-amber-400" />
+                <label htmlFor="setup-token" className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+                  <Terminal className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
                   Bootstrap Token
                 </label>
-                <span className="text-[11px] font-mono text-slate-500">From Argus startup logs (abt_...)</span>
+                <span id="setup-token-hint" className="text-[11px] font-mono text-slate-500">From Argus startup logs (abt_...)</span>
               </div>
               <input
+                id="setup-token"
+                name="bootstrap_token"
                 type="text"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-describedby="setup-token-hint"
                 required
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
@@ -159,9 +169,12 @@ export default function SetupPage() {
             {/* Operator Name & Email */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">Full Name</label>
+                <label htmlFor="setup-name" className="block text-xs font-medium text-slate-300 mb-1.5">Full Name</label>
                 <input
+                  id="setup-name"
+                  name="name"
                   type="text"
+                  autoComplete="name"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -170,9 +183,15 @@ export default function SetupPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">Work Email</label>
+                <label htmlFor="setup-email" className="block text-xs font-medium text-slate-300 mb-1.5">Work Email</label>
                 <input
+                  id="setup-email"
+                  name="email"
                   type="email"
+                  autoComplete="email"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -185,12 +204,15 @@ export default function SetupPage() {
             {/* Password & Confirm */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                <label htmlFor="setup-password" className="text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
                   Master Password
                 </label>
                 <input
+                  id="setup-password"
+                  name="password"
                   type="password"
+                  autoComplete="new-password"
                   required
                   minLength={8}
                   value={password}
@@ -200,9 +222,12 @@ export default function SetupPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">Confirm Password</label>
+                <label htmlFor="setup-confirm-password" className="block text-xs font-medium text-slate-300 mb-1.5">Confirm Password</label>
                 <input
+                  id="setup-confirm-password"
+                  name="confirm_password"
                   type="password"
+                  autoComplete="new-password"
                   required
                   minLength={8}
                   value={confirmPassword}

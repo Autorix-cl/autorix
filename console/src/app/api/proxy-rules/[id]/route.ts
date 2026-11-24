@@ -4,14 +4,14 @@ import { deleteRuleResponseSchema, ruleSchema } from "@/lib/api/schemas/aegis";
 
 export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  return proxyRequest("aegis", `/rules/${id}`, ruleSchema);
+  return proxyRequest("aegis", `/rules/${encodeURIComponent(id)}`, ruleSchema);
 }
 
 export async function PUT(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const body = await req.json();
 
-  return proxyRequest("aegis", `/rules/${id}`, ruleSchema, {
+  return proxyRequest("aegis", `/rules/${encodeURIComponent(id)}`, ruleSchema, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -21,6 +21,6 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
 export async function DELETE(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
 
-  return proxyRequest("aegis", `/rules/${id}`, deleteRuleResponseSchema, { method: "DELETE" });
+  return proxyRequest("aegis", `/rules/${encodeURIComponent(id)}`, deleteRuleResponseSchema, { method: "DELETE" });
 }
 

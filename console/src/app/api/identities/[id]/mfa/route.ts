@@ -7,12 +7,12 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  return proxyRequest("ego", `/admin/identities/${id}/mfa`, mfaStatusSchema);
+  return proxyRequest("ego", `/admin/identities/${encodeURIComponent(id)}/mfa`, mfaStatusSchema);
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  return proxyRequest("ego", `/admin/identities/${id}/mfa`, z.any(), {
+  return proxyRequest("ego", `/admin/identities/${encodeURIComponent(id)}/mfa`, z.any(), {
     method: "DELETE",
   });
 }

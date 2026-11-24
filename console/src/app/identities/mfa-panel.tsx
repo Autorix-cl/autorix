@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import { CodeEditor } from "@/components/ui/code-editor";
+import { CodeBlock } from "@/components/ui/code-block";
 import { Shield, KeyRound, Loader2 } from "lucide-react";
 
 export interface MfaPanelProps {
@@ -60,12 +60,7 @@ export function MfaPanel({ factors, onGenerateRecovery }: MfaPanelProps) {
             <p className="text-xs font-medium text-destructive mb-2">
               Warning: These codes will only be shown once. Copy them now.
             </p>
-            <CodeEditor
-              value={recoveryCodes}
-              onChange={() => {}} // readOnly in practice
-              language="json"
-              height="150px"
-            />
+            <CodeBlock code={recoveryCodes} language="text" title="One-Time Recovery Token" maxHeight="max-h-40" />
           </div>
         )}
       </div>

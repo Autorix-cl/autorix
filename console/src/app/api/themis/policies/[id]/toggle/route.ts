@@ -10,8 +10,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const body = await req.json();
     const enabled = Boolean(body.enabled);
 
+    const encodedId = encodeURIComponent(id);
     // Fetch existing policy first
-    const getRes = await proxyRequest("themis", `/policies/${id}`, z.any());
+    const getRes = await proxyRequest("themis", `/policies/${encodedId}`, z.any());
     if (!getRes.ok) {
       return getRes;
     }
@@ -19,7 +20,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const policy = await getRes.json();
     policy.enabled = enabled;
 
-    return proxyRequest("themis", `/policies/${id}`, z.any(), {
+    return proxyRequest("themis", `/policies/${encodedId}`, z.any(), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(policy),

@@ -1,18 +1,28 @@
 import { NextResponse } from "next/server";
-import { getServiceUrl } from "@/lib/api-config";
 
-export async function GET() {
+function getPublicHermesUrl(): string {
+  return (process.env.NEXT_PUBLIC_HERMES_URL || "http://localhost:4477").replace(/\/+$/, "");
+}
+
+export async function GET(request: Request) {
   try {
-    const hermesUrl = getServiceUrl("hermes");
+    const hermesPublicUrl = getPublicHermesUrl();
     const relayState = crypto.randomUUID();
-    const samlUrl = new URL(`${hermesUrl}/v1/saml/login`);
+    const samlUrl = new URL(`${hermesPublicUrl}/saml/login`);
     samlUrl.searchParams.set("RelayState", relayState);
+
+    const { searchParams } = new URL(request.url);
+    const provider = searchParams.get("provider");
+    if (provider) {
+      samlUrl.searchParams.set("provider", provider);
+    }
 
     const response = NextResponse.redirect(samlUrl.toString());
     response.cookies.set("saml_relay_state", relayState, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
+      path: "/",
       maxAge: 600,
     });
     return response;

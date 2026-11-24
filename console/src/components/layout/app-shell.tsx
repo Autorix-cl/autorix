@@ -12,7 +12,12 @@ const STANDALONE_ROUTES = ["/login", "/setup", "/session-expired", "/403"];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = React.useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const pathname = usePathname();
+
+  React.useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
 
   const isStandalone = STANDALONE_ROUTES.some(
     (route) => pathname === route || pathname?.startsWith(route + "/")
@@ -29,15 +34,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <I18nProvider>
       <TooltipProvider>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-xs focus:font-semibold focus:text-primary-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          Skip to main content
+        </a>
         <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
-          {/* Collapsible/Fixed Enterprise Sidebar */}
-          <Sidebar />
+          {/* Responsive Enterprise Sidebar (desktop persistent + mobile drawer) */}
+          <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
 
           {/* Main Content Area */}
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <Header onOpenSearch={() => setSearchOpen(true)} />
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <Header
+              onOpenSearch={() => setSearchOpen(true)}
+              onOpenMobileNav={() => setMobileNavOpen(true)}
+              mobileNavOpen={mobileNavOpen}
+            />
 
-            <main className="flex-1 overflow-y-auto px-6 py-6 lg:px-8 subtle-mesh-bg">
+            <main
+              id="main-content"
+              tabIndex={-1}
+              className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8 subtle-mesh-bg focus:outline-none"
+            >
               <div className="mx-auto max-w-7xl space-y-6">{children}</div>
             </main>
           </div>

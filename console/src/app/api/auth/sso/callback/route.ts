@@ -1,8 +1,91 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { timingSafeEqual } from "crypto";
 import { getJanusDiscovery } from "@/lib/auth/sso";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
 import { getServiceUrl } from "@/lib/api-config";
+
+const SSO_CALLBACK_TIMEOUT_MS = 10_000;
+
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
+function failRedirect(requestUrl: string): NextResponse {
+  const response = NextResponse.redirect(new URL("/login?error=sso_failed", requestUrl));
+  response.cookies.delete("sso_state");
+  response.cookies.delete("sso_verifier");
+  return response;
+}
+
+interface VerifiedClaims {
+  email?: string;
+  sub?: string;
+  name?: string;
+  role?: string;
+}
+
+async function verifyTokenWithJanus(
+  janusUrl: string,
+  accessToken: string,
+  userinfoEndpoint?: string,
+  introspectionEndpoint?: string,
+): Promise<VerifiedClaims | null> {
+  const userinfoUrl = userinfoEndpoint || `${janusUrl}/oauth2/userinfo`;
+  const userinfoRes = await fetch(userinfoUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+    },
+    cache: "no-store",
+    signal: AbortSignal.timeout(SSO_CALLBACK_TIMEOUT_MS),
+  });
+
+  if (userinfoRes.ok) {
+    const claims = (await userinfoRes.json().catch(() => null)) as VerifiedClaims | null;
+    if (claims && (claims.email || claims.sub)) {
+      return claims;
+    }
+    return null;
+  }
+
+  // Fallback to OAuth2 token introspection if userinfo is not exposed on this Janus build
+  if (userinfoRes.status === 404 || userinfoRes.status === 405) {
+    const introspectUrl = introspectionEndpoint || `${janusUrl}/oauth2/introspect`;
+    const introspectBody = new URLSearchParams({ token: accessToken });
+    const introspectHeaders: Record<string, string> = {
+      "Content-Type": "application/x-www-form-urlencoded",
+    };
+    const clientSecret = process.env.JANUS_CONSOLE_CLIENT_SECRET;
+    if (clientSecret) {
+      const basic = Buffer.from(`autorix-console:${clientSecret}`).toString("base64");
+      introspectHeaders.Authorization = `Basic ${basic}`;
+    }
+
+    const introspectRes = await fetch(introspectUrl, {
+      method: "POST",
+      headers: introspectHeaders,
+      body: introspectBody.toString(),
+      cache: "no-store",
+      signal: AbortSignal.timeout(SSO_CALLBACK_TIMEOUT_MS),
+    });
+
+    if (!introspectRes.ok) return null;
+    const introspectData = (await introspectRes.json().catch(() => null)) as (VerifiedClaims & {
+      active?: boolean;
+    }) | null;
+    if (!introspectData?.active) return null;
+    if (introspectData.email || introspectData.sub) {
+      return introspectData;
+    }
+  }
+
+  return null;
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -10,31 +93,29 @@ export async function GET(request: Request) {
   const state = searchParams.get("state");
   const error = searchParams.get("error");
 
-  if (error) {
-    return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error)}`, request.url));
-  }
-
-  if (!code || !state) {
-    return NextResponse.redirect(new URL("/login?error=missing_auth_code", request.url));
+  if (error || !code || !state) {
+    return failRedirect(request.url);
   }
 
   const cookieStore = await cookies();
   const savedState = cookieStore.get("sso_state")?.value;
   const verifier = cookieStore.get("sso_verifier")?.value;
 
-  if (!savedState || savedState !== state) {
-    return NextResponse.redirect(new URL("/login?error=invalid_state_parameter", request.url));
+  if (!savedState || !verifier || !safeEqual(savedState, state)) {
+    return failRedirect(request.url);
   }
 
   try {
     const discovery = await getJanusDiscovery();
     if (!discovery) {
-      throw new Error("Janus discovery unavailable");
+      return failRedirect(request.url);
     }
 
+    const janusUrl = getServiceUrl("janus").replace(/\/+$/, "");
     const redirectUri = new URL("/api/auth/sso/callback", request.url).toString();
+    const tokenEndpoint = `${janusUrl}/oauth2/token`;
 
-    const tokenRes = await fetch(discovery.token_endpoint, {
+    const tokenRes = await fetch(tokenEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -42,68 +123,87 @@ export async function GET(request: Request) {
         client_id: "autorix-console",
         code,
         redirect_uri: redirectUri,
-        code_verifier: verifier || "",
+        code_verifier: verifier,
       }).toString(),
+      cache: "no-store",
+      signal: AbortSignal.timeout(SSO_CALLBACK_TIMEOUT_MS),
     });
 
     if (!tokenRes.ok) {
-      const errData = await tokenRes.json().catch(() => ({}));
-      throw new Error(errData.error || "Token exchange failed");
+      return failRedirect(request.url);
     }
 
-    const tokenData = await tokenRes.json();
-    const idToken = tokenData.id_token;
+    const tokenData = (await tokenRes.json().catch(() => null)) as {
+      access_token?: string;
+    } | null;
 
-    // Decode ID token payload (JWT payload is base64url encoded at index 1)
-    let email = "sso.operator@autorix.internal";
-    let name = "SSO Operator";
-    let role = "operator";
-
-    if (idToken) {
-      const parts = idToken.split(".");
-      if (parts.length === 3) {
-        const payloadJson = Buffer.from(parts[1], "base64url").toString("utf8");
-        const claims = JSON.parse(payloadJson);
-        if (claims.email) email = claims.email;
-        if (claims.name) name = claims.name;
-        if (claims.role && ["owner", "admin", "operator", "auditor"].includes(claims.role)) {
-          role = claims.role;
-        }
-      }
+    if (!tokenData?.access_token) {
+      return failRedirect(request.url);
     }
 
-    // Register or resolve session with Argus
+    // Verify token & retrieve claims directly from Janus rather than trusting unverified JWT base64 decode
+    const claims = await verifyTokenWithJanus(
+      janusUrl,
+      tokenData.access_token,
+      discovery.userinfo_endpoint,
+      discovery.introspection_endpoint,
+    );
+    if (!claims || (!claims.email && !claims.sub)) {
+      return failRedirect(request.url);
+    }
+
+    const email = claims.email || claims.sub!;
+    const name = claims.name || email;
+    const role =
+      claims.role && ["owner", "admin", "operator", "auditor"].includes(claims.role)
+        ? claims.role
+        : "operator";
+
+    // Exchange verified federated identity for a real Argus operator session; never mint a fake fallback cookie
     const argusUrl = getServiceUrl("argus");
+    const sessionHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN) {
+      sessionHeaders["x-autorix-console-token"] = process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN;
+    }
     const sessionRes = await fetch(`${argusUrl}/v1/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password: "sso-federated-login", name, role }),
+      headers: sessionHeaders,
+      body: JSON.stringify({ email, name, role, provider: "oidc" }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(SSO_CALLBACK_TIMEOUT_MS),
     });
 
-    // If local operator doesn't exist, create an active SSO operator session directly or fallback
-    let sessionToken = "ast_sso_" + crypto.randomUUID().replace(/-/g, "");
-    if (sessionRes.ok) {
-      const ssoSession = await sessionRes.json();
-      sessionToken = ssoSession.session_token;
+    if (!sessionRes.ok) {
+      return failRedirect(request.url);
+    }
+
+    const ssoSession = (await sessionRes.json().catch(() => null)) as {
+      session_token?: string;
+      expires_at?: string;
+    } | null;
+
+    if (!ssoSession?.session_token || typeof ssoSession.session_token !== "string") {
+      return failRedirect(request.url);
     }
 
     const response = NextResponse.redirect(new URL("/", request.url));
     response.cookies.set({
       name: SESSION_COOKIE_NAME,
-      value: sessionToken,
+      value: ssoSession.session_token,
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 3600 * 12,
+      ...(ssoSession.expires_at
+        ? { expires: new Date(ssoSession.expires_at) }
+        : { maxAge: 3600 * 12 }),
     });
 
     response.cookies.delete("sso_state");
     response.cookies.delete("sso_verifier");
 
     return response;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "SSO authorization failed";
-    return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(msg)}`, request.url));
+  } catch {
+    return failRedirect(request.url);
   }
 }

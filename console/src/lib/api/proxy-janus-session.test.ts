@@ -14,6 +14,12 @@ describe("Private engine BFF session boundary", () => {
   it.each([
     ["janus", "/admin/clients"],
     ["aegis", "/rules"],
+    ["ego", "/admin/identities"],
+    ["vulcan", "/keys"],
+    ["themis", "/policies"],
+    ["nexus", "/tuples"],
+    ["hermes", "/admin/saml/providers"],
+    ["argus", "/v1/instances"],
   ] as const)("rejects a fabricated cookie before forwarding to %s", async (service, path) => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("Unauthorized", { status: 401 }));
     vi.stubGlobal("fetch", fetchMock);

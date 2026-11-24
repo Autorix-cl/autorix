@@ -29,28 +29,48 @@ export function EffectiveAccessExplorer() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [result, setResult] = React.useState<EffectiveAccessResult | null>(null);
 
-  const handleEvaluate = React.useCallback(async (e?: React.FormEvent) => {
-    e?.preventDefault();
+  const abortRef = React.useRef<AbortController | null>(null);
+
+  const runEvaluate = React.useCallback(async (params: { subject: string; resource: string; action: string }) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setIsLoading(true);
     try {
       const res = await fetchJSON<EffectiveAccessResult>("/api/explorer/effective-access", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject, resource, action }),
+        body: JSON.stringify(params),
+        signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
       if (!res.ok) throw new Error(res.error.message);
       setResult(res.data);
     } catch {
-      toast.error("Failed to evaluate effective access");
+      if (!controller.signal.aborted) {
+        toast.error("Failed to evaluate effective access");
+      }
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) {
+        setIsLoading(false);
+      }
     }
-  }, [subject, resource, action]);
+  }, []);
 
+  const handleEvaluate = (e: React.FormEvent) => {
+    e.preventDefault();
+    runEvaluate({ subject, resource, action });
+  };
+
+  // Evaluate initial default query once on mount (never on every keystroke)
   React.useEffect(() => {
-    handleEvaluate();
-  }, [handleEvaluate]);
-
+    runEvaluate({
+      subject: "user:alice",
+      resource: "/api/v1/finance/invoices",
+      action: "GET",
+    });
+    return () => abortRef.current?.abort();
+  }, [runEvaluate]);
 
   return (
     <div className="space-y-4">
@@ -58,7 +78,7 @@ export function EffectiveAccessExplorer() {
       <Card className="border-border">
         <CardHeader className="pb-3">
           <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+            <ShieldCheck className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
             Zero-Trust Effective Access Query
           </CardTitle>
           <CardDescription className="text-[11px]">
@@ -68,8 +88,9 @@ export function EffectiveAccessExplorer() {
         <CardContent>
           <form onSubmit={handleEvaluate} className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs items-end">
             <div className="space-y-1">
-              <Label className="text-[11px]">Subject</Label>
+              <Label htmlFor="ea-subject" className="text-[11px]">Subject</Label>
               <Input
+                id="ea-subject"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="user:alice"
@@ -77,8 +98,9 @@ export function EffectiveAccessExplorer() {
               />
             </div>
             <div className="space-y-1 md:col-span-2">
-              <Label className="text-[11px]">Target Resource Path</Label>
+              <Label htmlFor="ea-resource" className="text-[11px]">Target Resource Path</Label>
               <Input
+                id="ea-resource"
                 value={resource}
                 onChange={(e) => setResource(e.target.value)}
                 placeholder="/api/v1/finance/invoices"
@@ -87,9 +109,9 @@ export function EffectiveAccessExplorer() {
             </div>
             <div className="flex gap-2">
               <div className="space-y-1 w-24">
-                <Label className="text-[11px]">Action</Label>
+                <Label htmlFor="ea-action" className="text-[11px]">Action</Label>
                 <Select value={action} onValueChange={setAction}>
-                  <SelectTrigger className="h-8 text-xs font-mono">
+                  <SelectTrigger id="ea-action" className="h-8 text-xs font-mono">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

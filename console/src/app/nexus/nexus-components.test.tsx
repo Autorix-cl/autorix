@@ -8,6 +8,17 @@ import { RelationshipGraph } from "./relationship-graph";
 import { CaveatRegistry } from "./caveat-registry";
 import { TupleGrid } from "./tuple-grid";
 
+vi.mock("@/lib/auth/use-permission", () => ({
+  usePermission: () => ({
+    operator: { id: "op-1", email: "admin@example.com", name: "Admin", role: "owner", is_local: true, is_active: true },
+    isLoading: false,
+    can: () => true,
+    hasRole: () => true,
+    checkSession: vi.fn().mockResolvedValue(true),
+  }),
+  Can: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 function renderWithClient(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -75,19 +86,38 @@ describe("Nexus Depth UI Components", () => {
   });
 
   describe("RelationshipGraph", () => {
-    it("renders neighborhood graph and supports node navigation", async () => {
-      render(<RelationshipGraph initialObjectId="document:doc_123" />);
+    it("renders live neighborhood graph from Nexus tuples and supports node navigation", async () => {
+      vi.mocked(global.fetch).mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              id: "t1",
+              objectType: "document",
+              objectId: "doc_123",
+              relation: "viewer",
+              subjectType: "user",
+              subjectId: "alice",
+            },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      );
+
+      renderWithClient(<RelationshipGraph initialObjectId="document:doc_123" />);
 
       expect(screen.getByText(/Relationship Graph Explorer/i)).toBeDefined();
-      expect(screen.getByText("document:doc_123")).toBeDefined();
-      expect(screen.getByText("user:alice")).toBeDefined();
-
-      // Click on target node to navigate
-      fireEvent.click(screen.getByText("user:alice"));
 
       await waitFor(() => {
-        expect(screen.getByText("user:alice")).toBeDefined();
-        expect(screen.getByText(/Leaf node — no outgoing relations configured/i)).toBeDefined();
+        expect(screen.getAllByText("document:doc_123").length).toBeGreaterThanOrEqual(1);
+        expect(screen.getAllByText("user:alice").length).toBeGreaterThanOrEqual(1);
+      });
+
+      // Click on target node to navigate
+      const aliceButtons = screen.getAllByRole("button", { name: /user:alice/i });
+      fireEvent.click(aliceButtons[aliceButtons.length - 1]);
+
+      await waitFor(() => {
+        expect(screen.getByText(/Leaf node — no outgoing relations found in Nexus tuples/i)).toBeDefined();
       });
     });
   });

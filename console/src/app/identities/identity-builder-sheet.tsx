@@ -116,9 +116,7 @@ export function IdentityBuilderSheet({ isOpen, onOpenChange, onSuccess }: Identi
         schema_id: selectedSchemaId,
       });
     } catch {
-      toast.success(`Invitation link sent to ${email}`);
-      queryClient.invalidateQueries({ queryKey: ["identities"] });
-      resetForm();
+      // Error feedback is already handled by useApiMutation
     }
   };
 
@@ -129,7 +127,7 @@ export function IdentityBuilderSheet({ isOpen, onOpenChange, onSuccess }: Identi
           <div className="flex items-center justify-between">
             <SheetTitle>Send Invitation</SheetTitle>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center gap-1">
-              <Sparkles className="w-2.5 h-2.5" /> Schema Driven
+              <Sparkles className="w-2.5 h-2.5" aria-hidden="true" /> Schema Driven
             </span>
           </div>
           <SheetDescription>
@@ -140,8 +138,11 @@ export function IdentityBuilderSheet({ isOpen, onOpenChange, onSuccess }: Identi
         <form onSubmit={handleCreate} className="space-y-4 mt-6">
           {schemas.length > 1 && (
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Identity Schema</label>
+              <label htmlFor="invite-schema-select" className="text-xs font-medium text-muted-foreground">
+                Identity Schema
+              </label>
               <select
+                id="invite-schema-select"
                 value={selectedSchemaId}
                 onChange={(e) => setSelectedSchemaId(e.target.value)}
                 className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"

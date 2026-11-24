@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Search, Globe, Check, Database, User, ChevronDown, Sun, Moon, Laptop } from "lucide-react";
+import { Search, Globe, Check, Database, LogOut, ChevronDown, Sun, Moon, Laptop, Menu } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme-provider";
+import { usePermission } from "@/lib/auth/use-permission";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { fetchAndParse } from "@/lib/api/schema";
 import { healthResponseSchema } from "@/lib/api/schemas/health";
@@ -20,61 +21,84 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useEnvironment } from "@/lib/environment/environment-context";
 
 interface HeaderProps {
   onOpenSearch?: () => void;
+  onOpenMobileNav?: () => void;
+  mobileNavOpen?: boolean;
 }
 
-import { useEnvironment } from "@/lib/environment/environment-context";
+function readCsrfCookie(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const match = document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
 
-export function Header({ onOpenSearch }: HeaderProps) {
+export function Header({ onOpenSearch, onOpenMobileNav, mobileNavOpen = false }: HeaderProps) {
   const { t, locale, setLocale } = useTranslation();
   const { theme, setTheme, resolvedTheme } = useTheme();
   const { currentEnv, isProduction } = useEnvironment();
 
-  const { data: healthData } = useApiQuery(["health", currentEnv.id], () =>
-    fetchAndParse("/api/health", healthResponseSchema)
+  const { data: healthData } = useApiQuery(["health"], () =>
+    fetchAndParse("/api/health", healthResponseSchema),
   );
   const services = healthData?.services ?? [];
   const isHealthy = services.length > 0 && services.every((s) => s.status === "healthy");
   const isEnvHealthy = isProduction && isHealthy;
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-border/70 bg-background/80 px-6 backdrop-blur-md">
-      {/* Left: Environment Switcher + Quick Search Button */}
-      <div className="flex items-center gap-3 flex-1 max-w-lg">
+    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between gap-2 border-b border-border/70 bg-background/80 px-4 sm:px-6 backdrop-blur-md">
+      {/* Left: Mobile Menu + Environment Switcher + Quick Search Button */}
+      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 max-w-lg">
+        {onOpenMobileNav && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onOpenMobileNav}
+            aria-label="Open navigation menu"
+            aria-expanded={mobileNavOpen}
+            className="h-8 w-8 shrink-0 lg:hidden text-muted-foreground hover:text-foreground"
+          >
+            <Menu className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        )}
+
         <EnvironmentSwitcher />
 
         <button
+          type="button"
           onClick={onOpenSearch}
-          className="flex h-9 w-full items-center justify-between rounded-lg border border-border/80 bg-muted/40 px-3 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:bg-muted/70 hover:text-foreground"
-          aria-label="Open search"
+          className="flex h-9 w-full min-w-0 items-center justify-between rounded-lg border border-border/80 bg-muted/40 px-3 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="Open command palette"
         >
-          <div className="flex items-center gap-2">
-            <Search className="h-3.5 w-3.5" />
-            <span>{t("header.searchPlaceholder")}</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <Search className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">{t("header.searchPlaceholder")}</span>
           </div>
-          <kbd className="pointer-events-none rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground font-semibold shadow-xs">
+          <kbd className="pointer-events-none hidden sm:inline-flex rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground font-semibold shadow-xs">
             ⌘K
           </kbd>
         </button>
       </div>
 
       {/* Right: Telemetry, Language, Theme, Alerts, User Profile */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         {/* Theme Switcher */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
+              type="button"
               variant="ghost"
               size="icon-sm"
               className="h-8 w-8 text-muted-foreground hover:text-foreground"
               aria-label="Toggle theme"
             >
               {resolvedTheme === "dark" ? (
-                <Moon className="h-4 w-4 text-blue-400" />
+                <Moon className="h-4 w-4 text-blue-400" aria-hidden="true" />
               ) : (
-                <Sun className="h-4 w-4 text-amber-500" />
+                <Sun className="h-4 w-4 text-amber-500" aria-hidden="true" />
               )}
             </Button>
           </DropdownMenuTrigger>
@@ -88,39 +112,40 @@ export function Header({ onOpenSearch }: HeaderProps) {
               className="flex items-center justify-between text-xs cursor-pointer"
             >
               <div className="flex items-center gap-2">
-                <Sun className="h-3.5 w-3.5" />
+                <Sun className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Light</span>
               </div>
-              {theme === "light" && <Check className="h-3.5 w-3.5 text-primary" />}
+              {theme === "light" && <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" />}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => setTheme("dark")}
               className="flex items-center justify-between text-xs cursor-pointer"
             >
               <div className="flex items-center gap-2">
-                <Moon className="h-3.5 w-3.5" />
+                <Moon className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Dark</span>
               </div>
-              {theme === "dark" && <Check className="h-3.5 w-3.5 text-primary" />}
+              {theme === "dark" && <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" />}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => setTheme("system")}
               className="flex items-center justify-between text-xs cursor-pointer"
             >
               <div className="flex items-center gap-2">
-                <Laptop className="h-3.5 w-3.5" />
+                <Laptop className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>System</span>
               </div>
-              {theme === "system" && <Check className="h-3.5 w-3.5 text-primary" />}
+              {theme === "system" && <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" />}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
         {/* Cluster / PostgreSQL Live Health Indicator */}
-        <div className="hidden lg:flex items-center gap-2 rounded-full border border-border/60 bg-muted/30 px-3 py-1 text-xs">
-          <Database className={cn("h-3.5 w-3.5", isEnvHealthy ? "text-emerald-400" : "text-muted-foreground")} />
+        <div className="hidden xl:flex items-center gap-2 rounded-full border border-border/60 bg-muted/30 px-3 py-1 text-xs">
+          <Database className={cn("h-3.5 w-3.5", isEnvHealthy ? "text-emerald-400" : "text-muted-foreground")} aria-hidden="true" />
           <span className="text-muted-foreground text-[11px]">PostgreSQL:</span>
           <span className={cn("font-medium font-mono text-[11px] flex items-center gap-1.5", isEnvHealthy ? "text-emerald-400" : "text-muted-foreground")}>
-            <span className={cn("inline-block h-1.5 w-1.5 rounded-full", isEnvHealthy ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground/50")} />
+            <span className={cn("inline-block h-1.5 w-1.5 rounded-full", isEnvHealthy ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground/50")} aria-hidden="true" />
             {isEnvHealthy
               ? t("header.dbConnected")
               : isProduction
@@ -133,13 +158,15 @@ export function Header({ onOpenSearch }: HeaderProps) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
+              type="button"
               variant="outline"
               size="sm"
+              aria-label={`Change language (current: ${locale.toUpperCase()})`}
               className="h-8 gap-1.5 px-2.5 text-xs font-semibold border-border/80 bg-card/60"
             >
-              <Globe className="h-3.5 w-3.5 text-primary" />
+              <Globe className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
               <span>{locale.toUpperCase()}</span>
-              <ChevronDown className="h-3 w-3 opacity-50" />
+              <ChevronDown className="h-3 w-3 opacity-50" aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">
@@ -152,30 +179,30 @@ export function Header({ onOpenSearch }: HeaderProps) {
               className="flex items-center justify-between text-xs cursor-pointer font-medium"
             >
               <div className="flex items-center gap-2">
-                <span>🇺🇸</span>
+                <span aria-hidden="true">🇺🇸</span>
                 <span>English (US)</span>
               </div>
-              {locale === "en" && <Check className="h-3.5 w-3.5 text-primary" />}
+              {locale === "en" && <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" />}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => setLocale("es")}
               className="flex items-center justify-between text-xs cursor-pointer font-medium"
             >
               <div className="flex items-center gap-2">
-                <span>🇪🇸</span>
+                <span aria-hidden="true">🇪🇸</span>
                 <span>Español</span>
               </div>
-              {locale === "es" && <Check className="h-3.5 w-3.5 text-primary" />}
+              {locale === "es" && <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" />}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Notifications / Alerts Inbox (P4-S5-T6) */}
+        {/* Notifications / Alerts Inbox */}
         <NotificationCenter />
 
-        <div className="h-4 w-px bg-border/80"></div>
+        <div className="h-4 w-px bg-border/80" aria-hidden="true" />
 
-        {/* Operator Profile with Real Session */}
+        {/* Operator Profile with shared AuthProvider session */}
         <OperatorProfileDropdown t={t} />
       </div>
     </header>
@@ -183,22 +210,15 @@ export function Header({ onOpenSearch }: HeaderProps) {
 }
 
 function OperatorProfileDropdown({ t }: { t: (key: string) => string }) {
-  const [operator, setOperator] = React.useState<{ name: string; email: string; role: string } | null>(null);
-
-  React.useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.authenticated && data.operator) {
-          setOperator(data.operator);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const { operator } = usePermission();
 
   const handleLogout = async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      const csrf = readCsrfCookie();
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: csrf ? { "X-CSRF-Token": csrf } : undefined,
+      });
     } finally {
       window.location.href = "/login";
     }
@@ -217,7 +237,8 @@ function OperatorProfileDropdown({ t }: { t: (key: string) => string }) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex items-center gap-2 rounded-lg p-1 transition-colors hover:bg-muted/50 focus:outline-none cursor-pointer"
+          type="button"
+          className="flex items-center gap-2 rounded-lg p-1 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
           aria-label="Operator Profile"
         >
           <Avatar className="h-7 w-7 border-amber-500/40 bg-amber-500/10">
@@ -241,7 +262,7 @@ function OperatorProfileDropdown({ t }: { t: (key: string) => string }) {
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleLogout} className="text-xs text-destructive flex items-center gap-2 cursor-pointer">
-          <User className="h-3.5 w-3.5" />
+          <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
           <span>{t("header.logout")}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>

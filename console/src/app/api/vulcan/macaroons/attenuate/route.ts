@@ -1,60 +1,55 @@
 import { NextResponse } from "next/server";
-import { vulcanDb } from "@/lib/server/db";
-import { createMacaroon, addCaveat, serializeMacaroon } from "@/lib/server/macaroons";
 import { z } from "zod";
+import { proxyRequest } from "@/lib/api/proxy";
+import { attenuateResponseSchema } from "@/lib/api/schemas/vulcan";
 
-const IssueSchema = z.object({
-  keyId: z.string(),
-  secret: z.string(),
-  caveats: z.array(z.string()),
+const attenuateBodySchema = z.object({
+  macaroon: z.record(z.string(), z.unknown()),
+  caveat: z.string().min(1).optional(),
+  caveats: z.array(z.string().min(1)).optional(),
 });
 
 // POST /api/vulcan/macaroons/attenuate
-// Issues a new Macaroon from a root key and adds caveats. 
-// In a real production environment, attenuation usually happens offline on the client.
-// This endpoint is for the "Attenuation Studio" to easily generate tokens.
+// Proxies macaroon attenuation to the Vulcan engine (POST /keys/attenuate).
 export async function POST(req: Request) {
+  let rawBody: unknown;
   try {
-    const body = await req.json();
-    const result = IssueSchema.safeParse(body);
-    
-    if (!result.success) {
-      return NextResponse.json({ error: "Invalid input" }, { status: 400 });
-    }
-    
-    const { keyId, secret, caveats } = result.data;
-    
-    // Validate root key exists
-    const rootKey = vulcanDb.getKeyById(keyId);
-    if (!rootKey) {
-      return NextResponse.json({ error: "Root key not found" }, { status: 404 });
-    }
-    
-    if (rootKey.revoked) {
-      return NextResponse.json({ error: "Root key is revoked" }, { status: 403 });
-    }
-    
-    // Verify secret matches what we have in DB
-    if (rootKey.secret !== secret) {
-      return NextResponse.json({ error: "Invalid root secret" }, { status: 401 });
-    }
-    
-    // Generate base macaroon
-    let macaroon = createMacaroon(keyId, secret);
-    
-    // Add all caveats
-    for (const caveat of caveats) {
-      macaroon = addCaveat(macaroon, caveat);
-    }
-    
-    const token = serializeMacaroon(macaroon);
-    
-    return NextResponse.json({ 
-      macaroon,
-      token 
-    }, { status: 200 });
-    
+    rawBody = await req.json();
   } catch {
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
   }
+
+  const parsed = attenuateBodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "macaroon and at least one caveat are required" },
+      { status: 400 },
+    );
+  }
+
+  const caveatsToApply = parsed.data.caveat
+    ? [parsed.data.caveat]
+    : (parsed.data.caveats ?? []).map((c) => c.trim()).filter(Boolean);
+
+  if (caveatsToApply.length === 0) {
+    return NextResponse.json({ error: "At least one caveat predicate is required" }, { status: 400 });
+  }
+
+  let currentMacaroon: unknown = parsed.data.macaroon;
+  for (const caveat of caveatsToApply) {
+    const res = await proxyRequest("vulcan", "/keys/attenuate", attenuateResponseSchema, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ macaroon: currentMacaroon, caveat }),
+    });
+
+    if (!res.ok) {
+      return res;
+    }
+
+    currentMacaroon = await res.json();
+  }
+
+  const token = Buffer.from(JSON.stringify(currentMacaroon)).toString("base64url");
+  return NextResponse.json({ macaroon: currentMacaroon, token }, { status: 200 });
 }

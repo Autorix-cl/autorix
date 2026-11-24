@@ -31,22 +31,22 @@ export function NotConnectedEngine({
       </CardHeader>
       <CardContent className="space-y-4 pt-2">
         <div className="p-3 rounded-lg bg-muted/50 border border-border text-[11px] font-mono text-muted-foreground flex items-center justify-center gap-2">
-          <Radio className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
-          <span>Awaiting registration token or heartbeat on :4499</span>
+          <Radio className="h-3.5 w-3.5 text-amber-400 animate-pulse" aria-hidden="true" />
+          <span>Awaiting registration token or heartbeat on :4400</span>
         </div>
 
         <div className="flex items-center justify-center gap-3">
-          <Link href={`/fleet/enroll?type=${engineType}`}>
-            <Button size="sm" className="text-xs gap-1.5">
-              <Plus className="h-3.5 w-3.5" />
+          <Button asChild size="sm" className="text-xs gap-1.5">
+            <Link href={`/fleet/enroll?type=${engineType}`}>
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
               Enroll {engineName}
-            </Button>
-          </Link>
-          <Link href="/fleet">
-            <Button variant="outline" size="sm" className="text-xs gap-1.5">
-              Fleet Overview <ArrowRight className="h-3.5 w-3.5" />
-            </Button>
-          </Link>
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm" className="text-xs gap-1.5">
+            <Link href="/fleet">
+              Fleet Overview <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+          </Button>
         </div>
       </CardContent>
     </Card>

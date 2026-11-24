@@ -8,8 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Can } from "@/lib/auth/use-permission";
+import { getCsrfHeaders } from "@/lib/api/client";
 import { fetchAndParse } from "@/lib/api/schema";
 import { caveatListSchema, caveatSchema, type CaveatDefinition } from "@/lib/api/schemas/nexus";
+import { toast } from "sonner";
 
 
 export function CaveatRegistry() {
@@ -18,6 +22,7 @@ export function CaveatRegistry() {
   const [name, setName] = React.useState("");
   const [celExpression, setCelExpression] = React.useState("");
   const [formError, setFormError] = React.useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = React.useState<string | null>(null);
 
   const { data: caveats = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["nexus-caveats"],
@@ -34,7 +39,7 @@ export function CaveatRegistry() {
     mutationFn: async (payload: { name: string; cel_expression: string }) => {
       const res = await fetchAndParse<CaveatDefinition>("/api/nexus/caveats", caveatSchema, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
@@ -43,6 +48,7 @@ export function CaveatRegistry() {
       return res.data;
     },
     onSuccess: () => {
+      toast.success("Caveat defined and compiled.");
       queryClient.invalidateQueries({ queryKey: ["nexus-caveats"] });
       setIsAddOpen(false);
       setName("");
@@ -58,6 +64,7 @@ export function CaveatRegistry() {
     mutationFn: async (caveatName: string) => {
       const res = await fetch(`/api/nexus/caveats?name=${encodeURIComponent(caveatName)}`, {
         method: "DELETE",
+        headers: getCsrfHeaders(),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -65,7 +72,12 @@ export function CaveatRegistry() {
       }
     },
     onSuccess: () => {
+      toast.success("Caveat deleted.");
+      setPendingDelete(null);
       queryClient.invalidateQueries({ queryKey: ["nexus-caveats"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to delete caveat");
     },
   });
 
@@ -89,24 +101,25 @@ export function CaveatRegistry() {
             </CardDescription>
           </div>
 
-          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="w-4 h-4 mr-1.5" /> Define Caveat
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Define CEL Caveat</DialogTitle>
-              </DialogHeader>
+          <Can perform="permissions:write">
+            <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+              <DialogTrigger asChild>
+                <Button type="button" size="sm">
+                  <Plus className="w-4 h-4 mr-1.5" /> Define Caveat
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Define CEL Caveat</DialogTitle>
+                </DialogHeader>
 
-              <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-                {formError && (
-                  <div className="p-2.5 rounded bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    <span>{formError}</span>
-                  </div>
-                )}
+                <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+                  {formError && (
+                    <div role="alert" className="p-2.5 rounded bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      <span>{formError}</span>
+                    </div>
+                  )}
 
                 <div className="space-y-1.5">
                   <label htmlFor="caveat-name" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -140,18 +153,19 @@ export function CaveatRegistry() {
                   </p>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button variant="ghost" size="sm" type="button" onClick={() => setIsAddOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button size="sm" type="submit" disabled={createMutation.isPending}>
-                    {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    Compile & Save
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button variant="ghost" size="sm" type="button" onClick={() => setIsAddOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" type="submit" disabled={createMutation.isPending}>
+                      {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                      Compile & Save
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </Can>
         </CardHeader>
 
         <CardContent>
@@ -196,15 +210,19 @@ export function CaveatRegistry() {
                     <span className="flex items-center gap-1 text-emerald-500">
                       <CheckCircle2 className="w-3 h-3" /> Validated Syntax
                     </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteMutation.mutate(c.name)}
-                      disabled={deleteMutation.isPending}
-                      className="h-7 px-2 text-destructive hover:bg-destructive/10 text-xs"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
-                    </Button>
+                    <Can perform="permissions:write">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Delete caveat ${c.name}`}
+                        onClick={() => setPendingDelete(c.name)}
+                        disabled={deleteMutation.isPending}
+                        className="h-7 px-2 text-destructive hover:bg-destructive/10 text-xs"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                      </Button>
+                    </Can>
                   </div>
                 </div>
               ))}
@@ -212,6 +230,24 @@ export function CaveatRegistry() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title="Delete CEL Caveat"
+        description={
+          <>
+            Delete caveat <strong className="font-mono">{pendingDelete}</strong>? Any relation tuples referencing this
+            caveat will fail closed during authorization checks.
+          </>
+        }
+        confirmLabel="Delete Caveat"
+        variant="destructive"
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (pendingDelete) deleteMutation.mutate(pendingDelete);
+        }}
+      />
     </div>
   );
 }

@@ -15,10 +15,18 @@ export async function POST() {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        signal: AbortSignal.timeout(5_000),
       }).catch(() => {});
     }
 
-    const response = NextResponse.json({ success: true });
+    const response = NextResponse.json(
+      { success: true },
+      {
+        headers: {
+          "Clear-Site-Data": '"cookies", "storage", "cache"',
+        },
+      },
+    );
     response.cookies.delete(SESSION_COOKIE_NAME);
     return response;
   } catch (error: unknown) {

@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 
 import { toast } from "sonner";
+import { Can, usePermission } from "@/lib/auth/use-permission";
+import { getCsrfHeaders } from "@/lib/api/client";
 import type { SAMLProvider } from "@/lib/api/schemas/hermes";
 import { SAMLProviderSheet } from "./saml-provider-sheet";
 import { SAMLConnectionWizard } from "./saml-connection-wizard";
@@ -30,6 +32,8 @@ export function SAMLProvidersTable({
   isLoading,
   onRefresh,
 }: SAMLProvidersTableProps) {
+  const { can } = usePermission();
+  const canWrite = can("enterprise:write");
   const [selectedProvider, setSelectedProvider] = React.useState<SAMLProvider | null>(null);
   const [isWizardOpen, setIsWizardOpen] = React.useState(false);
 
@@ -38,6 +42,7 @@ export function SAMLProvidersTable({
       const endpoint = nextState ? "enable" : "disable";
       const res = await fetch(`/api/enterprise/saml/${encodeURIComponent(provider.id)}/${endpoint}`, {
         method: "POST",
+        headers: getCsrfHeaders(),
       });
       if (!res.ok) throw new Error("Failed to toggle provider");
       toast.success(`Provider ${nextState ? "enabled" : "disabled"}`);
@@ -61,14 +66,17 @@ export function SAMLProvidersTable({
                 Federated enterprise connections with automated claim transformation.
               </CardDescription>
             </div>
-            <Button
-              size="sm"
-              onClick={() => setIsWizardOpen(true)}
-              className="h-8 gap-1.5 text-xs"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              New Connection Wizard
-            </Button>
+            <Can perform="enterprise:write">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setIsWizardOpen(true)}
+                className="h-8 gap-1.5 text-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                New Connection Wizard
+              </Button>
+            </Can>
           </div>
         </CardHeader>
 
@@ -127,7 +135,7 @@ export function SAMLProvidersTable({
                           </span>
                         ) : (
                           <span className="text-[10px] text-muted-foreground italic">
-                            Certificate valid
+                            Certificate status unavailable
                           </span>
                         )}
                       </div>
@@ -135,6 +143,8 @@ export function SAMLProvidersTable({
                       <div className="col-span-2 flex items-center justify-center gap-1.5">
                         <Switch
                           checked={p.enabled}
+                          disabled={!canWrite}
+                          aria-label={`Toggle SAML provider ${p.display_name || p.id}`}
                           onCheckedChange={(c) => handleToggle(p, c)}
                         />
                         <span className="text-[10px] text-muted-foreground">

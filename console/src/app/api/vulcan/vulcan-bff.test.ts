@@ -6,6 +6,19 @@ import { POST as rotateKey } from "./keys/[id]/rotate/route";
 import { GET as listScopes, POST as createScope } from "./scopes/route";
 import { DELETE as deleteScope } from "./scopes/[name]/route";
 import { POST as verifyKey } from "./verify/route";
+import { POST as attenuateMacaroon } from "./macaroons/attenuate/route";
+
+vi.mock("@/lib/auth/session", () => ({
+  getCurrentOperator: vi.fn().mockResolvedValue({
+    id: "op-1",
+    email: "admin@autorix.io",
+    name: "Admin",
+    role: "admin",
+    is_local: true,
+    is_active: true,
+  }),
+  SESSION_COOKIE_NAME: "autorix_session",
+}));
 
 describe("Vulcan BFF Proxy Routes", () => {
   beforeEach(() => {
@@ -230,5 +243,39 @@ describe("Vulcan BFF Proxy Routes", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.valid).toBe(true);
+  });
+
+  it("attenuates macaroons via Vulcan POST /keys/attenuate", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          location: "https://api.autorix.io",
+          key_id: "k-1",
+          caveats: [{ predicate: "method = GET" }],
+          signature: "attenuated-sig",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const req = new NextRequest("http://localhost/api/vulcan/macaroons/attenuate", {
+      method: "POST",
+      body: JSON.stringify({
+        macaroon: {
+          location: "https://api.autorix.io",
+          key_id: "k-1",
+          caveats: [],
+          signature: "root-sig",
+        },
+        caveats: ["method = GET"],
+      }),
+    });
+
+    const res = await attenuateMacaroon(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.macaroon.signature).toBe("attenuated-sig");
+    expect(json.token).toBeTruthy();
+    expect(String(vi.mocked(global.fetch).mock.calls[0][0])).toContain("/keys/attenuate");
   });
 });

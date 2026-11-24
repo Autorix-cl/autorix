@@ -12,6 +12,20 @@ import { hasPermission } from "../auth/types";
 
 type Service = keyof typeof BACKEND_URLS;
 
+const UPSTREAM_TIMEOUT_MS = 15_000;
+
+const SERVICE_PERMISSION_DOMAINS: Record<Service, string> = {
+  argus: "fleet",
+  ego: "identities",
+  janus: "oauth2",
+  aegis: "proxy-rules",
+  nexus: "permissions",
+  themis: "policies",
+  vulcan: "api-keys",
+  hermes: "enterprise",
+  prometheus: "observability",
+};
+
 export interface ProxyOptions extends RequestInit {
   requiredPermission?: string;
 }
@@ -22,6 +36,42 @@ function extractMessage(body: unknown, rawText: string, status: number): string 
   }
   if (rawText.trim()) return rawText;
   return `upstream request failed with status ${status}`;
+}
+
+function isValidUpstreamPath(rawPath: string): boolean {
+  if (!rawPath || !rawPath.startsWith("/") || rawPath.startsWith("//")) {
+    return false;
+  }
+  if (rawPath.includes("\\") || rawPath.includes("\0")) {
+    return false;
+  }
+  const pathOnly = rawPath.split(/[?#]/, 1)[0];
+  const segments = pathOnly.split("/");
+  for (const seg of segments) {
+    if (seg === "..") {
+      return false;
+    }
+    let decoded = seg;
+    for (let pass = 0; pass < 2; pass++) {
+      try {
+        const next = decodeURIComponent(decoded);
+        if (next === decoded) break;
+        decoded = next;
+      } catch {
+        return false;
+      }
+    }
+    if (
+      decoded === ".." ||
+      decoded.includes("..") ||
+      decoded.includes("/") ||
+      decoded.includes("\\") ||
+      decoded.includes("\0")
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -45,34 +95,41 @@ export async function proxyRequest<T>(
     );
   }
 
-  // 2. Server-side RBAC Enforcement (P3-S4-T2)
-  // Private engine management must not become public through the console BFF.
-  // Route handlers cannot opt out by omitting requiredPermission.
-  const permissionDomain = service === "janus" ? "oauth2" : service === "aegis" ? "proxy-rules" : undefined;
-  const action = ["GET", "HEAD"].includes((options?.method || "GET").toUpperCase()) ? "read" : "write";
-  const baselinePermission = permissionDomain ? `${permissionDomain}:${action}` : undefined;
+  // 2. Path traversal protection: reject malformed or escaping upstream paths
+  if (!isValidUpstreamPath(path)) {
+    return NextResponse.json(
+      { error: "bad request: invalid upstream path" },
+      { status: 400, headers },
+    );
+  }
+
+  // 3. Server-side Authentication & RBAC Enforcement (P3-S4-T2)
+  // Every proxied engine call requires a validated operator session and baseline domain permission.
+  const operator = await getCurrentOperator();
+  if (!operator) {
+    const res = NextResponse.json({ error: "unauthorized: authentication required" }, { status: 401, headers });
+    res.cookies.delete(SESSION_COOKIE_NAME);
+    return res;
+  }
+
+  const permissionDomain = SERVICE_PERMISSION_DOMAINS[service];
+  const isReadMethod = ["GET", "HEAD"].includes((options?.method || "GET").toUpperCase());
+  const baselineAction = isReadMethod ? "read" : permissionDomain === "fleet" ? "manage" : "write";
+  const baselinePermission = `${permissionDomain}:${baselineAction}`;
   const requiredPermissions = [baselinePermission, options?.requiredPermission].filter(
     (permission): permission is string => Boolean(permission),
   );
-  if (requiredPermissions.length > 0) {
-    const operator = await getCurrentOperator();
-    if (!operator) {
-      const res = NextResponse.json({ error: "unauthorized: authentication required" }, { status: 401, headers });
-      res.cookies.delete(SESSION_COOKIE_NAME);
-      return res;
-    }
 
-    const requiredPermission = requiredPermissions.find((permission) => !hasPermission(operator.role, permission));
-    if (requiredPermission) {
-      return NextResponse.json(
-        {
-          error: `forbidden: operator role '${operator.role}' lacks required permission '${requiredPermission}'`,
-          required_permission: requiredPermission,
-          role: operator.role,
-        },
-        { status: 403, headers },
-      );
-    }
+  const missingPermission = requiredPermissions.find((permission) => !hasPermission(operator.role, permission));
+  if (missingPermission) {
+    return NextResponse.json(
+      {
+        error: `forbidden: operator role '${operator.role}' lacks required permission '${missingPermission}'`,
+        required_permission: missingPermission,
+        role: operator.role,
+      },
+      { status: 403, headers },
+    );
   }
 
   // Public OAuth endpoints stay on the public listener; management stays private.
@@ -88,11 +145,18 @@ export async function proxyRequest<T>(
     requestHeaders.set("x-request-id", requestId);
     requestHeaders.set("x-correlation-id", requestId);
     requestHeaders.set("x-autorix-caller", "console");
-    requestHeaders.set("x-autorix-console-token", "act_internal_console_trusted");
+    const internalToken = process.env.AUTORIX_CONSOLE_INTERNAL_TOKEN;
+    if (internalToken) {
+      requestHeaders.set("x-autorix-console-token", internalToken);
+    }
+
+    const timeoutSignal = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
+    const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
 
     res = await fetch(url, {
       cache: "no-store",
       ...init,
+      signal,
       headers: requestHeaders,
     });
   } catch (err) {

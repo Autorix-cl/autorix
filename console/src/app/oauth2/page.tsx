@@ -23,6 +23,8 @@ import { ErrorState } from "@/components/state/error-state";
 import { NotConnectedState } from "@/components/state/not-connected-state";
 import { NotConnectedEngine } from "@/components/resources/not-connected-engine";
 import { useCapabilities } from "@/lib/capabilities/capability-context";
+import { Can } from "@/lib/auth/use-permission";
+import { formatDateTime } from "@/lib/format/date-time";
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { TokenInspector } from "./token-inspector";
@@ -51,7 +53,7 @@ function toClientApp(c: OAuth2Client): ClientApp {
     allowedAudiences: c.allowed_audiences ?? [],
     isPublic: Boolean(c.is_public),
     raw: c,
-    createdAt: c.created_at ? new Date(c.created_at).toLocaleString() : "Recently",
+    createdAt: c.created_at ? formatDateTime(c.created_at) : "Recently",
   };
 }
 
@@ -65,6 +67,7 @@ export default function OAuth2Page() {
   const [clientName, setClientName] = React.useState("");
   const [clientSecret, setClientSecret] = React.useState("");
   const [scopes, setScopes] = React.useState("openid profile email");
+  const [redirectUris, setRedirectUris] = React.useState("");
   const [allowedAudiences, setAllowedAudiences] = React.useState("");
   const [clientType, setClientType] = React.useState("confidential");
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -98,19 +101,28 @@ export default function OAuth2Page() {
   const clients: ClientApp[] = React.useMemo(() => (clientsRaw ?? []).map(toClientApp), [clientsRaw]);
 
   const createClient = useApiMutation(
-    (vars: { clientId: string; clientName: string; clientSecret: string; isPublic: boolean; scopes: string[]; allowedAudiences: string[] }) =>
+    (vars: {
+      clientId: string;
+      clientName: string;
+      clientSecret: string;
+      isPublic: boolean;
+      scopes: string[];
+      redirectUris: string[];
+      allowedAudiences: string[];
+    }) =>
       fetchAndParse("/api/oauth2/clients", oauth2ClientSchema, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(vars),
       }),
     {
-      successMessage: t("oauth2.successMsg", { id: clientId }),
+      successMessage: (data) => t("oauth2.successMsg", { id: data.client_id }),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["oauth2-clients"] });
         setClientId("");
         setClientName("");
         setClientSecret("");
+        setRedirectUris("");
         setAllowedAudiences("");
       },
     },
@@ -120,11 +132,12 @@ export default function OAuth2Page() {
     e.preventDefault();
     if (!clientId || !clientName) return;
     createClient.mutate({
-      clientId,
-      clientName,
+      clientId: clientId.trim(),
+      clientName: clientName.trim(),
       clientSecret,
       isPublic,
-      scopes: scopes.trim().split(" ").filter(Boolean),
+      scopes: scopes.trim().split(/\s+/).filter(Boolean),
+      redirectUris: redirectUris.trim().split(/[\s,]+/).filter(Boolean),
       allowedAudiences: allowedAudiences.trim().split(/\s+/).filter(Boolean),
     });
   };
@@ -193,8 +206,8 @@ export default function OAuth2Page() {
           },
           {
             label: "Engine Gateway",
-            value: "Port 4435",
-            hint: "Hydra-compatible OIDC",
+            value: "Port 4444",
+            hint: "Public :4444 · Admin :4445",
             icon: Activity,
           },
         ]}
@@ -285,6 +298,23 @@ export default function OAuth2Page() {
                   </div>
 
                   <div className="space-y-1.5">
+                    <Label htmlFor="redirectUris">
+                      Redirect URIs {isPublic ? "(required for Authorization Code + PKCE)" : "(optional)"}
+                    </Label>
+                    <Input
+                      id="redirectUris"
+                      value={redirectUris}
+                      onChange={(e) => setRedirectUris(e.target.value)}
+                      placeholder="https://app.example.com/callback"
+                      required={isPublic}
+                      aria-describedby="redirectUrisHelp"
+                    />
+                    <p id="redirectUrisHelp" className="text-xs text-muted-foreground">
+                      Space or comma-separated exact callback URLs registered for authorization code flows.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
                     <Label htmlFor="allowedAudiences">Allowed resource audiences</Label>
                     <Input
                       id="allowedAudiences"
@@ -298,10 +328,19 @@ export default function OAuth2Page() {
                     </p>
                   </div>
 
-                  <Button type="submit" variant="amber" disabled={isSubmitting} className="w-full gap-2 mt-2">
-                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-                    <span>{isSubmitting ? t("common.loading") : t("oauth2.submitBtn")}</span>
-                  </Button>
+                  <Can
+                    perform="oauth2:write"
+                    fallback={
+                      <p className="text-xs text-muted-foreground text-center py-2">
+                        Read-only role — registering OAuth2 clients requires <code className="font-mono">oauth2:write</code>.
+                      </p>
+                    }
+                  >
+                    <Button type="submit" variant="amber" disabled={isSubmitting} className="w-full gap-2 mt-2">
+                      {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                      <span>{isSubmitting ? t("common.loading") : t("oauth2.submitBtn")}</span>
+                    </Button>
+                  </Can>
                 </form>
               </CardContent>
             </Card>
@@ -355,8 +394,9 @@ export default function OAuth2Page() {
                 {/* Filter */}
                 <div className="flex items-center gap-2 w-full sm:w-72">
                   <div className="relative w-full">
-                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
                     <Input
+                      aria-label={t("oauth2.searchPlaceholder")}
                       placeholder={t("oauth2.searchPlaceholder")}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -409,10 +449,19 @@ export default function OAuth2Page() {
                     filteredClients.map((c) => (
                       <TableRow
                         key={c.id}
-                        className="cursor-pointer hover:bg-muted/40 transition-colors"
+                        tabIndex={0}
+                        aria-label={`Inspect OAuth2 client ${c.name}`}
+                        className="cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                         onClick={() => {
                           setSelectedClient(c.raw);
                           setIsDetailOpen(true);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setSelectedClient(c.raw);
+                            setIsDetailOpen(true);
+                          }
                         }}
                       >
                         <TableCell className="font-mono text-xs text-amber-400 font-semibold">{c.id}</TableCell>

@@ -18,6 +18,12 @@ import {
 import { toast } from "sonner";
 import type { ValidationResult } from "@/lib/api/schemas/themis";
 
+function readCsrfHeaders(): Record<string, string> {
+  if (typeof document === "undefined") return {};
+  const m = document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/);
+  return m ? { "X-CSRF-Token": decodeURIComponent(m[1]) } : {};
+}
+
 interface EvaluationTraceItem {
   policy_id?: string;
   policy_name?: string;
@@ -60,26 +66,31 @@ export function DryRunPlayground() {
       return;
     }
 
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       setIsValidating(true);
       try {
         const res = await fetch("/api/themis/validate", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...readCsrfHeaders() },
           body: JSON.stringify({ expression }),
+          signal: controller.signal,
         });
         if (res.ok) {
           const data: ValidationResult = await res.json();
           setValidation(data);
         }
       } catch {
-        // silent fail on auto-validation
+        // silent fail on auto-validation or abort
       } finally {
-        setIsValidating(false);
+        if (!controller.signal.aborted) setIsValidating(false);
       }
     }, 400);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [expression, mode]);
 
   const handleEvaluate = async () => {
@@ -100,7 +111,7 @@ export function DryRunPlayground() {
 
       const res = await fetch("/api/themis/eval", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...readCsrfHeaders() },
         body: JSON.stringify(body),
       });
 

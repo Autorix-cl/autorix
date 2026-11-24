@@ -29,16 +29,17 @@ export function AttenuationStudio() {
   const [decodedMacaroon, setDecodedMacaroon] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const { data: keys = [] } = useQuery<KeyMetadata[]>({
+  const { data: keys = [] } = useQuery<Array<KeyMetadata & { key_prefix?: string; state?: string }>>({
     queryKey: ["vulcan-keys"],
     queryFn: async () => {
       const res = await fetch("/api/vulcan/keys");
       if (!res.ok) throw new Error("Failed to fetch keys");
-      return res.json();
+      const data = await res.json();
+      return Array.isArray(data) ? data : data.data || [];
     },
   });
 
-  const activeKeys = keys.filter((k) => !k.revoked);
+  const activeKeys = keys.filter((k) => !k.revoked && k.state !== "revoked");
   const selectedKey = keys.find((k) => k.id === keyId);
 
   const addCaveat = (presetValue?: string) => {
@@ -66,9 +67,14 @@ export function AttenuationStudio() {
 
     setIsGenerating(true);
     try {
+      const csrfMatch = typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/) : null;
+      const csrf = csrfMatch ? decodeURIComponent(csrfMatch[1]) : undefined;
       const res = await fetch("/api/vulcan/macaroons/attenuate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        },
         body: JSON.stringify({
           keyId,
           secret,
@@ -184,15 +190,15 @@ export function AttenuationStudio() {
           <CardContent className="space-y-5 text-xs">
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Root Key</Label>
+                <Label htmlFor="attenuate-root-key" className="text-xs">Root Key</Label>
                 <Select value={keyId} onValueChange={setKeyId}>
-                  <SelectTrigger className="h-8 text-xs">
+                  <SelectTrigger id="attenuate-root-key" className="h-8 text-xs">
                     <SelectValue placeholder="Select an active root key" />
                   </SelectTrigger>
                   <SelectContent>
                     {activeKeys.map((k) => (
                       <SelectItem key={k.id} value={k.id} className="text-xs">
-                        {k.name} ({k.prefix})
+                        {k.name} ({k.key_prefix || k.prefix || k.id.slice(0, 8)})
                       </SelectItem>
                     ))}
                     {activeKeys.length === 0 && (
@@ -205,17 +211,19 @@ export function AttenuationStudio() {
               </div>
 
               <div className="space-y-1.5">
-                <Label className="flex justify-between items-center text-xs">
+                <Label htmlFor="attenuate-root-secret" className="flex justify-between items-center text-xs">
                   <span>Root Secret</span>
                   <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20 px-1.5 py-0">
-                    <ShieldAlert className="w-2.5 h-2.5 mr-1" /> Client-side only
+                    <ShieldAlert className="w-2.5 h-2.5 mr-1" aria-hidden="true" /> Signed via Vulcan BFF
                   </Badge>
                 </Label>
                 <div className="relative">
-                  <Key className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <Key className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
                   <Input
+                    id="attenuate-root-secret"
                     type="password"
-                    placeholder="Paste plain-text secret (av_live_...)"
+                    autoComplete="off"
+                    placeholder="Paste root key secret or parent token"
                     className="pl-8 font-mono h-8 text-xs"
                     value={secret}
                     onChange={(e) => setSecret(e.target.value)}
@@ -271,12 +279,14 @@ export function AttenuationStudio() {
                       onChange={(e) => updateCaveat(caveat.id, e.target.value)}
                     />
                     <Button
+                      type="button"
                       variant="ghost"
                       size="icon"
+                      aria-label={`Remove caveat ${i + 1}`}
                       className="text-destructive shrink-0 h-8 w-8"
                       onClick={() => removeCaveat(caveat.id)}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                     </Button>
                   </div>
                 ))}

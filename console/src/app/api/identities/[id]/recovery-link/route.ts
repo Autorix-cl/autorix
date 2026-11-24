@@ -8,7 +8,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params;
   try {
     const body = await req.json().catch(() => ({}));
-    return proxyRequest("ego", `/admin/identities/${id}/recovery-link`, recoveryLinkResultSchema, {
+    return proxyRequest("ego", `/admin/identities/${encodeURIComponent(id)}/recovery-link`, recoveryLinkResultSchema, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

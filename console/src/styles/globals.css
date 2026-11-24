@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    color-scheme: dark;
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
 
@@ -41,13 +42,20 @@
     --input: 217.2 32.6% 17.5%;
     --ring: 224.3 76.3% 48%;
 
+    --scrollbar-thumb: hsl(215 20.2% 45%);
+    --scrollbar-track: hsl(222.2 84% 6.2%);
+    --mesh-dot: rgba(255, 255, 255, 0.045);
+
     --radius: 0.5rem;
 
     --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    scrollbar-width: thin;
   }
 
   .light {
+    color-scheme: light;
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
 
@@ -84,6 +92,10 @@
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
+
+    --scrollbar-thumb: hsl(215.4 16.3% 52%);
+    --scrollbar-track: hsl(210 40% 96.1%);
+    --mesh-dot: rgba(15, 23, 42, 0.06);
   }
 }
 
@@ -97,28 +109,38 @@
       "rlig" 1,
       "calt" 1;
   }
+  dialog:modal {
+    overscroll-behavior: contain;
+  }
+  dialog::backdrop {
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
 }
 
-/* Custom Enterprise Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
+/* Scrollbar styling: standard properties above, legacy WebKit fallback isolated */
+@supports not (scrollbar-color: auto) {
+  :root,
+  * {
+    scrollbar-width: auto;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 9999px;
+  }
 }
 
 /* Glassmorphism & Enterprise Glows */
 .enterprise-card-glow {
   position: relative;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .enterprise-card-glow:hover {
   border-color: hsl(var(--primary) / 0.4);
@@ -127,26 +149,42 @@
 
 .subtle-mesh-bg {
   background-color: hsl(var(--background));
-  background-image: 
-    radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    radial-gradient(ellipse 80% 50% at 50% -10%, hsl(var(--primary) / 0.12), transparent 70%);
+  background-image:
+    radial-gradient(var(--mesh-dot) 1px, transparent 1px),
+    radial-gradient(ellipse 80% 50% at 50% -10%, hsl(var(--primary) / 0.1), transparent 70%);
   background-size: 24px 24px, 100% 100%;
 }
 
 /* Modern Cloud Console Surfaces & Telemetry HUD */
 .cloud-surface {
-  background: linear-gradient(180deg, hsl(var(--card) / 0.95) 0%, hsl(var(--card) / 0.65) 100%);
+  background: linear-gradient(180deg, hsl(var(--card) / 0.96) 0%, hsl(var(--card) / 0.78) 100%);
   backdrop-filter: blur(12px);
-  border: 1px solid hsl(var(--border) / 0.7);
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  border: 1px solid hsl(var(--border) / 0.75);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.16), 0 0 0 1px hsl(var(--foreground) / 0.03) inset;
+}
+
+.light .cloud-surface {
+  background: linear-gradient(180deg, hsl(var(--card)) 0%, hsl(var(--muted) / 0.35) 100%);
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.06);
 }
 
 .cloud-hud-item {
   background: hsl(var(--muted) / 0.25);
   border: 1px solid hsl(var(--border) / 0.5);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .cloud-hud-item:hover {
   background: hsl(var(--muted) / 0.4);
   border-color: hsl(var(--border) / 0.8);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -12,16 +12,20 @@ export function AlertsManager() {
   const [error, setError] = React.useState<string>();
   const load = React.useCallback(async () => {
     setError(undefined);
-    const [alertsResponse, rulesResponse] = await Promise.all([
-      fetch("/api/observability/alerts"),
-      fetch("/api/observability/alerts/rules"),
-    ]);
-    if (!alertsResponse.ok || !rulesResponse.ok) {
-      setError("Prometheus alerts or rules are unavailable.");
-      return;
+    try {
+      const [alertsResponse, rulesResponse] = await Promise.all([
+        fetch("/api/observability/alerts"),
+        fetch("/api/observability/alerts/rules"),
+      ]);
+      if (!alertsResponse.ok || !rulesResponse.ok) {
+        setError("Prometheus alerts or rules are unavailable.");
+        return;
+      }
+      setAlerts(await alertsResponse.json());
+      setRules(await rulesResponse.json());
+    } catch {
+      setError("Failed to connect to Prometheus observability endpoint.");
     }
-    setAlerts(await alertsResponse.json());
-    setRules(await rulesResponse.json());
   }, []);
   React.useEffect(() => {
     load();

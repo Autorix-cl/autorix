@@ -8,7 +8,10 @@ import { AuditTimeline, AuditEvent } from "./audit-timeline";
 import { MfaPanel } from "./mfa-panel";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { Button } from "@/components/ui/button";
-import { CopyableIdentifier } from "@/components/ui/masked-secret";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { CopyableIdentifier, MaskedSecret } from "@/components/ui/masked-secret";
+import { Can } from "@/lib/auth/use-permission";
+import { formatDateTime } from "@/lib/format/date-time";
 import { ShieldAlert, UserX, Loader2, KeyRound, Save, Link2, UserCheck } from "lucide-react";
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -20,73 +23,115 @@ interface IdentitySheetProps {
   onIdentityUpdated?: () => void;
 }
 
+function readCsrfCookie(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const match = document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
 export function IdentitySheet({ identity, isOpen, onOpenChange, onIdentityUpdated }: IdentitySheetProps) {
   const [traitsJson, setTraitsJson] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [isActioning, setIsActioning] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<Session[]>([
-    { id: "sess_1", ip: "192.168.1.10", userAgent: "Chrome on macOS", lastAccess: "Recently" },
-  ]);
-  const [mfaFactors, setMfaFactors] = useState<string[]>(["Authenticator App (TOTP)"]);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [mfaFactors, setMfaFactors] = useState<string[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [recoveryLink, setRecoveryLink] = useState<string | null>(null);
-
-  const mockAuditEvents: AuditEvent[] = [
-    { id: "evt_1", action: "user.authenticated", actor: identity?.email || "system", timestamp: "Recently" },
-    { id: "evt_2", action: "identity.state_active", actor: "admin@autorix.io", timestamp: identity?.createdAt || "Recently" },
-  ];
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [confirmSuspendOpen, setConfirmSuspendOpen] = useState(false);
 
   useEffect(() => {
-    if (identity) {
-      setTraitsJson(JSON.stringify(identity.original.traits, null, 2));
-      setRecoveryLink(null);
+    if (!identity) return;
+    const controller = new AbortController();
 
-      // Fetch live sessions
-      fetch(`/api/identities/${identity.id}/sessions`)
-        .then((res) => (res.ok ? res.json() : []))
-        .then((data) => {
-          if (Array.isArray(data) && data.length > 0) {
-            setSessions(
-              data.map((s: { id: string; authenticated_at?: string; expires_at?: string }) => ({
-                id: s.id,
-                ip: "127.0.0.1",
-                userAgent: "Active Session",
-                lastAccess: s.authenticated_at ? new Date(s.authenticated_at).toLocaleTimeString() : "Active",
-              }))
-            );
-          }
-        })
-        .catch(() => {});
+    setTraitsJson(JSON.stringify(identity.original.traits, null, 2));
+    setRecoveryLink(null);
+    setTemporaryPassword(null);
+    setSessions([]);
+    setMfaFactors([]);
+    setAuditEvents([]);
 
-      // Fetch live MFA status
-      fetch(`/api/identities/${identity.id}/mfa`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((mfa) => {
-          if (mfa && mfa.totp_enabled) {
-            setMfaFactors(["Authenticator App (TOTP)"]);
-          } else {
-            setMfaFactors([]);
-          }
-        })
-        .catch(() => {});
-    }
+    const encodedId = encodeURIComponent(identity.id);
+
+    // Fetch live sessions
+    fetch(`/api/identities/${encodedId}/sessions`, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        const list = Array.isArray(data) ? data : data?.data || [];
+        setSessions(
+          list.map((s: { id: string; ip_address?: string; user_agent?: string; authenticated_at?: string }) => ({
+            id: s.id,
+            ip: s.ip_address || "Unknown IP",
+            userAgent: s.user_agent || "Active Session",
+            lastAccess: s.authenticated_at ? formatDateTime(s.authenticated_at) : "Active",
+          })),
+        );
+      })
+      .catch(() => {});
+
+    // Fetch live MFA status
+    fetch(`/api/identities/${encodedId}/mfa`, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((mfa) => {
+        if (mfa && mfa.totp_enabled) {
+          setMfaFactors(["Authenticator App (TOTP)"]);
+        } else {
+          setMfaFactors([]);
+        }
+      })
+      .catch(() => {});
+
+    // Fetch live audit events for this identity from Argus
+    fetch(`/api/audit?resource_type=identity`, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        const list = Array.isArray(data) ? data : data?.data || [];
+        const matched = list
+          .filter(
+            (e: { resource_id?: string; actor?: string }) =>
+              e.resource_id === identity.id || e.actor === identity.email,
+          )
+          .slice(0, 20)
+          .map((e: { id: string; action: string; actor?: string; timestamp?: string }) => ({
+            id: e.id,
+            action: e.action,
+            actor: e.actor || "system",
+            timestamp: e.timestamp ? formatDateTime(e.timestamp) : "—",
+          }));
+        setAuditEvents(matched);
+      })
+      .catch(() => {});
+
+    return () => controller.abort();
   }, [identity]);
+
+  const jsonHeaders = () => {
+    const csrf = readCsrfCookie();
+    return {
+      "Content-Type": "application/json",
+      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+    };
+  };
 
   const handleSaveTraits = async () => {
     if (!identity) return;
     setIsSaving(true);
     try {
       const parsed = JSON.parse(traitsJson);
-      const res = await fetch(`/api/identities/${identity.id}`, {
+      const res = await fetch(`/api/identities/${encodeURIComponent(identity.id)}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders(),
         body: JSON.stringify({ traits: parsed }),
       });
-      if (!res.ok) throw new Error("Failed to save traits");
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || "Failed to save traits");
+      }
       toast.success("Traits updated successfully.");
       onIdentityUpdated?.();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Error saving traits";
-      toast.error(msg);
+      toast.error(err instanceof Error ? err.message : "Error saving traits");
     } finally {
       setIsSaving(false);
     }
@@ -95,21 +140,25 @@ export function IdentitySheet({ identity, isOpen, onOpenChange, onIdentityUpdate
   const handleResetPassword = async () => {
     if (!identity) return;
     setIsActioning("reset_pwd");
+    setTemporaryPassword(null);
     try {
-      const res = await fetch(`/api/identities/${identity.id}/credentials/reset-password`, {
+      const res = await fetch(`/api/identities/${encodeURIComponent(identity.id)}/credentials/reset-password`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders(),
         body: JSON.stringify({ force_rotation: true }),
       });
-      if (!res.ok) throw new Error("Failed to reset password");
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || "Failed to reset password");
+      }
       const data = await res.json();
       if (data.temporary_password) {
-        toast.success(`Password reset. Temporary: ${data.temporary_password}`, { duration: 10000 });
-      } else {
-        toast.success("Password reset and rotation enforced.");
+        setTemporaryPassword(data.temporary_password);
       }
-    } catch {
-      toast.error("Failed to reset password");
+      toast.success("Password reset and rotation enforced.");
+      setConfirmResetOpen(false);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to reset password");
     } finally {
       setIsActioning(null);
     }
@@ -119,17 +168,20 @@ export function IdentitySheet({ identity, isOpen, onOpenChange, onIdentityUpdate
     if (!identity) return;
     setIsActioning("recovery_link");
     try {
-      const res = await fetch(`/api/identities/${identity.id}/recovery-link`, {
+      const res = await fetch(`/api/identities/${encodeURIComponent(identity.id)}/recovery-link`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders(),
         body: JSON.stringify({ expires_in: "2h" }),
       });
-      if (!res.ok) throw new Error("Failed to issue recovery link");
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || "Failed to issue recovery link");
+      }
       const data = await res.json();
       setRecoveryLink(data.recovery_link);
       toast.success("Recovery link generated.");
-    } catch {
-      toast.error("Failed to issue recovery link");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to issue recovery link");
     } finally {
       setIsActioning(null);
     }
@@ -137,11 +189,19 @@ export function IdentitySheet({ identity, isOpen, onOpenChange, onIdentityUpdate
 
   const handleRevokeSession = async (sessionId: string) => {
     try {
-      await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
+      const csrf = readCsrfCookie();
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+        method: "DELETE",
+        headers: csrf ? { "X-CSRF-Token": csrf } : undefined,
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || "Failed to revoke session");
+      }
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-      toast.success(`Session ${sessionId} revoked`);
-    } catch {
-      toast.error("Failed to revoke session");
+      toast.success(`Session ${sessionId.slice(0, 8)}... revoked`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to revoke session");
     }
   };
 
@@ -151,16 +211,20 @@ export function IdentitySheet({ identity, isOpen, onOpenChange, onIdentityUpdate
     const newState = isSuspended ? "active" : "suspended";
     setIsActioning("suspend");
     try {
-      const res = await fetch(`/api/identities/${identity.id}`, {
+      const res = await fetch(`/api/identities/${encodeURIComponent(identity.id)}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders(),
         body: JSON.stringify({ state: newState }),
       });
-      if (!res.ok) throw new Error("Failed to update status");
-      toast.success(isSuspended ? "Account reactivated" : "Account suspended");
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || "Failed to update status");
+      }
+      toast.success(isSuspended ? "Account reactivated" : "Account suspended and sessions revoked");
+      setConfirmSuspendOpen(false);
       onIdentityUpdated?.();
-    } catch {
-      toast.error("Failed to change account state");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to change account state");
     } finally {
       setIsActioning(null);
     }
@@ -169,198 +233,225 @@ export function IdentitySheet({ identity, isOpen, onOpenChange, onIdentityUpdate
   if (!identity) return null;
 
   return (
-    <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-[600px] overflow-y-auto">
-        <SheetHeader className="mb-6">
-          <SheetTitle className="text-xl font-semibold flex items-center gap-2">
-            User Profile: {identity.name}
-          </SheetTitle>
-          <SheetDescription>ID: {identity.id}</SheetDescription>
-        </SheetHeader>
+    <>
+      <Sheet open={isOpen} onOpenChange={onOpenChange}>
+        <SheetContent className="sm:max-w-[600px] overflow-y-auto">
+          <SheetHeader className="mb-6">
+            <SheetTitle className="text-xl font-semibold flex items-center gap-2">
+              User Profile: {identity.name}
+            </SheetTitle>
+            <SheetDescription>ID: {identity.id}</SheetDescription>
+          </SheetHeader>
 
-        <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="w-full grid grid-cols-4 mb-6">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="traits">Traits</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
-            <TabsTrigger value="activity">Activity</TabsTrigger>
-          </TabsList>
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="w-full grid grid-cols-4 mb-6">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="traits">Traits</TabsTrigger>
+              <TabsTrigger value="security">Security</TabsTrigger>
+              <TabsTrigger value="activity">Activity</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="overview" className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">Email</p>
-                <p className="text-sm font-mono">{identity.email}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">State</p>
-                <p className="text-sm capitalize">{identity.state}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">Created At</p>
-                <p className="text-sm">{identity.createdAt}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">Schema ID</p>
-                <p className="text-sm font-mono">{identity.original.schema_id || "default"}</p>
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="traits" className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium text-foreground">Traits (JSON)</h3>
-              <Button size="sm" onClick={handleSaveTraits} disabled={isSaving}>
-                {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                Save Changes
-              </Button>
-            </div>
-            <CodeEditor
-              value={traitsJson}
-              onChange={setTraitsJson}
-              language="json"
-              height="400px"
-            />
-          </TabsContent>
-
-          <TabsContent value="security" className="space-y-6">
-            <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 text-orange-500" />
-              Security Actions
-            </h3>
-
-            <div className="grid gap-4">
-              {/* Force Password Reset */}
-              <div className="flex items-center justify-between rounded-md border p-4">
-                <div>
-                  <h4 className="text-sm font-medium mb-1">Force Password Reset</h4>
-                  <p className="text-xs text-muted-foreground">Generate temporary password and require rotation.</p>
+            <TabsContent value="overview" className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Email</p>
+                  <p className="text-sm font-mono break-all">{identity.email}</p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleResetPassword}
-                  disabled={isActioning === "reset_pwd"}
-                >
-                  {isActioning === "reset_pwd" ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <KeyRound className="h-4 w-4 mr-2" />}
-                  Reset
-                </Button>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">State</p>
+                  <p className="text-sm capitalize">{identity.state}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Created At</p>
+                  <p className="text-sm font-mono">{identity.createdAt}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Schema ID</p>
+                  <p className="text-sm font-mono">{identity.original.schema_id || "default"}</p>
+                </div>
               </div>
+            </TabsContent>
 
-              {/* Recovery Link Issuance */}
-              <div className="flex flex-col gap-2 rounded-md border p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-sm font-medium mb-1">Issue Account Recovery Link</h4>
-                    <p className="text-xs text-muted-foreground">Create a single-use token valid for 2 hours.</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleIssueRecoveryLink}
-                    disabled={isActioning === "recovery_link"}
-                  >
-                    {isActioning === "recovery_link" ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link2 className="h-4 w-4 mr-2" />}
-                    Generate Link
+            <TabsContent value="traits" className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-foreground">Traits (JSON)</h3>
+                <Can perform="identities:write">
+                  <Button type="button" size="sm" onClick={handleSaveTraits} disabled={isSaving}>
+                    {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" /> : <Save className="h-4 w-4 mr-2" aria-hidden="true" />}
+                    Save Changes
                   </Button>
-                </div>
-                {recoveryLink && (
-                  <div className="mt-2 p-2 bg-muted/40 rounded border font-mono text-xs text-emerald-400 select-all">
-                    <CopyableIdentifier
-                      value={recoveryLink}
-                      label="Recovery Link"
-                      truncateLength={64}
-                      className="w-full justify-between"
-                    />
-                  </div>
-                )}
+                </Can>
               </div>
+              <CodeEditor value={traitsJson} onChange={setTraitsJson} language="json" height="400px" />
+            </TabsContent>
 
-              {/* FIDO2 / WebAuthn Passkeys Diagnostics */}
-              <div className="rounded-md border p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <KeyRound className="h-4 w-4 text-cyan-400" />
+            <TabsContent value="security" className="space-y-6">
+              <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-orange-500" aria-hidden="true" />
+                Security Actions
+              </h3>
+
+              <div className="grid gap-4">
+                {/* Force Password Reset */}
+                <Can perform="identities:write">
+                  <div className="flex flex-col gap-3 rounded-md border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-medium mb-1">Force Password Reset</h4>
+                        <p className="text-xs text-muted-foreground">
+                          Generate a one-time temporary password, revoke active sessions, and require rotation.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setConfirmResetOpen(true)}
+                        disabled={isActioning === "reset_pwd"}
+                      >
+                        {isActioning === "reset_pwd" ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <KeyRound className="h-4 w-4 mr-2" aria-hidden="true" />
+                        )}
+                        Reset
+                      </Button>
+                    </div>
+                    {temporaryPassword && (
+                      <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 space-y-1.5">
+                        <p className="text-[11px] font-medium text-amber-400">
+                          One-time temporary password (not shown again after closing):
+                        </p>
+                        <MaskedSecret secret={temporaryPassword} label="Temporary password" />
+                      </div>
+                    )}
+                  </div>
+                </Can>
+
+                {/* Recovery Link Issuance */}
+                <Can perform="identities:write">
+                  <div className="flex flex-col gap-2 rounded-md border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-medium mb-1">Issue Account Recovery Link</h4>
+                        <p className="text-xs text-muted-foreground">Create a single-use token valid for 2 hours.</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleIssueRecoveryLink}
+                        disabled={isActioning === "recovery_link"}
+                      >
+                        {isActioning === "recovery_link" ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <Link2 className="h-4 w-4 mr-2" aria-hidden="true" />
+                        )}
+                        Generate Link
+                      </Button>
+                    </div>
+                    {recoveryLink && (
+                      <div className="mt-2 p-2 bg-muted/40 rounded border font-mono text-xs text-emerald-400 select-all">
+                        <CopyableIdentifier
+                          value={recoveryLink}
+                          label="Recovery Link"
+                          truncateLength={64}
+                          className="w-full justify-between"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </Can>
+
+                {/* Active Sessions */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium">Active Sessions</h4>
+                  <SessionManager sessions={sessions} onRevoke={handleRevokeSession} />
+                </div>
+
+                {/* MFA Factors */}
+                <MfaPanel
+                  factors={mfaFactors}
+                  onGenerateRecovery={async () => {
+                    const res = await fetch(`/api/identities/${encodeURIComponent(identity.id)}/recovery-link`, {
+                      method: "POST",
+                      headers: jsonHeaders(),
+                      body: JSON.stringify({ expires_in: "2h" }),
+                    });
+                    if (!res.ok) {
+                      toast.error("Failed to generate recovery token from Ego");
+                      return [];
+                    }
+                    const data = await res.json();
+                    const token = data.recovery_token || data.recovery_link;
+                    return token ? [String(token)] : [];
+                  }}
+                />
+
+                {/* Suspend / Reactivate */}
+                <Can perform="identities:write">
+                  <div className="flex items-center justify-between rounded-md border border-destructive/20 bg-destructive/10 p-4 mt-4">
                     <div>
-                      <h4 className="text-sm font-medium">FIDO2 / WebAuthn Passkeys</h4>
+                      <h4 className="text-sm font-medium text-destructive mb-1">
+                        {identity.state === "suspended" ? "Reactivate Account" : "Suspend Account"}
+                      </h4>
                       <p className="text-xs text-muted-foreground">
-                        Hardware authenticators, TouchID / FaceID, and physical security keys.
+                        {identity.state === "suspended"
+                          ? "Restore access and allow user authentication."
+                          : "Block new logins and revoke active sessions."}
                       </p>
                     </div>
+                    <Button
+                      type="button"
+                      variant={identity.state === "suspended" ? "default" : "destructive"}
+                      size="sm"
+                      onClick={() =>
+                        identity.state === "suspended" ? handleToggleSuspend() : setConfirmSuspendOpen(true)
+                      }
+                      disabled={isActioning === "suspend"}
+                    >
+                      {isActioning === "suspend" ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
+                      ) : identity.state === "suspended" ? (
+                        <UserCheck className="h-4 w-4 mr-2" aria-hidden="true" />
+                      ) : (
+                        <UserX className="h-4 w-4 mr-2" aria-hidden="true" />
+                      )}
+                      {identity.state === "suspended" ? "Reactivate" : "Suspend"}
+                    </Button>
                   </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                    W3C WebAuthn L3
-                  </span>
-                </div>
-
-                <div className="rounded bg-muted/30 p-3 text-xs space-y-2 font-mono">
-                  <div className="flex justify-between items-center text-muted-foreground">
-                    <span>Supported Algorithms:</span>
-                    <span className="text-foreground">ES256, RS256, EdDSA (-7, -257, -8)</span>
-                  </div>
-                  <div className="flex justify-between items-center text-muted-foreground">
-                    <span>Attestation Verification:</span>
-                    <span className="text-emerald-400 font-semibold">Direct & Enterprise CA (Ego Engine)</span>
-                  </div>
-                  <div className="flex justify-between items-center text-muted-foreground">
-                    <span>Replay Counter Guard:</span>
-                    <span className="text-emerald-400 font-semibold">Monotonic Increment Enforced</span>
-                  </div>
-                </div>
+                </Can>
               </div>
+            </TabsContent>
 
-              {/* Active Sessions */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-medium">Active Sessions</h4>
-                <SessionManager sessions={sessions} onRevoke={handleRevokeSession} />
-              </div>
+            <TabsContent value="activity" className="space-y-4">
+              <h3 className="text-sm font-medium text-foreground">Audit Log</h3>
+              <AuditTimeline events={auditEvents} />
+            </TabsContent>
+          </Tabs>
+        </SheetContent>
+      </Sheet>
 
-              {/* MFA Factors */}
-              <MfaPanel
-                factors={mfaFactors}
-                onGenerateRecovery={async () => {
-                  return ["8A9F-2B3C", "9K2L-5M7N", "1Q8W-4E5R", "7U9I-0O2P"];
-                }}
-              />
+      <ConfirmDialog
+        open={confirmResetOpen}
+        onOpenChange={setConfirmResetOpen}
+        title="Force Password Reset"
+        description={`Reset the password for ${identity.email}? Existing sessions will be revoked and the user must rotate credentials on next sign-in.`}
+        confirmLabel="Reset Password"
+        isLoading={isActioning === "reset_pwd"}
+        onConfirm={handleResetPassword}
+      />
 
-              {/* Suspend / Reactivate */}
-              <div className="flex items-center justify-between rounded-md border border-destructive/20 bg-destructive/10 p-4 mt-4">
-                <div>
-                  <h4 className="text-sm font-medium text-destructive mb-1">
-                    {identity.state === "suspended" ? "Reactivate Account" : "Suspend Account"}
-                  </h4>
-                  <p className="text-xs text-muted-foreground">
-                    {identity.state === "suspended"
-                      ? "Restore access and allow user authentication."
-                      : "Block new logins and revoke active sessions."}
-                  </p>
-                </div>
-                <Button
-                  variant={identity.state === "suspended" ? "default" : "destructive"}
-                  size="sm"
-                  onClick={handleToggleSuspend}
-                  disabled={isActioning === "suspend"}
-                >
-                  {isActioning === "suspend" ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : identity.state === "suspended" ? (
-                    <UserCheck className="h-4 w-4 mr-2" />
-                  ) : (
-                    <UserX className="h-4 w-4 mr-2" />
-                  )}
-                  {identity.state === "suspended" ? "Reactivate" : "Suspend"}
-                </Button>
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="activity" className="space-y-4">
-            <h3 className="text-sm font-medium text-foreground">Audit Log</h3>
-            <AuditTimeline events={mockAuditEvents} />
-          </TabsContent>
-        </Tabs>
-      </SheetContent>
-    </Sheet>
+      <ConfirmDialog
+        open={confirmSuspendOpen}
+        onOpenChange={setConfirmSuspendOpen}
+        title="Suspend Identity"
+        description={`Suspend ${identity.email}? All active sessions will be invalidated immediately and logins will be blocked.`}
+        confirmLabel="Suspend Account"
+        isLoading={isActioning === "suspend"}
+        onConfirm={handleToggleSuspend}
+      />
+    </>
   );
 }
-

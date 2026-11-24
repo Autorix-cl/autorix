@@ -9,6 +9,17 @@ import { ScopeCatalogue } from "./scope-catalogue";
 import { KeyManager } from "./key-manager";
 import { ClientDetailDialog } from "./client-detail-dialog";
 
+vi.mock("@/lib/auth/use-permission", () => ({
+  usePermission: () => ({
+    operator: { id: "op-1", email: "admin@example.com", name: "Admin", role: "owner", is_local: true, is_active: true },
+    isLoading: false,
+    can: () => true,
+    hasRole: () => true,
+    checkSession: vi.fn().mockResolvedValue(true),
+  }),
+  Can: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 vi.mock("@/lib/api/schema", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/schema")>();
   return {
@@ -131,6 +142,10 @@ describe("OAuth2 UI Components", () => {
       const rotateBtn = screen.getByRole("button", { name: /Rotate Signing Key/i });
       fireEvent.click(rotateBtn);
 
+      // Confirm inside ConfirmDialog
+      const confirmBtns = await screen.findAllByRole("button", { name: /Rotate Signing Key/i });
+      fireEvent.click(confirmBtns[confirmBtns.length - 1]);
+
       await waitFor(() => {
         expect(screen.getByText(/New primary signing key generated/i)).toBeDefined();
       });
@@ -174,6 +189,10 @@ describe("OAuth2 UI Components", () => {
 
       const rotateBtn = screen.getByRole("button", { name: /Rotate Secret/i });
       fireEvent.click(rotateBtn);
+
+      // Confirm inside ConfirmDialog
+      const confirmBtns = await screen.findAllByRole("button", { name: /Rotate Secret/i });
+      fireEvent.click(confirmBtns[confirmBtns.length - 1]);
 
       await waitFor(() => {
         expect(screen.getByText(/New Secret Generated — Store it now!/i)).toBeDefined();

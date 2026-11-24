@@ -32,38 +32,66 @@ export function MacaroonInspector() {
   const [isVerifying, setIsVerifying] = React.useState(false);
   const [verificationResult, setVerificationResult] = React.useState<VerifyKeyResponse | null>(null);
 
+  const normalizeMacaroon = (raw: Record<string, unknown>): Macaroon | null => {
+    const keyId = typeof raw.key_id === "string" ? raw.key_id : typeof raw.id === "string" ? raw.id : null;
+    const signature = typeof raw.signature === "string" ? raw.signature : null;
+    const location = typeof raw.location === "string" ? raw.location : "https://api.autorix.io";
+    if (!keyId || !signature) return null;
+
+    const rawCaveats = Array.isArray(raw.caveats) ? raw.caveats : [];
+    const caveats = rawCaveats.map((c) =>
+      typeof c === "string"
+        ? { predicate: c }
+        : { predicate: typeof (c as { predicate?: unknown })?.predicate === "string" ? (c as { predicate: string }).predicate : String(c) },
+    );
+
+    return { location, key_id: keyId, caveats, signature };
+  };
+
+  const decodeBase64Flexible = (input: string): string => {
+    const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+    return atob(padded);
+  };
+
   const handleParse = () => {
     setVerificationResult(null);
-    if (!tokenInput.trim()) {
+    const trimmed = tokenInput.trim();
+    if (!trimmed) {
       setParsedMacaroon(null);
       return;
     }
 
     try {
-      // 1. Try parsing JSON directly
-      const parsed = JSON.parse(tokenInput.trim());
-      if (parsed.location && parsed.key_id && parsed.signature) {
-        setParsedMacaroon(parsed);
-        toast.success("Macaroon decoded successfully");
-        return;
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === "object") {
+        const normalized = normalizeMacaroon(parsed as Record<string, unknown>);
+        if (normalized) {
+          setParsedMacaroon(normalized);
+          toast.success("Macaroon decoded successfully");
+          return;
+        }
       }
     } catch {
-      // Not raw JSON, try base64 decode
+      // Not raw JSON, try base64 / base64url decode
     }
 
     try {
-      const decoded = atob(tokenInput.trim());
+      const decoded = decodeBase64Flexible(trimmed);
       const parsed = JSON.parse(decoded);
-      if (parsed.location && parsed.key_id && parsed.signature) {
-        setParsedMacaroon(parsed);
-        toast.success("Base64 Macaroon decoded successfully");
-        return;
+      if (parsed && typeof parsed === "object") {
+        const normalized = normalizeMacaroon(parsed as Record<string, unknown>);
+        if (normalized) {
+          setParsedMacaroon(normalized);
+          toast.success("Base64 Macaroon decoded successfully");
+          return;
+        }
       }
     } catch {
-      // Not base64
+      // Not valid base64 / base64url JSON
     }
 
-    toast.error("Could not parse token as valid JSON or Base64 Macaroon");
+    toast.error("Could not parse token as valid JSON or Base64/Base64URL Macaroon");
   };
 
   const handleVerify = async () => {
@@ -74,13 +102,17 @@ export function MacaroonInspector() {
 
     setIsVerifying(true);
     try {
+      const csrfMatch = typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/) : null;
+      const csrf = csrfMatch ? decodeURIComponent(csrfMatch[1]) : undefined;
       const res = await fetch("/api/vulcan/verify", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        },
         body: JSON.stringify({
           macaroon: parsedMacaroon,
           context: {
-            now: new Date().toISOString(),
             ip_address: testIp,
             method: testMethod,
             path: testPath,
@@ -269,24 +301,27 @@ export function MacaroonInspector() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div className="space-y-1">
-                    <Label className="text-[10px] text-muted-foreground">Client IP</Label>
+                    <Label htmlFor="macaroon-test-ip" className="text-[10px] text-muted-foreground">Client IP</Label>
                     <Input
+                      id="macaroon-test-ip"
                       value={testIp}
                       onChange={(e) => setTestIp(e.target.value)}
                       className="h-7 text-xs font-mono"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] text-muted-foreground">Method</Label>
+                    <Label htmlFor="macaroon-test-method" className="text-[10px] text-muted-foreground">Method</Label>
                     <Input
+                      id="macaroon-test-method"
                       value={testMethod}
                       onChange={(e) => setTestMethod(e.target.value)}
                       className="h-7 text-xs font-mono"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] text-muted-foreground">Path</Label>
+                    <Label htmlFor="macaroon-test-path" className="text-[10px] text-muted-foreground">Path</Label>
                     <Input
+                      id="macaroon-test-path"
                       value={testPath}
                       onChange={(e) => setTestPath(e.target.value)}
                       className="h-7 text-xs font-mono"

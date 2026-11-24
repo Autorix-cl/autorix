@@ -36,6 +36,19 @@ describe("createQueryClient", () => {
     expect(redirectSpy).toHaveBeenCalledWith(expect.stringContaining("/login?from="));
     resetRedirectFlag();
   });
+
+  it("does NOT trigger redirectToLogin when queryCache experiences a 403 forbidden error", () => {
+    const redirectSpy = vi.fn();
+    setRedirectHandler(redirectSpy);
+    const client = createQueryClient();
+
+    const queryCache = client.getQueryCache();
+    // @ts-expect-error accessing internal config
+    queryCache.config.onError?.({ kind: "forbidden", status: 403, message: "forbidden: lacks permission" });
+
+    expect(redirectSpy).not.toHaveBeenCalled();
+    resetRedirectFlag();
+  });
 });
 
 describe("AppQueryProvider", () => {

@@ -12,15 +12,13 @@ import { CloudSection } from "@/components/layout/cloud-section";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Can } from "@/lib/auth/use-permission";
 
 export default function VulcanPage() {
-  const [queryClient] = React.useState(() => new QueryClient());
   const [scopeSheetOpen, setScopeSheetOpen] = React.useState(false);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Cloud Service Header & Telemetry HUD */}
         <ServiceHeader
           serviceName="Vulcan Capability Engine"
@@ -28,7 +26,7 @@ export default function VulcanPage() {
           description="Machine-to-machine credentials, decentralized capability tokens, and cryptographic attenuation."
           icon={Layers}
           iconColor="text-amber-400"
-          statusText="CHAVEZ-ATTENUATED"
+          statusText="CAVEAT-ATTENUATED"
           statusVariant="warning"
           metrics={[
             {
@@ -51,7 +49,7 @@ export default function VulcanPage() {
             },
             {
               label: "Engine Gateway",
-              value: "Port 4439",
+              value: "Port 4466",
               hint: "API Key Authority & Signer",
               icon: Activity,
             },
@@ -59,15 +57,18 @@ export default function VulcanPage() {
           actions={
             <>
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setScopeSheetOpen(true)}
                 className="h-8 gap-1.5 text-xs"
               >
-                <ListFilter className="h-3.5 w-3.5" />
+                <ListFilter className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Scope Catalogue</span>
               </Button>
-              <KeyBuilderSheet />
+              <Can perform="api-keys:write">
+                <KeyBuilderSheet />
+              </Can>
             </>
           }
         />
@@ -135,7 +136,6 @@ export default function VulcanPage() {
 
         {/* Scope Catalogue Management Sheet */}
         <ScopeCatalogSheet isOpen={scopeSheetOpen} onOpenChange={setScopeSheetOpen} />
-      </div>
-    </QueryClientProvider>
+    </div>
   );
 }

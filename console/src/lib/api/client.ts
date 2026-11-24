@@ -7,11 +7,12 @@
  * indistinguishable — each carries a distinct ApiErrorKind the UI can act on.
  */
 
-/** The five failure modes a console request can land in. */
+/** The six failure modes a console request can land in. */
 export type ApiErrorKind =
   | "engine-unreachable" // network failure, timeout, DNS — never got a response
   | "engine-error" // engine responded, but with a 5xx
-  | "unauthorized" // 401/403
+  | "unauthorized" // 401 — unauthenticated / expired session
+  | "forbidden" // 403 — authenticated, but lacks RBAC permission or CSRF
   | "validation" // 400/422 — the request itself was rejected
   | "unknown"; // any other status the taxonomy doesn't have a home for
 
@@ -21,6 +22,22 @@ export interface ApiError {
   status?: number;
   requestId?: string;
   cause?: unknown;
+}
+
+export class ApiRequestError extends Error {
+  readonly apiError: ApiError;
+  readonly kind: ApiErrorKind;
+  readonly status?: number;
+  readonly requestId?: string;
+
+  constructor(apiError: ApiError) {
+    super(apiError.message);
+    this.name = "ApiRequestError";
+    this.apiError = apiError;
+    this.kind = apiError.kind;
+    this.status = apiError.status;
+    this.requestId = apiError.requestId;
+  }
 }
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: ApiError };
@@ -33,7 +50,8 @@ export interface FetchJSONOptions extends RequestInit {
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 function classifyStatus(status: number): ApiErrorKind {
-  if (status === 401 || status === 403) return "unauthorized";
+  if (status === 401) return "unauthorized";
+  if (status === 403) return "forbidden";
   if (status === 400 || status === 422) return "validation";
   if (status >= 500) return "engine-error";
   return "unknown";
@@ -48,6 +66,7 @@ function extractMessage(body: unknown, rawText: string, status: number): string 
 }
 
 let isRedirecting = false;
+let redirectResetTimer: ReturnType<typeof setTimeout> | null = null;
 let redirectHandler: ((targetUrl: string) => void) | null = null;
 
 export function setRedirectHandler(handler: ((targetUrl: string) => void) | null): void {
@@ -63,6 +82,7 @@ export function redirectToLogin(fromPath?: string): void {
     pathname.startsWith("/login/") ||
     pathname === "/setup" ||
     pathname.startsWith("/setup/") ||
+    pathname === "/403" ||
     pathname === "/session-expired"
   ) {
     return;
@@ -80,22 +100,46 @@ export function redirectToLogin(fromPath?: string): void {
   // Guard against JSDOM / Vitest unit tests where navigation is unsupported
   if (process.env.NODE_ENV === "test") return;
 
+  // Failsafe reset if navigation is cancelled or blocked by the browser
+  redirectResetTimer = setTimeout(() => {
+    isRedirecting = false;
+    redirectResetTimer = null;
+  }, 5_000);
+
   try {
     window.location.href = target;
   } catch {
-    // Non-browser or JSDOM runtime fallback
+    isRedirecting = false;
+    if (redirectResetTimer) {
+      clearTimeout(redirectResetTimer);
+      redirectResetTimer = null;
+    }
   }
 }
 
 export function resetRedirectFlag(): void {
   isRedirecting = false;
   redirectHandler = null;
+  if (redirectResetTimer) {
+    clearTimeout(redirectResetTimer);
+    redirectResetTimer = null;
+  }
 }
 
 function getCsrfToken(): string | null {
   if (typeof document === "undefined") return null;
   const match = document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : null;
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+export function getCsrfHeaders(): Record<string, string> {
+  const token = getCsrfToken();
+  return token ? { "X-CSRF-Token": token } : {};
 }
 
 /**
@@ -106,14 +150,29 @@ function getCsrfToken(): string | null {
 export async function fetchJSON<T>(url: string, options: FetchJSONOptions = {}): Promise<ApiResult<T>> {
   const { timeoutMs = DEFAULT_TIMEOUT_MS, ...init } = options;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const callerSignal = init.signal;
+  let timedOut = false;
+
+  const onCallerAbort = () => controller.abort(callerSignal?.reason);
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      controller.abort(callerSignal.reason);
+    } else {
+      callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+    }
+  }
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
 
   const headers = new Headers(init.headers);
   const method = (init.method || "GET").toUpperCase();
   if (["POST", "PUT", "PATCH", "DELETE"].includes(method) && !headers.has("X-CSRF-Token")) {
-    const csrf = getCsrfToken();
-    if (csrf) {
-      headers.set("X-CSRF-Token", csrf);
+    const csrfHeaders = getCsrfHeaders();
+    if (csrfHeaders["X-CSRF-Token"]) {
+      headers.set("X-CSRF-Token", csrfHeaders["X-CSRF-Token"]);
     }
   }
 
@@ -122,8 +181,16 @@ export async function fetchJSON<T>(url: string, options: FetchJSONOptions = {}):
     res = await fetch(url, { ...init, headers, signal: controller.signal });
   } catch (err) {
     clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", onCallerAbort);
     if (err instanceof DOMException && err.name === "AbortError") {
-      return { ok: false, error: { kind: "engine-unreachable", message: "request timed out", cause: err } };
+      return {
+        ok: false,
+        error: {
+          kind: "engine-unreachable",
+          message: timedOut ? "request timed out" : "request aborted",
+          cause: err,
+        },
+      };
     }
     return {
       ok: false,
@@ -135,6 +202,7 @@ export async function fetchJSON<T>(url: string, options: FetchJSONOptions = {}):
     };
   }
   clearTimeout(timer);
+  callerSignal?.removeEventListener("abort", onCallerAbort);
 
   const requestId = res.headers.get("x-request-id") ?? undefined;
   const rawText = await res.text();
@@ -153,7 +221,9 @@ export async function fetchJSON<T>(url: string, options: FetchJSONOptions = {}):
       const isPublicAuthRoute =
         url.includes("/api/auth/login") ||
         url.includes("/api/auth/status") ||
-        url.includes("/api/auth/setup");
+        url.includes("/api/auth/setup") ||
+        url.includes("/api/auth/sso/") ||
+        url.includes("/api/auth/saml/");
       if (!isPublicAuthRoute) {
         redirectToLogin();
       }

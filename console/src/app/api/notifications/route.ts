@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { getServiceUrl } from "@/lib/api-config";
+import { requireOperator } from "@/lib/auth/session";
+
+const NOTIFICATIONS_TIMEOUT_MS = 5_000;
 
 export interface FleetNotificationItem {
   id: string;
@@ -9,15 +13,35 @@ export interface FleetNotificationItem {
   timestamp: string;
 }
 
+function deterministicAuditId(action: string, engine: string, timestamp: string, actor: string): string {
+  const digest = createHash("sha256")
+    .update(`${action}|${engine}|${timestamp}|${actor}`)
+    .digest("hex")
+    .slice(0, 12);
+  return `audit-${digest}`;
+}
+
 export async function GET() {
+  const auth = await requireOperator("fleet:read");
+  if (!auth.ok) return auth.response;
+
   try {
     const argusUrl = getServiceUrl("argus");
 
-    // Fetch enrollment audit logs and fleet instances in parallel
+    // Fetch enrollment audit logs, fleet instances, and Prometheus alerts in parallel with timeouts
     const [auditRes, instancesRes, alertsRes] = await Promise.allSettled([
-      fetch(`${argusUrl}/v1/enrollment-audit?limit=25`, { cache: "no-store" }),
-      fetch(`${argusUrl}/v1/instances?limit=25`, { cache: "no-store" }),
-      fetch(`${getServiceUrl("prometheus")}/api/v1/alerts`, { cache: "no-store" }),
+      fetch(`${argusUrl}/v1/enrollment-audit?limit=25`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(NOTIFICATIONS_TIMEOUT_MS),
+      }),
+      fetch(`${argusUrl}/v1/instances?limit=25`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(NOTIFICATIONS_TIMEOUT_MS),
+      }),
+      fetch(`${getServiceUrl("prometheus")}/api/v1/alerts`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(NOTIFICATIONS_TIMEOUT_MS),
+      }),
     ]);
 
     const notifications: FleetNotificationItem[] = [];
@@ -28,14 +52,19 @@ export async function GET() {
       const entries = Array.isArray(auditData?.data) ? auditData.data : [];
 
       for (const entry of entries) {
-        const time = entry.occurred_at || new Date().toISOString();
+        const time = entry.occurred_at || new Date(0).toISOString();
         const actor = entry.actor || "Operator";
         const engine = (entry.engine_type || "Engine").toUpperCase();
+        const action = String(entry.action || "unknown");
+        const entryId =
+          entry.id || entry.token_id
+            ? `audit-${entry.id || entry.token_id}`
+            : deterministicAuditId(action, engine, time, actor);
 
         switch (entry.action) {
           case "mint":
             notifications.push({
-              id: `audit-${entry.id || entry.token_id || Math.random()}`,
+              id: entryId,
               type: "info",
               title: `Enrollment Token Minted (${engine})`,
               message: `Token for ${engine} minted by ${actor}`,
@@ -44,7 +73,7 @@ export async function GET() {
             break;
           case "consume":
             notifications.push({
-              id: `audit-${entry.id || entry.token_id || Math.random()}`,
+              id: entryId,
               type: "success",
               title: `Engine Joined Cluster (${engine})`,
               message: `Instance successfully enrolled in control plane`,
@@ -53,7 +82,7 @@ export async function GET() {
             break;
           case "consume_failed":
             notifications.push({
-              id: `audit-${entry.id || entry.token_id || Math.random()}`,
+              id: entryId,
               type: "security",
               title: `Enrollment Rejected (${engine})`,
               message: `Registration attempt rejected: ${entry.detail?.reason || "invalid or exhausted token"}`,
@@ -62,7 +91,7 @@ export async function GET() {
             break;
           case "revoke":
             notifications.push({
-              id: `audit-${entry.id || entry.token_id || Math.random()}`,
+              id: entryId,
               type: "security",
               title: `Enrollment Token Revoked (${engine})`,
               message: `Token for ${engine} was revoked`,
@@ -71,10 +100,10 @@ export async function GET() {
             break;
           default:
             notifications.push({
-              id: `audit-${entry.id || Math.random()}`,
+              id: entryId,
               type: "info",
               title: `Fleet Event (${engine})`,
-              message: `Action ${entry.action} recorded`,
+              message: `Action ${action} recorded`,
               timestamp: time,
             });
         }

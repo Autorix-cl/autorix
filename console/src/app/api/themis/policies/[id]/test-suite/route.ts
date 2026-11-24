@@ -10,7 +10,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   return proxyRequest(
     "themis",
-    `/policies/${id}/test-suite?tenant_id=${encodeURIComponent(tenantId)}`,
+    `/policies/${encodeURIComponent(id)}/test-suite?tenant_id=${encodeURIComponent(tenantId)}`,
     testSuiteResultSchema,
     { method: "POST" }
   );

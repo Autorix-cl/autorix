@@ -1,16 +1,33 @@
 /* eslint-disable */
+import * as React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ThemisPoliciesTable } from "./policies-table";
 import { DryRunPlayground } from "./dry-run-playground";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { I18nProvider } from "@/lib/i18n";
 
-const queryClient = new QueryClient();
+vi.mock("@/lib/auth/use-permission", () => ({
+  usePermission: () => ({
+    operator: { id: "op-1", email: "admin@example.com", name: "Admin", role: "owner", is_local: true, is_active: true },
+    isLoading: false,
+    can: () => true,
+    hasRole: () => true,
+    checkSession: vi.fn().mockResolvedValue(true),
+  }),
+  Can: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
+let queryClient = new QueryClient();
 
 // Mock fetch globally
 global.fetch = vi.fn();
 
 describe("Themis UI Components", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  });
   it("ThemisPoliciesTable should render policies and allow toggling", async () => {
     const mockPolicies = [
       { id: "1", name: "Admin Rule", expression: "request.role == 'admin'", priority: 1, enabled: true }
@@ -22,9 +39,11 @@ describe("Themis UI Components", () => {
     });
     
     render(
-      <QueryClientProvider client={queryClient}>
-        <ThemisPoliciesTable />
-      </QueryClientProvider>
+      <I18nProvider>
+        <QueryClientProvider client={queryClient}>
+          <ThemisPoliciesTable />
+        </QueryClientProvider>
+      </I18nProvider>
     );
     
     // Check if table renders the policy name
@@ -35,11 +54,16 @@ describe("Themis UI Components", () => {
     // Click the toggle switch
     const toggle = screen.getByRole("switch");
     
-    // Mock the toggle API response
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({})
-    });
+    // Mock the toggle API response and subsequent query refetch
+    (global.fetch as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({})
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ ...mockPolicies[0], enabled: false }]
+      });
     
     fireEvent.click(toggle);
     

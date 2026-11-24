@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { fetchJSON, setRedirectHandler, resetRedirectFlag } from "./client";
+import { fetchJSON, getCsrfHeaders, setRedirectHandler, resetRedirectFlag } from "./client";
 
 function jsonResponse(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}) {
   return new Response(JSON.stringify(body), {
@@ -159,5 +159,58 @@ describe("fetchJSON", () => {
 
     expect(result.ok).toBe(false);
     expect(redirectSpy).not.toHaveBeenCalled();
+  });
+
+  it("classifies a 403 as forbidden and does NOT redirect to login", async () => {
+    const redirectSpy = vi.fn();
+    setRedirectHandler(redirectSpy);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: "lacks permission" }, { status: 403 })));
+
+    const result = await fetchJSON("/api/operators");
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe("forbidden");
+      expect(result.error.status).toBe(403);
+    }
+    expect(redirectSpy).not.toHaveBeenCalled();
+  });
+
+  it("reads autorix_csrf via getCsrfHeaders and attaches X-CSRF-Token on mutating requests", async () => {
+    document.cookie = "autorix_csrf=csrf-token-xyz; path=/";
+    expect(getCsrfHeaders()).toEqual({ "X-CSRF-Token": "csrf-token-xyz" });
+
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchJSON("/api/policies", { method: "POST", body: JSON.stringify({ name: "p1" }) });
+    const sentHeaders = fetchMock.mock.calls[0][1].headers as Headers;
+    expect(sentHeaders.get("X-CSRF-Token")).toBe("csrf-token-xyz");
+
+    document.cookie = "autorix_csrf=; Max-Age=0; path=/";
+  });
+
+  it("preserves caller AbortSignal cancellation alongside timeout", async () => {
+    const callerController = new AbortController();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        });
+      }),
+    );
+
+    const pending = fetchJSON("/api/identities", { signal: callerController.signal, timeoutMs: 10_000 });
+    callerController.abort();
+
+    const result = await pending;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe("engine-unreachable");
+      expect(result.error.message).toMatch(/aborted/i);
+    }
   });
 });

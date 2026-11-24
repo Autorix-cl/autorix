@@ -12,7 +12,8 @@ export async function POST(request: Request) {
   const body = await request.json();
   return proxyRequest("argus", "/v1/enrollment-tokens", z.unknown(), {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    requiredPermission: "fleet:admin",
+    requiredPermission: "fleet:manage",
   });
 }

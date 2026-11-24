@@ -53,6 +53,7 @@ export const migrationStatusSchema = z.object({
   up_to_date: z.boolean(),
   pending_migrations_count: z.number(),
   last_migrated_at: z.string(),
+  status: z.enum(["up_to_date", "behind", "error"]).optional(),
 });
 export const migrationStatusListSchema = z.array(migrationStatusSchema);
 export type MigrationStatus = z.infer<typeof migrationStatusSchema>;

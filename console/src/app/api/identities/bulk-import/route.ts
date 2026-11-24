@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { proxyRequest } from "@/lib/api/proxy";
+import { requireOperator } from "@/lib/auth/session";
 import { registrationResponseSchema } from "@/lib/api/schemas/identity";
 
 interface BulkRow {
@@ -11,6 +13,9 @@ interface BulkRow {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireOperator("identities:write");
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await req.json();
     const rows: BulkRow[] = Array.isArray(body) ? body : body.rows || [];
@@ -40,8 +45,9 @@ export async function POST(req: NextRequest) {
       }
 
       try {
+        const generatedPassword = crypto.randomBytes(18).toString("base64url");
         const payload = {
-          password: row.password || "TempPassword#123",
+          password: row.password || generatedPassword,
           traits: {
             email: row.email,
             name: {
@@ -56,6 +62,7 @@ export async function POST(req: NextRequest) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
+          requiredPermission: "identities:write",
         });
 
         if (!res.ok) {

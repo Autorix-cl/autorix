@@ -20,6 +20,9 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Can, usePermission } from "@/lib/auth/use-permission";
+import { getCsrfHeaders } from "@/lib/api/client";
 import type { SAMLProvider, CertificateInfo } from "@/lib/api/schemas/hermes";
 
 interface SAMLProviderSheetProps {
@@ -35,6 +38,8 @@ export function SAMLProviderSheet({
   onOpenChange,
   onSuccess,
 }: SAMLProviderSheetProps) {
+  const { can } = usePermission();
+  const canWrite = can("enterprise:write");
   const [displayName, setDisplayName] = React.useState("");
   const [ssoUrl, setSsoUrl] = React.useState("");
   const [enabled, setEnabled] = React.useState(true);
@@ -43,6 +48,7 @@ export function SAMLProviderSheet({
   const [newValue, setNewValue] = React.useState("");
   const [isSaving, setIsSaving] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (provider) {
@@ -60,6 +66,7 @@ export function SAMLProviderSheet({
       const endpoint = nextState ? "enable" : "disable";
       const res = await fetch(`/api/enterprise/saml/${encodeURIComponent(provider.id)}/${endpoint}`, {
         method: "POST",
+        headers: getCsrfHeaders(),
       });
       if (!res.ok) throw new Error("Failed to toggle provider status");
       setEnabled(nextState);
@@ -76,7 +83,7 @@ export function SAMLProviderSheet({
     try {
       const res = await fetch(`/api/enterprise/saml/${encodeURIComponent(provider.id)}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
         body: JSON.stringify({
           display_name: displayName,
           idp_sso_url: ssoUrl,
@@ -95,14 +102,15 @@ export function SAMLProviderSheet({
   };
 
   const handleDelete = async () => {
-    if (!confirm(`Are you sure you want to delete SAML provider '${provider.id}'?`)) return;
     setIsDeleting(true);
     try {
       const res = await fetch(`/api/enterprise/saml/${encodeURIComponent(provider.id)}`, {
         method: "DELETE",
+        headers: getCsrfHeaders(),
       });
       if (!res.ok) throw new Error("Failed to delete provider");
       toast.success("Provider deleted");
+      setConfirmDeleteOpen(false);
       onSuccess?.();
       onOpenChange(false);
     } catch {
@@ -128,56 +136,65 @@ export function SAMLProviderSheet({
   const certs: CertificateInfo[] = provider.certificates || [];
 
   return (
-    <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-lg flex flex-col">
-        <SheetHeader>
-          <div className="flex items-center justify-between">
-            <SheetTitle className="flex items-center gap-2 text-sm">
-              <Building2 className="w-4 h-4 text-primary" />
-              {provider.display_name || provider.id}
-            </SheetTitle>
-            <div className="flex items-center gap-2 pr-6">
-              <Switch checked={enabled} onCheckedChange={handleToggleEnabled} />
-              <span className="text-xs text-muted-foreground">{enabled ? "Enabled" : "Disabled"}</span>
+    <>
+      <Sheet open={isOpen} onOpenChange={onOpenChange}>
+        <SheetContent className="sm:max-w-lg flex flex-col">
+          <SheetHeader>
+            <div className="flex items-center justify-between">
+              <SheetTitle className="flex items-center gap-2 text-sm">
+                <Building2 className="w-4 h-4 text-primary" />
+                {provider.display_name || provider.id}
+              </SheetTitle>
+              <div className="flex items-center gap-2 pr-6">
+                <Switch
+                  checked={enabled}
+                  disabled={!canWrite}
+                  aria-label={`Toggle SAML provider ${provider.display_name || provider.id}`}
+                  onCheckedChange={handleToggleEnabled}
+                />
+                <span className="text-xs text-muted-foreground">{enabled ? "Enabled" : "Disabled"}</span>
+              </div>
             </div>
-          </div>
-          <SheetDescription className="text-xs">
-            Configure identity provider settings, certificate validity, and attribute transformations.
-          </SheetDescription>
-        </SheetHeader>
+            <SheetDescription className="text-xs">
+              Configure identity provider settings, certificate validity, and attribute transformations.
+            </SheetDescription>
+          </SheetHeader>
 
-        <form onSubmit={handleSave} className="flex-1 overflow-y-auto space-y-4 pt-4 pr-1 text-xs">
-          {/* General Connection Settings */}
-          <div className="space-y-3 p-3 rounded-lg border bg-card/60">
-            <div className="font-semibold text-foreground">Connection Settings</div>
+          <form onSubmit={handleSave} className="flex-1 overflow-y-auto space-y-4 pt-4 pr-1 text-xs">
+            {/* General Connection Settings */}
+            <div className="space-y-3 p-3 rounded-lg border bg-card/60">
+              <div className="font-semibold text-foreground">Connection Settings</div>
 
-            <div className="space-y-1">
-              <Label className="text-[11px]">Provider Display Name</Label>
-              <Input
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                className="h-7 text-xs"
-              />
+              <div className="space-y-1">
+                <Label htmlFor="saml-edit-display-name" className="text-[11px]">Provider Display Name</Label>
+                <Input
+                  id="saml-edit-display-name"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  className="h-7 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="saml-edit-sso-url" className="text-[11px]">IdP SSO URL</Label>
+                <Input
+                  id="saml-edit-sso-url"
+                  value={ssoUrl}
+                  onChange={(e) => setSsoUrl(e.target.value)}
+                  className="h-7 text-xs font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="saml-edit-entity-id" className="text-[11px]">IdP Entity ID</Label>
+                <Input
+                  id="saml-edit-entity-id"
+                  value={provider.idp_entity_id}
+                  readOnly
+                  className="h-7 text-xs font-mono bg-muted/40"
+                />
+              </div>
             </div>
-
-            <div className="space-y-1">
-              <Label className="text-[11px]">IdP SSO URL</Label>
-              <Input
-                value={ssoUrl}
-                onChange={(e) => setSsoUrl(e.target.value)}
-                className="h-7 text-xs font-mono"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-[11px]">IdP Entity ID</Label>
-              <Input
-                value={provider.idp_entity_id}
-                readOnly
-                className="h-7 text-xs font-mono bg-muted/40"
-              />
-            </div>
-          </div>
 
           {/* Certificate Management (P6-S7-T2) */}
           <div className="space-y-2.5 p-3 rounded-lg border bg-card/60">
@@ -250,71 +267,100 @@ export function SAMLProviderSheet({
                   <span className="font-mono bg-primary/10 text-primary px-2 py-1 rounded text-[11px] truncate w-1/2">
                     {v}
                   </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
-                    onClick={() => removeMapping(k)}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
+                  <Can perform="enterprise:write">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove attribute mapping for ${k}`}
+                      className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
+                      onClick={() => removeMapping(k)}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </Can>
                 </div>
               ))}
             </div>
 
             {/* Add custom mapping row */}
-            <div className="flex items-center gap-2 pt-1">
-              <Input
-                placeholder="IdP Claim (e.g. mail)"
-                value={newKey}
-                onChange={(e) => setNewKey(e.target.value)}
-                className="h-7 text-xs font-mono"
-              />
-              <span className="text-muted-foreground">➔</span>
-              <Input
-                placeholder="Trait (e.g. email)"
-                value={newValue}
-                onChange={(e) => setNewValue(e.target.value)}
-                className="h-7 text-xs font-mono"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={addMapping}
-                className="h-7 w-7 shrink-0"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </Button>
-            </div>
+            <Can perform="enterprise:write">
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  aria-label="IdP Claim name"
+                  placeholder="IdP Claim (e.g. mail)"
+                  value={newKey}
+                  onChange={(e) => setNewKey(e.target.value)}
+                  className="h-7 text-xs font-mono"
+                />
+                <span className="text-muted-foreground">➔</span>
+                <Input
+                  aria-label="Target Ego trait"
+                  placeholder="Trait (e.g. email)"
+                  value={newValue}
+                  onChange={(e) => setNewValue(e.target.value)}
+                  className="h-7 text-xs font-mono"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Add attribute mapping"
+                  onClick={addMapping}
+                  className="h-7 w-7 shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </Can>
           </div>
 
           <div className="flex items-center justify-between pt-4 border-t">
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={handleDelete}
-              disabled={isDeleting}
-              className="gap-1.5 text-xs h-8"
-            >
-              {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-              Delete Provider
-            </Button>
+            <Can perform="enterprise:write">
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => setConfirmDeleteOpen(true)}
+                disabled={isDeleting}
+                className="gap-1.5 text-xs h-8"
+              >
+                {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Delete Provider
+              </Button>
+            </Can>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 ml-auto">
               <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="h-8 text-xs">
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={isSaving} className="gap-1.5 text-xs h-8">
-                {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                Save Changes
-              </Button>
+              <Can perform="enterprise:write">
+                <Button type="submit" size="sm" disabled={isSaving} className="gap-1.5 text-xs h-8">
+                  {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  Save Changes
+                </Button>
+              </Can>
             </div>
           </div>
         </form>
       </SheetContent>
     </Sheet>
+
+    <ConfirmDialog
+      open={confirmDeleteOpen}
+      onOpenChange={setConfirmDeleteOpen}
+      title="Delete SAML Provider"
+      description={
+        <>
+          Permanently remove SAML identity provider <strong className="font-mono">{provider.id}</strong>? Federated
+          sign-ins using this IdP will immediately fail.
+        </>
+      }
+      confirmLabel="Delete Provider"
+      variant="destructive"
+      isLoading={isDeleting}
+      onConfirm={handleDelete}
+    />
+    </>
   );
 }

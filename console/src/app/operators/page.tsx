@@ -37,6 +37,7 @@ import { fetchAndParse } from "@/lib/api/schema";
 import { operatorsListSchema, operatorSchema, type OperatorDTO } from "@/lib/api/schemas/operator";
 import { z } from "zod";
 import { OperatorBuilderSheet } from "./operator-builder-sheet";
+import { Can } from "@/lib/auth/use-permission";
 
 export default function OperatorsPage() {
   const queryClient = useQueryClient();
@@ -121,28 +122,32 @@ export default function OperatorsPage() {
           },
           {
             label: "Control Gateway",
-            value: "Port 4432",
+            value: "Port 4400",
             hint: "Argus Control Plane",
             icon: Activity,
           },
         ]}
         actions={
           <>
+            <Can perform="operators:write">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setIsBuilderOpen(true)}
+                className="h-8 gap-1.5 text-xs bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-sm"
+              >
+                <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Provision Operator</span>
+              </Button>
+            </Can>
             <Button
-              size="sm"
-              onClick={() => setIsBuilderOpen(true)}
-              className="h-8 gap-1.5 text-xs bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-sm"
-            >
-              <UserPlus className="h-3.5 w-3.5" />
-              <span>Provision Operator</span>
-            </Button>
-            <Button
+              type="button"
               variant="outline"
               size="sm"
               onClick={() => refetch()}
               className="h-8 gap-1.5 text-xs"
             >
-              <RefreshCw className="h-3.5 w-3.5" />
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
               <span>Refresh</span>
             </Button>
           </>
@@ -158,9 +163,9 @@ export default function OperatorsPage() {
         badgeVariant="warning"
       >
         <div className="p-4 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent flex items-start gap-3.5">
-          <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" aria-hidden="true" />
           <div className="text-xs space-y-1">
-            <h3 className="font-semibold text-amber-300">Break-Glass Sovereignty Policy (P3-S1-T3)</h3>
+            <h3 className="font-semibold text-amber-300">Break-Glass Sovereignty Policy</h3>
             <p className="text-slate-400">
               Local credentials stored in Argus remain valid when upstream SSO providers (Janus / Ego / Hermes) are unreachable. Break-glass logins trigger high-priority audit events and are locked after 5 consecutive failed attempts.
             </p>
@@ -176,15 +181,18 @@ export default function OperatorsPage() {
         badge={`${operators?.length ?? 0} ACTIVE`}
         badgeVariant="cyan"
         actions={
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setIsBuilderOpen(true)}
-            className="h-7 gap-1 text-xs"
-          >
-            <UserPlus className="w-3 h-3 text-amber-400" />
-            <span>Add Operator</span>
-          </Button>
+          <Can perform="operators:write">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setIsBuilderOpen(true)}
+              className="h-7 gap-1 text-xs"
+            >
+              <UserPlus className="w-3 h-3 text-amber-400" aria-hidden="true" />
+              <span>Add Operator</span>
+            </Button>
+          </Can>
         }
       >
 
@@ -254,44 +262,50 @@ export default function OperatorsPage() {
                     </Badge>
 
                     {/* Operator Lifecycle Actions */}
-                    <div className="flex items-center gap-1.5 ml-2">
-                      {op.is_active ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setDeactivateTarget(op)}
-                          disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
-                          className="h-7 text-xs gap-1 text-rose-400 border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-300"
-                          title="Deactivate operator account"
-                        >
-                          <UserX className="w-3 h-3" />
-                          <span>Deactivate</span>
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => toggleStatusMutation.mutate({ id: op.id, is_active: true })}
-                          disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
-                          className="h-7 text-xs gap-1 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300"
-                          title="Reactivate operator account"
-                        >
-                          <UserCheck className="w-3 h-3" />
-                          <span>Reactivate</span>
-                        </Button>
-                      )}
+                    <Can perform="operators:write">
+                      <div className="flex items-center gap-1.5 ml-2">
+                        {op.is_active ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDeactivateTarget(op)}
+                            disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
+                            className="h-7 text-xs gap-1 text-rose-400 border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-300"
+                            title="Deactivate operator account"
+                          >
+                            <UserX className="w-3 h-3" aria-hidden="true" />
+                            <span>Deactivate</span>
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => toggleStatusMutation.mutate({ id: op.id, is_active: true })}
+                            disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
+                            className="h-7 text-xs gap-1 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300"
+                            title="Reactivate operator account"
+                          >
+                            <UserCheck className="w-3 h-3" aria-hidden="true" />
+                            <span>Reactivate</span>
+                          </Button>
+                        )}
 
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => setDeleteTarget(op)}
-                        disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
-                        className="h-7 w-7 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"
-                        title="Delete operator permanently"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setDeleteTarget(op)}
+                          disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
+                          className="h-7 w-7 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"
+                          aria-label={`Delete operator ${op.name}`}
+                          title="Delete operator permanently"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                        </Button>
+                      </div>
+                    </Can>
                   </div>
                 </div>
               ))}

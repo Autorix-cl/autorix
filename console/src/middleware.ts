@@ -3,36 +3,36 @@ import type { NextRequest } from "next/server";
 
 const SESSION_COOKIE_NAME = "autorix_session";
 const CSRF_COOKIE_NAME = "autorix_csrf";
+const STATIC_ASSET_EXT_RE = /\.(?:ico|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|css|js|map)$/i;
 
 // Explicit public allowlist (P3-S2-T1)
 const PUBLIC_PATHS = [
   "/login",
-  "/login/mfa",
   "/setup",
-  "/session-expired",
   "/403",
-  "/health/alive",
-  "/health/ready",
-  "/info",
+  "/api/health",
 ];
 
 const PUBLIC_API_PATHS = [
   "/api/auth/login",
   "/api/auth/setup",
   "/api/auth/status",
-  "/api/auth/logout",
+  "/api/auth/sso/login",
+  "/api/auth/sso/callback",
+  "/api/auth/saml/login",
+  "/api/auth/saml/callback",
 ];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const method = request.method.toUpperCase();
 
-  // Ignore static assets, next internal files, and favicon
-  if (
+  // Ignore static assets and Next.js internal files, never bypassing /api/ routes
+  const isStaticAsset =
     pathname.startsWith("/_next") ||
     pathname.startsWith("/static") ||
-    pathname.includes(".") // file extensions like .ico, .png, .svg
-  ) {
+    (!pathname.startsWith("/api/") && STATIC_ASSET_EXT_RE.test(pathname));
+  if (isStaticAsset) {
     return NextResponse.next();
   }
 
@@ -41,7 +41,7 @@ export async function middleware(request: NextRequest) {
 
   const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
 
-  // If user is accessing public auth pages but already has a session, let them proceed or redirect to root
+  // If user is accessing public auth pages but already has a session, redirect to root
   if (sessionCookie && (pathname === "/login" || pathname === "/setup")) {
     return NextResponse.redirect(new URL("/", request.url));
   }
@@ -53,7 +53,7 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // Protected route and no session cookie: redirect to /login
+  // Protected route and no session cookie: reject API calls or redirect browser to /login
   if (!sessionCookie) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(
@@ -76,7 +76,7 @@ export async function middleware(request: NextRequest) {
     const origin = request.headers.get("origin");
 
     const isSameOrigin = isTrustedSameOrigin(origin, request.nextUrl.origin);
-    const hasValidToken = Boolean(csrfCookie && csrfHeader && csrfCookie === csrfHeader);
+    const hasValidToken = Boolean(csrfCookie && csrfHeader && constantTimeEqual(csrfCookie, csrfHeader));
 
     if (!isSameOrigin && !hasValidToken) {
       return NextResponse.json(
@@ -89,6 +89,15 @@ export async function middleware(request: NextRequest) {
   const response = NextResponse.next();
   ensureCsrfCookie(request, response);
   return response;
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 // Origin is a URL, not a substring. A check such as origin.includes(host)

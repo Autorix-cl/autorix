@@ -36,6 +36,7 @@ import { ErrorState } from "@/components/state/error-state";
 import { NotConnectedState } from "@/components/state/not-connected-state";
 import { NotConnectedEngine } from "@/components/resources/not-connected-engine";
 import { useCapabilities } from "@/lib/capabilities/capability-context";
+import { getServiceUrl } from "@/lib/api-config";
 import { toast } from "sonner";
 import { SAMLProvidersTable } from "./saml-providers-table";
 import { SCIMSyncMonitor } from "./scim-sync-monitor";
@@ -83,9 +84,11 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 
   return (
     <Button
+      type="button"
       variant="ghost"
       size="icon-sm"
       onClick={handleCopy}
+      aria-label={`Copy ${label}`}
       className="h-6 w-6 text-muted-foreground hover:text-foreground"
       title={`Copy ${label}`}
     >
@@ -148,6 +151,26 @@ export default function EnterprisePage() {
 
   const loading = isScimFetching || isMetaFetching || providersQuery.isFetching;
 
+  const hermesBaseUrl = React.useMemo(() => {
+    const locationMatch = metadataXml?.match(/AssertionConsumerService[^>]*Location="([^"]+)"/i);
+    if (locationMatch?.[1]) {
+      try {
+        return new URL(locationMatch[1]).origin;
+      } catch {
+        // fall through to configured service URL
+      }
+    }
+    return getServiceUrl("hermes").replace(/\/$/, "");
+  }, [metadataXml]);
+
+  const spEntityId = React.useMemo(() => {
+    const entityMatch = metadataXml?.match(/entityID="([^"]+)"/i);
+    return entityMatch?.[1] || `${hermesBaseUrl}/saml/metadata`;
+  }, [metadataXml, hermesBaseUrl]);
+
+  const acsUrl = `${hermesBaseUrl}/saml/acs`;
+  const scimBaseUrl = `${hermesBaseUrl}/scim/v2`;
+
   if (!isEngineConnected("hermes")) {
     return (
       <div className="space-y-6 p-8">
@@ -198,7 +221,7 @@ export default function EnterprisePage() {
           },
           {
             label: "Engine Gateway",
-            value: "Port 4438",
+            value: "Port 4477",
             hint: "Enterprise SSO Gateway",
             icon: Activity,
           },
@@ -245,14 +268,22 @@ export default function EnterprisePage() {
             badge="Federation Gateways"
             badgeVariant="rose"
           >
-            <SAMLProvidersTable
-              providers={providers}
-              isLoading={providersQuery.isLoading}
-              onRefresh={() => {
-                providersQuery.refetch();
-                queryClient.invalidateQueries({ queryKey: ["enterprise-saml-providers"] });
-              }}
-            />
+            {providersQuery.isError ? (
+              providersQuery.error?.kind === "engine-unreachable" ? (
+                <NotConnectedState engineName="Hermes" onRetry={providersQuery.refetch} />
+              ) : (
+                <ErrorState error={providersQuery.error} onRetry={providersQuery.refetch} />
+              )
+            ) : (
+              <SAMLProvidersTable
+                providers={providers}
+                isLoading={providersQuery.isLoading}
+                onRefresh={() => {
+                  providersQuery.refetch();
+                  queryClient.invalidateQueries({ queryKey: ["enterprise-saml-providers"] });
+                }}
+              />
+            )}
           </CloudSection>
         </TabsContent>
 
@@ -283,10 +314,10 @@ export default function EnterprisePage() {
               <div className="p-3.5 rounded-lg border border-border/80 bg-card/60 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">ACS Endpoint (POST)</span>
-                  <CopyButton text="http://localhost:4477/saml/acs" label="ACS URL" />
+                  <CopyButton text={acsUrl} label="ACS URL" />
                 </div>
                 <div className="font-mono text-xs text-foreground font-semibold truncate select-all">
-                  http://localhost:4477/saml/acs
+                  {acsUrl}
                 </div>
                 <p className="text-[11px] text-muted-foreground">
                   Assertion Consumer Service receiving signed IdP assertions
@@ -296,10 +327,10 @@ export default function EnterprisePage() {
               <div className="p-3.5 rounded-lg border border-border/80 bg-card/60 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400">SP Entity ID / Issuer</span>
-                  <CopyButton text="https://hermes.autorix.io/saml/metadata" label="Entity ID" />
+                  <CopyButton text={spEntityId} label="Entity ID" />
                 </div>
                 <div className="font-mono text-xs text-foreground font-semibold truncate select-all">
-                  https://hermes.autorix.io/saml/metadata
+                  {spEntityId}
                 </div>
                 <p className="text-[11px] text-muted-foreground">
                   Global unique URI identifying this Autorix Service Provider
@@ -309,10 +340,10 @@ export default function EnterprisePage() {
               <div className="p-3.5 rounded-lg border border-border/80 bg-card/60 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">SCIM 2.0 Base URL</span>
-                  <CopyButton text="http://localhost:4477/scim/v2" label="SCIM Base URL" />
+                  <CopyButton text={scimBaseUrl} label="SCIM Base URL" />
                 </div>
                 <div className="font-mono text-xs text-foreground font-semibold truncate select-all">
-                  http://localhost:4477/scim/v2
+                  {scimBaseUrl}
                 </div>
                 <p className="text-[11px] text-muted-foreground">
                   RFC 7644 SCIM endpoint for corporate user & group provisioning
@@ -374,7 +405,7 @@ export default function EnterprisePage() {
                     />
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-muted-foreground px-1">
                       <span>Public SP EntityDescriptor generated dynamically by Autorix Hermes federation engine</span>
-                      <span className="font-mono">Audience: https://hermes.autorix.io/saml/metadata</span>
+                      <span className="font-mono">Audience: {spEntityId}</span>
                     </div>
                   </div>
                 )}
@@ -394,7 +425,7 @@ export default function EnterprisePage() {
               </CardHeader>
               <CardContent className="p-4 pt-0">
                 <CodeBlock
-                  code="curl -s http://localhost:4477/saml/metadata | xmllint --format -"
+                  code={`curl -s ${hermesBaseUrl}/saml/metadata | xmllint --format -`}
                   language="bash"
                   title="BASH"
                   maxHeight="none"

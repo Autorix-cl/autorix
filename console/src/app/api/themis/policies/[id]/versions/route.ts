@@ -9,7 +9,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const tenantId = req.nextUrl.searchParams.get("tenant_id") || "default";
   return proxyRequest(
     "themis",
-    `/policies/${id}/versions?tenant_id=${encodeURIComponent(tenantId)}`,
+    `/policies/${encodeURIComponent(id)}/versions?tenant_id=${encodeURIComponent(tenantId)}`,
     policyVersionListSchema
   );
 }

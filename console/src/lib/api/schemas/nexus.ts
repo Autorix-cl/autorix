@@ -87,13 +87,16 @@ export type CheckResponse = z.infer<typeof checkResponseSchema>;
 export type ExpandTreeNode = {
   type: string;
   tuple?: Tuple;
+  subjects?: string[];
   children?: ExpandTreeNode[];
 };
+export type ExpandNode = ExpandTreeNode;
 
 export const expandTreeNodeSchema: z.ZodType<ExpandTreeNode> = z.lazy(() =>
   z.object({
     type: z.string(),
     tuple: tupleSchema.optional(),
+    subjects: z.array(z.string()).optional(),
     children: z.array(expandTreeNodeSchema).optional(),
   })
 );

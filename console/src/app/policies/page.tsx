@@ -43,9 +43,13 @@ import { NotConnectedState } from "@/components/state/not-connected-state";
 import { NotConnectedEngine } from "@/components/resources/not-connected-engine";
 import { useCapabilities } from "@/lib/capabilities/capability-context";
 import { DataTable } from "@/components/ui/data-table";
+import { Can } from "@/lib/auth/use-permission";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { getColumns } from "./columns";
 import { PolicyBuilderSheet } from "./policy-builder-sheet";
+import { PolicyTestSuiteDialog } from "@/app/themis/policy-test-suite-dialog";
+import { PolicyVersionsDialog } from "@/app/themis/policy-versions-dialog";
 
 type EvalResult = z.infer<typeof evaluateResponseSchema>;
 
@@ -115,9 +119,11 @@ function CopySnippetButton({ text, label }: { text: string; label: string }) {
 
   return (
     <Button
+      type="button"
       variant="ghost"
       size="icon-sm"
       onClick={handleCopy}
+      aria-label={`Copy ${label}`}
       className="h-6 w-6 text-muted-foreground hover:text-foreground"
       title={`Copy ${label}`}
     >
@@ -129,9 +135,19 @@ function CopySnippetButton({ text, label }: { text: string; label: string }) {
 export default function PoliciesPage() {
   const { t } = useTranslation();
   const { isEngineConnected } = useCapabilities();
+  const queryClient = useQueryClient();
 
   const [tenantId] = React.useState("default");
   const [searchQuery, setSearchQuery] = React.useState("");
+  const [debouncedSearch, setDebouncedSearch] = React.useState("");
+  const [selectedPolicyForSuite, setSelectedPolicyForSuite] = React.useState<Policy | null>(null);
+  const [selectedPolicyForVersions, setSelectedPolicyForVersions] = React.useState<Policy | null>(null);
+
+  // Debounce search query before querying backend
+  React.useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Evaluator Studio State
   const [evalPayload, setEvalPayload] = React.useState(SAMPLE_EVAL_PAYLOAD);
@@ -148,7 +164,7 @@ export default function PoliciesPage() {
   React.useEffect(() => {
     setCursorHistory([]);
     setCursorIndex(0);
-  }, [searchQuery]);
+  }, [debouncedSearch]);
 
   const handlePageSizeChange = (newSize: number) => {
     setPageSize(newSize);
@@ -163,10 +179,10 @@ export default function PoliciesPage() {
     isError,
     error,
     refetch,
-  } = useApiQuery(["policies", tenantId, currentCursor, searchQuery, pageSize], () => {
+  } = useApiQuery(["policies", tenantId, currentCursor, debouncedSearch, pageSize], () => {
     const params = new URLSearchParams({ tenant_id: tenantId, limit: String(pageSize) });
     if (currentCursor) params.append("cursor", currentCursor);
-    if (searchQuery) params.append("search", searchQuery);
+    if (debouncedSearch) params.append("search", debouncedSearch);
     return fetchAndParse(`/api/policies?${params.toString()}`, paginatedPolicyListSchema);
   });
 
@@ -227,7 +243,14 @@ export default function PoliciesPage() {
     toast.success("Downloaded themis-policies-manifest.json");
   };
 
-  const columns = React.useMemo(() => getColumns(tenantId), [tenantId]);
+  const columns = React.useMemo(
+    () =>
+      getColumns(tenantId, {
+        onOpenTests: (policy) => setSelectedPolicyForSuite(policy),
+        onOpenVersions: (policy) => setSelectedPolicyForVersions(policy),
+      }),
+    [tenantId],
+  );
 
   if (!isEngineConnected("themis")) {
     return (
@@ -279,15 +302,18 @@ export default function PoliciesPage() {
           },
           {
             label: "Engine Gateway",
-            value: "Port 4437",
+            value: "Port 4488",
             hint: "In-Memory Evaluator",
             icon: Activity,
           },
         ]}
         actions={
           <>
-            <PolicyBuilderSheet tenantId={tenantId} />
+            <Can perform="policies:write">
+              <PolicyBuilderSheet tenantId={tenantId} />
+            </Can>
             <Button
+              type="button"
               variant="outline"
               size="sm"
               onClick={() => refetch()}
@@ -343,8 +369,9 @@ export default function PoliciesPage() {
                   {/* Filter Search */}
                   <div className="flex items-center gap-2 w-full sm:w-72">
                     <div className="relative w-full">
-                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
                       <Input
+                        aria-label={t("themis.searchPlaceholder")}
                         placeholder={t("themis.searchPlaceholder")}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -449,6 +476,7 @@ export default function PoliciesPage() {
                         </Badge>
                       </div>
                       <textarea
+                        aria-label="Evaluation Request Context (JSON)"
                         rows={11}
                         value={evalPayload}
                         onChange={(e) => {
@@ -668,7 +696,7 @@ export default function PoliciesPage() {
               </CardHeader>
               <CardContent className="p-4 pt-0">
                 <CodeBlock
-                  code='curl -X POST http://localhost:4437/policies/evaluate \
+                  code='curl -X POST http://localhost:4488/policies/evaluate \
   -H "Content-Type: application/json" \
   -d "{\"tenant_id\":\"default\",\"payload\":{\"request\":{\"auth\":{\"claims\":{\"role\":\"admin\"}}}}}"'
                   language="bash"
@@ -680,6 +708,21 @@ export default function PoliciesPage() {
           </CloudSection>
         </TabsContent>
       </Tabs>
+
+      <PolicyTestSuiteDialog
+        policyId={selectedPolicyForSuite?.ID || null}
+        policyName={selectedPolicyForSuite?.Name || null}
+        isOpen={Boolean(selectedPolicyForSuite)}
+        onOpenChange={(open) => !open && setSelectedPolicyForSuite(null)}
+      />
+
+      <PolicyVersionsDialog
+        policyId={selectedPolicyForVersions?.ID || null}
+        policyName={selectedPolicyForVersions?.Name || null}
+        isOpen={Boolean(selectedPolicyForVersions)}
+        onOpenChange={(open) => !open && setSelectedPolicyForVersions(null)}
+        onRolledBack={() => queryClient.invalidateQueries({ queryKey: ["policies", tenantId] })}
+      />
     </div>
   );
 }

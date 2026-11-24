@@ -6,5 +6,5 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  return proxyRequest("ego", `/admin/identities/${id}/credentials`, credentialListSchema);
+  return proxyRequest("ego", `/admin/identities/${encodeURIComponent(id)}/credentials`, credentialListSchema);
 }

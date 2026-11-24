@@ -5,6 +5,22 @@ vi.mock("@/lib/api/proxy", () => ({
   proxyRequest: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/session", () => ({
+  requireOperator: vi.fn().mockResolvedValue({
+    ok: true,
+    operator: { id: "op-1", email: "admin@autorix.io", name: "Admin", role: "admin", is_local: true, is_active: true },
+  }),
+  getCurrentOperator: vi.fn().mockResolvedValue({
+    id: "op-1",
+    email: "admin@autorix.io",
+    name: "Admin",
+    role: "admin",
+    is_local: true,
+    is_active: true,
+  }),
+  SESSION_COOKIE_NAME: "autorix_session",
+}));
+
 import { proxyRequest } from "@/lib/api/proxy";
 
 describe("Ego Identities BFF Routes", () => {
@@ -240,8 +256,74 @@ describe("Ego Identities BFF Routes", () => {
       const data = await res.json();
 
       expect(proxyRequest).toHaveBeenCalledTimes(1);
+      const sentBody = JSON.parse(String(vi.mocked(proxyRequest).mock.calls[0][3]?.body || "{}"));
+      expect(sentBody.password).toBeTruthy();
+      expect(sentBody.password).not.toBe("TempPassword#123");
       expect(data.succeeded).toBe(1);
       expect(data.failed).toBe(0);
+    });
+  });
+
+  describe("POST /api/identities/invite", () => {
+    it("creates identity with a random password and returns recovery invite link", async () => {
+      const { POST } = await import("./invite/route");
+      vi.mocked(proxyRequest)
+        .mockResolvedValueOnce(
+          NextResponse.json(
+            {
+              id: "id-invite-1",
+              schema_id: "default",
+              traits: { email: "invitee@autorix.io" },
+              state: "active",
+              created_at: "2026-01-01T00:00:00Z",
+              updated_at: "2026-01-01T00:00:00Z",
+            },
+            { status: 201 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          NextResponse.json({
+            recovery_link: "/self-service/recovery?token=tok123",
+            token: "tok123",
+            expires_at: "2026-01-02T00:00:00Z",
+          }),
+        );
+
+      const req = new NextRequest("http://localhost/api/identities/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: "invitee@autorix.io",
+          schema_id: "default",
+          traits: { email: "invitee@autorix.io", name: { first: "Invitee", last: "User" } },
+        }),
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(201);
+      const data = await res.json();
+      expect(data.id).toBe("id-invite-1");
+      expect(data.recovery_link).toBe("/self-service/recovery?token=tok123");
+      expect(data.invite_link).toBe("/self-service/recovery?token=tok123");
+
+      const createPayload = JSON.parse(String(vi.mocked(proxyRequest).mock.calls[0][3]?.body || "{}"));
+      expect(createPayload.password).toBeTruthy();
+      expect(createPayload.password.length).toBeGreaterThanOrEqual(24);
+      expect(createPayload.password).not.toBe("TempPassword#123");
+    });
+
+    it("propagates upstream creation errors honestly", async () => {
+      const { POST } = await import("./invite/route");
+      vi.mocked(proxyRequest).mockResolvedValueOnce(
+        NextResponse.json({ error: "email already exists" }, { status: 409 }),
+      );
+
+      const req = new NextRequest("http://localhost/api/identities/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "dup@autorix.io" }),
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(409);
     });
   });
 

@@ -4,23 +4,13 @@ import * as React from "react";
 import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, AlertCircle } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { ResourceTable } from "@/components/resources/resource-table";
 import { Button } from "@/components/ui/button";
 import { fleetInstanceDescriptor, type FleetInstanceRecord } from "@/lib/resources/fleet-instance";
-
-const SAMPLE_INSTANCES: FleetInstanceRecord[] = [
-  { id: "ego-prod-01", engine_type: "ego", environment_id: "prod", status: "healthy", version: "v1.2.0", advertise_addr: "http://ego:4433" },
-  { id: "nexus-prod-01", engine_type: "nexus", environment_id: "prod", status: "healthy", version: "v1.1.4", advertise_addr: "grpc://nexus:50051" },
-  { id: "janus-prod-01", engine_type: "janus", environment_id: "prod", status: "healthy", version: "v1.3.0", advertise_addr: "http://janus:4444" },
-  { id: "aegis-prod-01", engine_type: "aegis", environment_id: "prod", status: "healthy", version: "v1.0.8", advertise_addr: "http://aegis:4455" },
-  { id: "vulcan-prod-01", engine_type: "vulcan", environment_id: "prod", status: "healthy", version: "v1.4.1", advertise_addr: "http://vulcan:4466" },
-  { id: "hermes-prod-01", engine_type: "hermes", environment_id: "prod", status: "healthy", version: "v1.1.0", advertise_addr: "http://hermes:4477" },
-  { id: "themis-prod-01", engine_type: "themis", environment_id: "prod", status: "healthy", version: "v1.0.5", advertise_addr: "http://themis:4488" },
-];
-
 import { useEnvironment } from "@/lib/environment/environment-context";
+import { Can } from "@/lib/auth/use-permission";
 
 function FleetInstancesContent() {
   const router = useRouter();
@@ -28,35 +18,24 @@ function FleetInstancesContent() {
   const typeFilter = searchParams.get("type");
   const { currentEnv } = useEnvironment();
 
-  const [instances, setInstances] = React.useState<FleetInstanceRecord[]>(
-    currentEnv.id === "prod" ? SAMPLE_INSTANCES : [],
-  );
-  const [isLoading, setIsLoading] = React.useState(false);
+  const [instances, setInstances] = React.useState<FleetInstanceRecord[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   const fetchInstances = React.useCallback(async () => {
+    setError(null);
     try {
       setIsLoading(true);
-      const res = await fetch(`/api/fleet/instances?environment=${currentEnv.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : data.items || data.data || [];
-        if (list.length > 0) {
-          setInstances(list);
-          return;
-        }
+      const res = await fetch(`/api/fleet/instances?environment=${encodeURIComponent(currentEnv.id)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || `Failed to load fleet instances (HTTP ${res.status})`);
       }
-      // If no instances enrolled in staging/dev, keep empty
-      if (currentEnv.id === "prod") {
-        setInstances(SAMPLE_INSTANCES);
-      } else {
-        setInstances([]);
-      }
-    } catch {
-      if (currentEnv.id === "prod") {
-        setInstances(SAMPLE_INSTANCES);
-      } else {
-        setInstances([]);
-      }
+      const list = Array.isArray(data) ? data : data.items || data.data || [];
+      setInstances(list);
+    } catch (err: unknown) {
+      setInstances([]);
+      setError(err instanceof Error ? err.message : "Failed to load fleet instances from Argus");
     } finally {
       setIsLoading(false);
     }
@@ -68,17 +47,14 @@ function FleetInstancesContent() {
 
   const displayData = React.useMemo(() => {
     let filtered = instances;
-    if (currentEnv.id !== "prod") {
-      filtered = instances.filter((i) => i.environment_id === currentEnv.id || i.environment_id === currentEnv.slug);
-    }
     if (typeFilter) {
       filtered = filtered.filter((i) => i.engine_type.toLowerCase() === typeFilter.toLowerCase());
     }
     return filtered;
-  }, [instances, currentEnv.id, currentEnv.slug, typeFilter]);
+  }, [instances, typeFilter]);
 
   const handleRowClick = (record: FleetInstanceRecord) => {
-    router.push(`/fleet/instances/${record.id}`);
+    router.push(`/fleet/instances/${encodeURIComponent(record.id)}`);
   };
 
   return (
@@ -89,14 +65,31 @@ function FleetInstancesContent() {
         description="All registered engine instances, versions, advertise addresses and heartbeat health."
         badge="Argus Registry"
         actions={
-          <Link href="/fleet/enroll">
-            <Button size="sm" className="h-8 gap-1.5 text-xs">
-              <Plus className="h-3.5 w-3.5" />
-              Enroll Instance
+          <Can perform="fleet:manage">
+            <Button asChild size="sm" className="h-8 gap-1.5 text-xs">
+              <Link href="/fleet/enroll">
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                Enroll Instance
+              </Link>
             </Button>
-          </Link>
+          </Can>
         }
       />
+
+      {error && (
+        <div
+          role="alert"
+          className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-300 text-xs flex items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>{error}</span>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={fetchInstances} className="h-7 text-xs">
+            Retry
+          </Button>
+        </div>
+      )}
 
       <ResourceTable
         descriptor={fleetInstanceDescriptor}

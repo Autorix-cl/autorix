@@ -14,12 +14,12 @@ export default function EngineObservabilityPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Link href="/observability">
-          <Button variant="ghost" size="sm" className="h-8 gap-1 text-xs">
+        <Button asChild variant="ghost" size="sm" className="h-8 gap-1 text-xs">
+          <Link href="/observability">
             <ArrowLeft className="h-3.5 w-3.5" />
             Back to Fleet Overview
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
       <div>
         <h1 className="text-xl font-bold tracking-tight uppercase">

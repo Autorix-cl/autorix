@@ -48,9 +48,14 @@ export function BulkImportDialog({ isOpen, onOpenChange, onSuccess }: BulkImport
     setIsValidating(true);
     setValidationResult(null);
     try {
+      const csrfMatch = typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/) : null;
+      const csrf = csrfMatch ? decodeURIComponent(csrfMatch[1]) : undefined;
       const res = await fetch("/api/identities/bulk-import", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        },
         body: JSON.stringify({ rows, dry_run: true }),
       });
       if (!res.ok) throw new Error("Validation request failed");
@@ -74,9 +79,14 @@ export function BulkImportDialog({ isOpen, onOpenChange, onSuccess }: BulkImport
 
     setIsCommitting(true);
     try {
+      const csrfMatch = typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/) : null;
+      const csrf = csrfMatch ? decodeURIComponent(csrfMatch[1]) : undefined;
       const res = await fetch("/api/identities/bulk-import", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        },
         body: JSON.stringify({ rows, dry_run: false }),
       });
       if (!res.ok) throw new Error("Commit import failed");
@@ -109,7 +119,7 @@ export function BulkImportDialog({ isOpen, onOpenChange, onSuccess }: BulkImport
         <div className="space-y-4 pt-2">
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs text-muted-foreground font-mono">
-              <span>Format: email,firstName,lastName</span>
+              <label htmlFor="bulk-import-csv">Format: email,firstName,lastName</label>
               <button
                 type="button"
                 onClick={() =>
@@ -123,6 +133,7 @@ export function BulkImportDialog({ isOpen, onOpenChange, onSuccess }: BulkImport
               </button>
             </div>
             <textarea
+              id="bulk-import-csv"
               value={csvText}
               onChange={(e) => {
                 setCsvText(e.target.value);

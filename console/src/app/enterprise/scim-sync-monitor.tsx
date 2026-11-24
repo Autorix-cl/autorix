@@ -18,6 +18,9 @@ import {
 } from "lucide-react";
 
 import { toast } from "sonner";
+import { Can } from "@/lib/auth/use-permission";
+import { getCsrfHeaders } from "@/lib/api/client";
+import { formatDateTime } from "@/lib/format/date-time";
 import type { SCIMGroup, SCIMSyncHistory, SCIMUser } from "@/lib/api/schemas/hermes";
 
 interface SCIMSyncMonitorProps {
@@ -83,19 +86,22 @@ export function SCIMSyncMonitor({ users, onRefresh }: SCIMSyncMonitorProps) {
     try {
       const res = await fetch("/api/enterprise/scim/groups", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
         body: JSON.stringify({
           schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"],
           displayName: newGroupName.trim(),
           members: [],
         }),
       });
-      if (!res.ok) throw new Error("Failed to create group");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to create group");
+      }
       toast.success(`Group '${newGroupName.trim()}' created`);
       setNewGroupName("");
-      loadGroups();
-    } catch {
-      toast.error("Failed to create SCIM group");
+      void loadGroups();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create SCIM group");
     } finally {
       setIsCreatingGroup(false);
     }
@@ -106,24 +112,21 @@ export function SCIMSyncMonitor({ users, onRefresh }: SCIMSyncMonitorProps) {
     try {
       const res = await fetch("/api/enterprise/scim/sync", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
         body: JSON.stringify({
           resource_type: "All",
-          status: "success",
-          total_records: users.length + groups.length,
-          created_count: 0,
-          updated_count: users.length,
-          deleted_count: 0,
-          error_count: 0,
-          errors: [],
+          trigger: "manual",
         }),
       });
-      if (!res.ok) throw new Error("Sync trigger failed");
-      toast.success("SCIM Directory Synchronization completed");
-      loadSyncHistory();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Sync trigger failed");
+      }
+      toast.success("SCIM Directory Synchronization triggered");
+      void loadSyncHistory();
       onRefresh?.();
-    } catch {
-      toast.error("Failed to trigger SCIM synchronization");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to trigger SCIM synchronization");
     } finally {
       setIsTriggeringSync(false);
     }
@@ -213,22 +216,25 @@ export function SCIMSyncMonitor({ users, onRefresh }: SCIMSyncMonitorProps) {
           </div>
         )}
 
-        {/* Tab 2: Groups (P6-S7-T4) */}
+        {/* Tab 2: Groups */}
         {activeTab === "groups" && (
           <div className="space-y-3">
             {/* Create Group Form */}
-            <form onSubmit={handleCreateGroup} className="flex gap-2 items-center p-2.5 rounded-lg border bg-muted/20">
-              <Input
-                placeholder="New SCIM Group Name (e.g. SRE-Team)"
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                className="h-7 text-xs font-mono"
-              />
-              <Button type="submit" size="sm" disabled={isCreatingGroup || !newGroupName.trim()} className="h-7 text-xs shrink-0">
-                {isCreatingGroup ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Plus className="w-3 h-3 mr-1" />}
-                Add Group
-              </Button>
-            </form>
+            <Can perform="enterprise:write">
+              <form onSubmit={handleCreateGroup} className="flex gap-2 items-center p-2.5 rounded-lg border bg-muted/20">
+                <Input
+                  aria-label="New SCIM Group Name"
+                  placeholder="New SCIM Group Name (e.g. SRE-Team)"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  className="h-7 text-xs font-mono"
+                />
+                <Button type="submit" size="sm" disabled={isCreatingGroup || !newGroupName.trim()} className="h-7 text-xs shrink-0">
+                  {isCreatingGroup ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Plus className="w-3 h-3 mr-1" />}
+                  Add Group
+                </Button>
+              </form>
+            </Can>
 
             {isLoadingGroups ? (
               <div className="text-center py-6 text-muted-foreground flex items-center justify-center gap-2">
@@ -263,21 +269,24 @@ export function SCIMSyncMonitor({ users, onRefresh }: SCIMSyncMonitorProps) {
           </div>
         )}
 
-        {/* Tab 3: Sync History & Monitoring (P6-S7-T6) */}
+        {/* Tab 3: Sync History & Monitoring */}
         {activeTab === "sync" && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Recent Synchronization Runs</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleTriggerSync}
-                disabled={isTriggeringSync}
-                className="h-7 text-xs gap-1.5"
-              >
-                {isTriggeringSync ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                Trigger Manual Sync
-              </Button>
+              <Can perform="enterprise:write">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTriggerSync}
+                  disabled={isTriggeringSync}
+                  className="h-7 text-xs gap-1.5"
+                >
+                  {isTriggeringSync ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                  Trigger Manual Sync
+                </Button>
+              </Can>
             </div>
 
             {isLoadingSync ? (
@@ -306,7 +315,7 @@ export function SCIMSyncMonitor({ users, onRefresh }: SCIMSyncMonitorProps) {
                           {s.resource_type} Sync · {s.status.toUpperCase()}
                         </span>
                         <span className="text-[10px] text-muted-foreground font-mono">
-                          {new Date(s.started_at).toLocaleString()}
+                          {formatDateTime(s.started_at)}
                         </span>
                       </div>
                       <div className="text-[10px] text-muted-foreground flex gap-3 pl-5">

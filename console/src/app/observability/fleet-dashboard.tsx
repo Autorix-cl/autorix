@@ -85,7 +85,21 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
             <div className="text-lg font-bold">
               {metrics ? `${(metrics.fleet_error_rate * 100).toFixed(2)}%` : "---"}
             </div>
-            <p className="text-[10px] text-emerald-500 mt-0.5">Below 0.05% SLO</p>
+            <p
+              className={`text-[10px] mt-0.5 ${
+                !metrics
+                  ? "text-muted-foreground"
+                  : metrics.fleet_error_rate <= 0.0005
+                    ? "text-emerald-500"
+                    : "text-amber-500"
+              }`}
+            >
+              {!metrics
+                ? "Unmeasured"
+                : metrics.fleet_error_rate <= 0.0005
+                  ? "Within 0.05% SLO"
+                  : "Above 0.05% SLO"}
+            </p>
           </CardContent>
         </Card>
 
@@ -93,12 +107,16 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
           <CardHeader className="p-3 pb-1">
             <CardDescription className="text-[11px] flex items-center justify-between">
               p95 Latency
-              <Clock className="h-3.5 w-3.5 text-indigo-500" />
+              <Clock className="h-3.5 w-3.5 text-indigo-500" aria-hidden="true" />
             </CardDescription>
           </CardHeader>
           <CardContent className="p-3 pt-0">
             <div className="text-lg font-bold">
-              {metrics ? `${metrics.fleet_latency_p95_ms?.toFixed(1) ?? "N/A"} ms` : "---"}
+              {metrics
+                ? metrics.fleet_latency_p95_ms !== null && metrics.fleet_latency_p95_ms !== undefined
+                  ? `${metrics.fleet_latency_p95_ms.toFixed(1)} ms`
+                  : "N/A"
+                : "---"}
             </div>
             <p className="text-[10px] text-muted-foreground mt-0.5">Max engine hop</p>
           </CardContent>
@@ -108,7 +126,7 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
           <CardHeader className="p-3 pb-1">
             <CardDescription className="text-[11px] flex items-center justify-between">
               Total Invocations
-              <Activity className="h-3.5 w-3.5 text-emerald-500" />
+              <Activity className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" />
             </CardDescription>
           </CardHeader>
           <CardContent className="p-3 pt-0">
@@ -121,7 +139,7 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
           <CardHeader className="p-3 pb-1">
             <CardDescription className="text-[11px] flex items-center justify-between">
               Auth Decisions
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" />
             </CardDescription>
           </CardHeader>
           <CardContent className="p-3 pt-0">
@@ -136,13 +154,15 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
           <CardHeader className="p-3 pb-1">
             <CardDescription className="text-[11px] flex items-center justify-between">
               Allow Ratio
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" />
             </CardDescription>
           </CardHeader>
           <CardContent className="p-3 pt-0">
             <div className="text-lg font-bold">
               {metrics
-                ? `${metrics.auth_allow_rate === null ? "N/A" : (metrics.auth_allow_rate * 100).toFixed(1)}%`
+                ? metrics.auth_allow_rate === null
+                  ? "N/A"
+                  : `${(metrics.auth_allow_rate * 100).toFixed(1)}%`
                 : "---"}
             </div>
             <p className="text-[10px] text-muted-foreground mt-0.5">Authorized traffic</p>
@@ -186,15 +206,23 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
                     </td>
                   </tr>
                 )}
-                {metrics?.engines.map((eng) => (
+                {metrics?.engines.map((eng) => {
+                  const isPositiveStatus = eng.status === "healthy" || eng.status === "observed";
+                  const isDegraded = eng.status === "degraded";
+                  return (
                   <tr key={eng.engine_type} className="hover:bg-muted/20">
                     <td className="px-4 py-2.5 font-medium flex items-center gap-1.5 uppercase tracking-wide">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                      <span
+                        className={`w-2 h-2 rounded-full inline-block ${
+                          isPositiveStatus ? "bg-emerald-500" : isDegraded ? "bg-amber-500" : "bg-rose-500"
+                        }`}
+                        aria-hidden="true"
+                      />
                       {eng.engine_type}
                     </td>
                     <td className="px-3 py-2.5">
                       <Badge
-                        variant={eng.status === "healthy" ? "default" : "destructive"}
+                        variant={isPositiveStatus ? "default" : isDegraded ? "warning" : "destructive"}
                         className="text-[10px] capitalize px-1.5 py-0"
                       >
                         {eng.status}
@@ -208,23 +236,26 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
                           eng.error_rate !== null && eng.error_rate > 0.01 ? "text-amber-500 font-semibold" : ""
                         }
                       >
-                        {eng.error_rate === null ? "N/A" : (eng.error_rate * 100).toFixed(2)}%
+                        {eng.error_rate === null ? "N/A" : `${(eng.error_rate * 100).toFixed(2)}%`}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 font-mono text-muted-foreground">
-                      {eng.latency_p50_ms?.toFixed(1) ?? "N/A"}ms
+                      {eng.latency_p50_ms !== null && eng.latency_p50_ms !== undefined ? `${eng.latency_p50_ms.toFixed(1)} ms` : "N/A"}
                     </td>
-                    <td className="px-3 py-2.5 font-mono font-medium">{eng.latency_p95_ms?.toFixed(1) ?? "N/A"}ms</td>
+                    <td className="px-3 py-2.5 font-mono font-medium">
+                      {eng.latency_p95_ms !== null && eng.latency_p95_ms !== undefined ? `${eng.latency_p95_ms.toFixed(1)} ms` : "N/A"}
+                    </td>
                     <td className="px-3 py-2.5 font-mono text-muted-foreground">
-                      {eng.latency_p99_ms?.toFixed(1) ?? "N/A"}ms
+                      {eng.latency_p99_ms !== null && eng.latency_p99_ms !== undefined ? `${eng.latency_p99_ms.toFixed(1)} ms` : "N/A"}
                     </td>
                     <td className="px-3 py-2.5 font-mono">
                       {eng.auth_allow_rate !== null && eng.auth_allow_rate > 0
-                        ? `${(eng.auth_allow_rate! * 100).toFixed(1)}%`
+                        ? `${(eng.auth_allow_rate * 100).toFixed(1)}%`
                         : "N/A"}
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
                         className="h-6 text-[11px] px-2"
@@ -234,7 +265,8 @@ export function FleetDashboard({ onSelectEngine }: FleetDashboardProps) {
                       </Button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

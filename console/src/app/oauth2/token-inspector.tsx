@@ -9,6 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Can } from "@/lib/auth/use-permission";
+import { formatDateTime } from "@/lib/format/date-time";
 import { fetchAndParse } from "@/lib/api/schema";
 import { introspectResponseSchema, type IntrospectResponse } from "@/lib/api/schemas/oauth2";
 import { z } from "zod";
@@ -21,6 +24,7 @@ export function TokenInspector({ initialToken = "" }: TokenInspectorProps = {}) 
   const [token, setToken] = React.useState(initialToken);
   const [tokenTypeHint, setTokenTypeHint] = React.useState("access_token");
   const [result, setResult] = React.useState<IntrospectResponse | null>(null);
+  const [confirmRevokeOpen, setConfirmRevokeOpen] = React.useState(false);
 
   const queryClient = useQueryClient();
 
@@ -64,6 +68,7 @@ export function TokenInspector({ initialToken = "" }: TokenInspectorProps = {}) 
       return res.data;
     },
     onSuccess: () => {
+      setConfirmRevokeOpen(false);
       if (result) {
         setResult({ ...result, active: false });
       }
@@ -74,7 +79,7 @@ export function TokenInspector({ initialToken = "" }: TokenInspectorProps = {}) 
 
   const handleRevoke = () => {
     if (!token.trim()) return;
-    revokeMutation.mutate();
+    setConfirmRevokeOpen(true);
   };
 
 
@@ -121,21 +126,23 @@ export function TokenInspector({ initialToken = "" }: TokenInspectorProps = {}) 
               </div>
 
               <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRevoke}
-                  disabled={!token.trim() || revokeMutation.isPending}
-                  className="text-destructive hover:bg-destructive/10"
-                >
-                  {revokeMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Trash2 className="w-4 h-4 mr-2" />
-                  )}
-                  Revoke Token
-                </Button>
+                <Can perform="oauth2:write">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRevoke}
+                    disabled={!token.trim() || revokeMutation.isPending}
+                    className="text-destructive hover:bg-destructive/10"
+                  >
+                    {revokeMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4 mr-2" />
+                    )}
+                    Revoke Token
+                  </Button>
+                </Can>
                 <Button
                   type="button"
                   size="sm"
@@ -161,8 +168,15 @@ export function TokenInspector({ initialToken = "" }: TokenInspectorProps = {}) 
             </div>
           )}
 
+          {revokeMutation.isError && (
+            <div role="alert" className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              {revokeMutation.error.message}
+            </div>
+          )}
+
           {introspectMutation.isError && (
-            <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm flex items-center gap-2">
+            <div role="alert" className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm flex items-center gap-2">
               <AlertCircle className="w-4 h-4" />
               {introspectMutation.error.message}
             </div>
@@ -206,7 +220,7 @@ export function TokenInspector({ initialToken = "" }: TokenInspectorProps = {}) 
                 <div className="p-3 rounded bg-muted/40 border">
                   <span className="text-xs text-muted-foreground block">Expires At (exp)</span>
                   <span className="font-mono font-medium">
-                    {result.exp ? new Date(result.exp * 1000).toLocaleString() : "—"}
+                    {result.exp ? formatDateTime(new Date(result.exp * 1000).toISOString()) : "—"}
                   </span>
                 </div>
                 <div className="p-3 rounded bg-muted/40 border">
@@ -243,6 +257,16 @@ export function TokenInspector({ initialToken = "" }: TokenInspectorProps = {}) 
           </CardContent>
         </Card>
       )}
+      <ConfirmDialog
+        open={confirmRevokeOpen}
+        onOpenChange={setConfirmRevokeOpen}
+        title="Revoke OAuth2 Token"
+        description="Immediately revoke this token in Janus (RFC 7009)? Downstream services checking introspection will reject it."
+        confirmLabel="Revoke Token"
+        variant="destructive"
+        isLoading={revokeMutation.isPending}
+        onConfirm={() => revokeMutation.mutate()}
+      />
     </div>
   );
 }

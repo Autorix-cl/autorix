@@ -17,12 +17,15 @@ export default function WelcomeOnboardingPage() {
   const [firstRegistrationDetected, setFirstRegistrationDetected] = React.useState(false);
 
   React.useEffect(() => {
-    const interval = setInterval(async () => {
+    if (firstRegistrationDetected) return;
+
+    let cancelled = false;
+    const poll = async () => {
       try {
         const res = await fetch("/api/fleet/instances");
-        if (res.ok) {
+        if (res.ok && !cancelled) {
           const data = await res.json();
-          const list = Array.isArray(data) ? data : data.items || [];
+          const list = Array.isArray(data) ? data : data.data || data.items || [];
           if (list.length > 0) {
             setFirstRegistrationDetected(true);
           }
@@ -30,10 +33,15 @@ export default function WelcomeOnboardingPage() {
       } catch {
         // Continue polling
       }
-    }, 5000);
+    };
 
-    return () => clearInterval(interval);
-  }, []);
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [firstRegistrationDetected]);
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto py-8">
@@ -81,11 +89,11 @@ export default function WelcomeOnboardingPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="p-5 pt-0">
-            <Link href="/fleet/enroll">
-              <Button size="sm" variant="outline" className="w-full text-xs gap-1.5">
-                <KeyRound className="h-3.5 w-3.5 text-primary" /> Mint Token
-              </Button>
-            </Link>
+            <Button asChild size="sm" variant="outline" className="w-full text-xs gap-1.5">
+              <Link href="/fleet/enroll">
+                <KeyRound className="h-3.5 w-3.5 text-primary" aria-hidden="true" /> Mint Token
+              </Link>
+            </Button>
           </CardContent>
         </Card>
 
@@ -121,11 +129,11 @@ export default function WelcomeOnboardingPage() {
                 <p className="text-xs text-muted-foreground">Your cluster is live and receiving telemetry.</p>
               </div>
             </div>
-            <Link href="/fleet">
-              <Button size="sm" className="text-xs gap-1.5">
-                Go to Fleet Dashboard <ArrowRight className="h-3.5 w-3.5" />
-              </Button>
-            </Link>
+            <Button asChild size="sm" className="text-xs gap-1.5">
+              <Link href="/fleet">
+                Go to Fleet Dashboard <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
+            </Button>
           </div>
         </Card>
       )}

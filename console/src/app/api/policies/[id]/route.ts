@@ -8,7 +8,7 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
 
   return proxyRequest(
     "themis",
-    `/policies/${id}?tenant_id=${encodeURIComponent(tenantId)}`,
+    `/policies/${encodeURIComponent(id)}?tenant_id=${encodeURIComponent(tenantId)}`,
     deletePolicyResponseSchema,
     { method: "DELETE" },
   );
@@ -18,7 +18,7 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
   const { id } = await context.params;
   const body = await req.json();
 
-  return proxyRequest("themis", `/policies/${id}`, policySchema, {
+  return proxyRequest("themis", `/policies/${encodeURIComponent(id)}`, policySchema, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

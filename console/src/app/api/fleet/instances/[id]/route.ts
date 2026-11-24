@@ -6,7 +6,7 @@ export async function GET(
   props: { params: Promise<{ id: string }> }
 ) {
   const params = await props.params;
-  return proxyRequest("argus", `/v1/instances/${params.id}`, z.unknown(), {
+  return proxyRequest("argus", `/v1/instances/${encodeURIComponent(params.id)}`, z.unknown(), {
     method: "GET",
     requiredPermission: "fleet:read",
   });
@@ -17,8 +17,8 @@ export async function DELETE(
   props: { params: Promise<{ id: string }> }
 ) {
   const params = await props.params;
-  return proxyRequest("argus", `/v1/instances/${params.id}`, z.unknown(), {
+  return proxyRequest("argus", `/v1/instances/${encodeURIComponent(params.id)}`, z.unknown(), {
     method: "DELETE",
-    requiredPermission: "fleet:admin",
+    requiredPermission: "fleet:manage",
   });
 }

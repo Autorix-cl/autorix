@@ -43,33 +43,57 @@ export function RequestSimulator() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [trace, setTrace] = React.useState<RequestSimulationTrace | null>(null);
 
-  const handleSimulate = React.useCallback(async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    setIsLoading(true);
-    try {
-      const res = await fetchJSON<RequestSimulationTrace>("/api/explorer/simulate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          method,
-          path,
-          headers: authHeader ? { authorization: authHeader } : {},
-          subject,
-        }),
-      });
-      if (!res.ok) throw new Error(res.error.message);
-      setTrace(res.data);
-    } catch {
-      toast.error("Failed to run request simulation");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [method, path, authHeader, subject]);
+  const abortRef = React.useRef<AbortController | null>(null);
 
+  const runSimulate = React.useCallback(
+    async (params: { method: string; path: string; authHeader: string; subject: string }) => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setIsLoading(true);
+      try {
+        const res = await fetchJSON<RequestSimulationTrace>("/api/explorer/simulate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            method: params.method,
+            path: params.path,
+            headers: params.authHeader ? { authorization: params.authHeader } : {},
+            subject: params.subject,
+          }),
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        if (!res.ok) throw new Error(res.error.message);
+        setTrace(res.data);
+      } catch {
+        if (!controller.signal.aborted) {
+          toast.error("Failed to run request simulation");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  const handleSimulate = (e: React.FormEvent) => {
+    e.preventDefault();
+    runSimulate({ method, path, authHeader, subject });
+  };
+
+  // Run default simulation once on mount instead of firing on every keystroke
   React.useEffect(() => {
-    handleSimulate();
-  }, [handleSimulate]);
-
+    runSimulate({
+      method: "POST",
+      path: "/api/v1/projects/proj_alpha/deployments",
+      authHeader: "Bearer av_live_890abcd",
+      subject: "user:usr_operator",
+    });
+    return () => abortRef.current?.abort();
+  }, [runSimulate]);
 
   return (
     <div className="space-y-4">
@@ -77,7 +101,7 @@ export function RequestSimulator() {
       <Card className="border-border">
         <CardHeader className="pb-3">
           <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-primary" />
+            <Zap className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
             End-to-End Request Pipeline Simulator
           </CardTitle>
           <CardDescription className="text-[11px]">
@@ -88,9 +112,9 @@ export function RequestSimulator() {
           <form onSubmit={handleSimulate} className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs items-end">
             <div className="flex gap-2">
               <div className="space-y-1 w-24">
-                <Label className="text-[11px]">Method</Label>
+                <Label htmlFor="sim-method" className="text-[11px]">Method</Label>
                 <Select value={method} onValueChange={setMethod}>
-                  <SelectTrigger className="h-8 text-xs font-mono">
+                  <SelectTrigger id="sim-method" className="h-8 text-xs font-mono">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -102,8 +126,9 @@ export function RequestSimulator() {
                 </Select>
               </div>
               <div className="space-y-1 flex-1">
-                <Label className="text-[11px]">Path</Label>
+                <Label htmlFor="sim-path" className="text-[11px]">Path</Label>
                 <Input
+                  id="sim-path"
                   value={path}
                   onChange={(e) => setPath(e.target.value)}
                   className="h-8 text-xs font-mono"
@@ -112,8 +137,9 @@ export function RequestSimulator() {
             </div>
 
             <div className="space-y-1">
-              <Label className="text-[11px]">Authorization Header</Label>
+              <Label htmlFor="sim-auth" className="text-[11px]">Authorization Header</Label>
               <Input
+                id="sim-auth"
                 value={authHeader}
                 onChange={(e) => setAuthHeader(e.target.value)}
                 placeholder="Bearer token or cookie"
@@ -122,8 +148,9 @@ export function RequestSimulator() {
             </div>
 
             <div className="space-y-1">
-              <Label className="text-[11px]">Subject Principal</Label>
+              <Label htmlFor="sim-subject" className="text-[11px]">Subject Principal</Label>
               <Input
+                id="sim-subject"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="user:usr_operator"

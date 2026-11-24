@@ -5,11 +5,13 @@
  * typed client already produce.
  */
 import { useMutation, type UseMutationOptions } from "@tanstack/react-query";
-import type { ApiResult } from "../api/client";
+import { ApiRequestError, type ApiResult } from "../api/client";
 import { toastApiError, toastSuccess } from "../toast";
 
+export { ApiRequestError };
+
 export interface UseApiMutationOptions<TData, TVariables> extends Omit<
-  UseMutationOptions<TData, Error, TVariables>,
+  UseMutationOptions<TData, ApiRequestError, TVariables>,
   "mutationFn" | "onSuccess"
 > {
   /** Shown as a success toast. Omit to mutate silently on success. */
@@ -26,13 +28,13 @@ export function useApiMutation<TData, TVariables>(
 ) {
   const { successMessage, onSuccess, errorFix, ...rest } = options;
 
-  return useMutation<TData, Error, TVariables>({
+  return useMutation<TData, ApiRequestError, TVariables>({
     ...rest,
     mutationFn: async (variables) => {
       const result = await mutationFn(variables);
       if (!result.ok) {
         toastApiError(result.error, errorFix);
-        throw new Error(result.error.message);
+        throw new ApiRequestError(result.error);
       }
       if (successMessage) {
         toastSuccess(typeof successMessage === "function" ? successMessage(result.data) : successMessage);

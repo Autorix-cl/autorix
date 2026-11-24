@@ -3,6 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Can } from "@/lib/auth/use-permission";
 import { Trash2 } from "lucide-react";
 import { Tuple } from "@/lib/api/schemas/nexus";
 
@@ -74,15 +75,18 @@ export const getColumns = (
     cell: ({ row }) => {
       const tuple = row.original;
       return (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-rose-400 hover:text-rose-500 hover:bg-rose-500/10"
-          onClick={() => onDelete(tuple)}
-        >
-          <span className="sr-only">Delete</span>
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <Can perform="permissions:write">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Delete tuple ${tuple.namespace}:${tuple.object}#${tuple.relation}`}
+            className="h-8 w-8 text-rose-400 hover:text-rose-500 hover:bg-rose-500/10"
+            onClick={() => onDelete(tuple)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </Can>
       );
     },
   },

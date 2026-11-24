@@ -10,7 +10,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   return proxyRequest(
     "themis",
-    `/policies/${id}/rollback/${version}?tenant_id=${encodeURIComponent(tenantId)}`,
+    `/policies/${encodeURIComponent(id)}/rollback/${encodeURIComponent(version)}?tenant_id=${encodeURIComponent(tenantId)}`,
     z.any(),
     { method: "POST" }
   );

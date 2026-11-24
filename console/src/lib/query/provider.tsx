@@ -7,12 +7,23 @@
  */
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@tanstack/react-query";
-import { redirectToLogin, type ApiError } from "../api/client";
+import { redirectToLogin, ApiRequestError, type ApiError } from "../api/client";
 
 function isUnauthorizedError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
-  if ("kind" in error && (error as ApiError).kind === "unauthorized") return true;
-  if ("status" in error && (error as ApiError).status === 401) return true;
+  if (error instanceof ApiRequestError) {
+    return error.kind === "unauthorized" || error.status === 401;
+  }
+  if ("kind" in error) {
+    const kind = (error as ApiError).kind;
+    if (kind === "forbidden") return false;
+    if (kind === "unauthorized") return true;
+  }
+  if ("status" in error) {
+    const status = (error as ApiError).status;
+    if (status === 403) return false;
+    if (status === 401) return true;
+  }
   if ("message" in error && typeof (error as { message: unknown }).message === "string") {
     const msg = (error as { message: string }).message.toLowerCase();
     return msg.includes("unauthorized") || msg.includes("authentication required");

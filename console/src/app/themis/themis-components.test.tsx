@@ -5,6 +5,17 @@ import { PolicyTestSuiteDialog } from "./policy-test-suite-dialog";
 import { PolicyVersionsDialog } from "./policy-versions-dialog";
 import { DryRunPlayground } from "./dry-run-playground";
 
+vi.mock("@/lib/auth/use-permission", () => ({
+  usePermission: () => ({
+    operator: { id: "op-1", email: "admin@example.com", name: "Admin", role: "owner", is_local: true, is_active: true },
+    isLoading: false,
+    can: () => true,
+    hasRole: () => true,
+    checkSession: vi.fn().mockResolvedValue(true),
+  }),
+  Can: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 describe("Themis Depth Components", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -54,8 +65,12 @@ describe("Themis Depth Components", () => {
       })
     );
 
-    const rollbackBtn = screen.getByRole("button", { name: /Rollback/i });
+    const rollbackBtn = screen.getByRole("button", { name: /^Rollback$/i });
     fireEvent.click(rollbackBtn);
+
+    // Confirm rollback inside ConfirmDialog
+    const confirmRollbackBtn = await screen.findByRole("button", { name: /Rollback to v1/i });
+    fireEvent.click(confirmRollbackBtn);
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(

@@ -11,6 +11,18 @@ import { GET as listFixtures, POST as createFixture } from "./policies/[id]/fixt
 import { DELETE as deleteFixture } from "./policies/[id]/fixtures/[fixture_id]/route";
 import { POST as runTestSuite } from "./policies/[id]/test-suite/route";
 
+vi.mock("@/lib/auth/session", () => ({
+  getCurrentOperator: vi.fn().mockResolvedValue({
+    id: "op-1",
+    email: "admin@autorix.io",
+    name: "Admin",
+    role: "admin",
+    is_local: true,
+    is_active: true,
+  }),
+  SESSION_COOKIE_NAME: "autorix_session",
+}));
+
 describe("Themis BFF Proxy Routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();

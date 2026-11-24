@@ -43,6 +43,9 @@ import { EmptyState } from "@/components/state/empty-state";
 import { ErrorState } from "@/components/state/error-state";
 import { NotConnectedEngine } from "@/components/resources/not-connected-engine";
 import { useCapabilities } from "@/lib/capabilities/capability-context";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Can, usePermission } from "@/lib/auth/use-permission";
+import { getCsrfHeaders } from "@/lib/api/client";
 import { RuleBuilderSheet } from "./rule-builder-sheet";
 import { VersionsDialog } from "./versions-dialog";
 import { detectShadowedRules } from "./shadowing-detector";
@@ -77,6 +80,8 @@ function toRuleItem(r: ApiRule): RuleItem {
 export default function ProxyRulesPage() {
   const { t } = useTranslation();
   const { isEngineConnected } = useCapabilities();
+  const { can } = usePermission();
+  const canWriteRules = can("proxy-rules:write");
   const queryClient = useQueryClient();
 
   const {
@@ -110,8 +115,10 @@ export default function ProxyRulesPage() {
 
   const [testPath, setTestPath] = React.useState("/api/v1/documents/financial_report_2026");
   const [testMethod, setTestMethod] = React.useState("GET");
+  const [hasSimulated, setHasSimulated] = React.useState(false);
   const [matchedRule, setMatchedRule] = React.useState<RuleItem | null>(null);
   const [pipelineTrace, setPipelineTrace] = React.useState<PipelineTrace | null>(null);
+  const [pendingDeleteRuleId, setPendingDeleteRuleId] = React.useState<string | null>(null);
 
   const testMatch = useApiMutation(
     (vars: { method: string; path: string }) =>
@@ -122,6 +129,7 @@ export default function ProxyRulesPage() {
       }),
     {
       onSuccess: (data) => {
+        setHasSimulated(true);
         setMatchedRule(data.matched && data.rule ? toRuleItem(data.rule) : null);
         setPipelineTrace(data.trace ?? null);
       },
@@ -137,7 +145,7 @@ export default function ProxyRulesPage() {
     mutationFn: async (newOrderIds: string[]) => {
       const res = await fetch("/api/proxy-rules/reorder", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
         body: JSON.stringify({ ids: newOrderIds }),
       });
       const data = await res.json();
@@ -169,13 +177,17 @@ export default function ProxyRulesPage() {
   // Delete Rule Mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/proxy-rules/${id}`, { method: "DELETE" });
-      const data = await res.json();
+      const res = await fetch(`/api/proxy-rules/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: getCsrfHeaders(),
+      });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to delete rule");
       return data;
     },
     onSuccess: () => {
       toast.success("Rule deleted successfully");
+      setPendingDeleteRuleId(null);
       queryClient.invalidateQueries({ queryKey: ["proxy-rules"] });
     },
     onError: (err) => {
@@ -184,9 +196,7 @@ export default function ProxyRulesPage() {
   });
 
   const handleDelete = (id: string) => {
-    if (confirm(`Are you sure you want to delete rule '${id}'?`)) {
-      deleteMutation.mutate(id);
-    }
+    setPendingDeleteRuleId(id);
   };
 
   const filteredRules = React.useMemo(() => {
@@ -222,6 +232,7 @@ export default function ProxyRulesPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     toast.success("Manifest exported successfully");
   };
 
@@ -280,15 +291,17 @@ export default function ProxyRulesPage() {
           },
           {
             label: "Engine Gateway",
-            value: "Port 4436",
-            hint: "Envoy / Go Reverse Proxy",
+            value: "Port 4455",
+            hint: "Proxy :4455 · Admin :4456",
             icon: Activity,
           },
         ]}
         actions={
           <>
             <VersionsDialog />
-            <RuleBuilderSheet onSuccess={refetchRules} />
+            <Can perform="proxy-rules:write">
+              <RuleBuilderSheet onSuccess={refetchRules} />
+            </Can>
           </>
         }
       />
@@ -330,8 +343,9 @@ export default function ProxyRulesPage() {
             actions={
               <div className="flex items-center gap-2">
                 <div className="relative w-48 sm:w-64">
-                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
                   <Input
+                    aria-label="Filter proxy rules by path or method"
                     placeholder="Filter rules by path, method..."
                     value={searchFilter}
                     onChange={(e) => setSearchFilter(e.target.value)}
@@ -391,10 +405,12 @@ export default function ProxyRulesPage() {
                             {/* Priority Controls */}
                             <div className="flex flex-col items-center gap-1 pr-2 border-r">
                               <Button
+                                type="button"
                                 size="icon"
                                 variant="ghost"
                                 className="h-6 w-6"
-                                disabled={idx === 0 || reorderMutation.isPending || !!searchFilter}
+                                aria-label={`Move rule ${rule.id} up`}
+                                disabled={!canWriteRules || idx === 0 || reorderMutation.isPending || !!searchFilter}
                                 onClick={() => moveRule(idx, "up")}
                                 title={searchFilter ? "Clear filter to reorder" : "Move Up"}
                               >
@@ -404,10 +420,12 @@ export default function ProxyRulesPage() {
                                 {idx + 1}
                               </span>
                               <Button
+                                type="button"
                                 size="icon"
                                 variant="ghost"
                                 className="h-6 w-6"
-                                disabled={idx === filteredRules.length - 1 || reorderMutation.isPending || !!searchFilter}
+                                aria-label={`Move rule ${rule.id} down`}
+                                disabled={!canWriteRules || idx === filteredRules.length - 1 || reorderMutation.isPending || !!searchFilter}
                                 onClick={() => moveRule(idx, "down")}
                                 title={searchFilter ? "Clear filter to reorder" : "Move Down"}
                               >
@@ -474,8 +492,10 @@ export default function ProxyRulesPage() {
 
                             <div className="flex items-center gap-1">
                               <Button
+                                type="button"
                                 size="icon"
                                 variant="ghost"
+                                aria-label={`Simulate rule ${rule.id}`}
                                 className="h-8 w-8 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
                                 onClick={() => handleQuickSimulate(rule)}
                                 title="Simulate this rule in test bench"
@@ -483,16 +503,20 @@ export default function ProxyRulesPage() {
                                 <Play className="h-4 w-4" />
                               </Button>
 
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 text-rose-400 hover:text-rose-500 hover:bg-rose-500/10"
-                                disabled={deleteMutation.isPending}
-                                onClick={() => handleDelete(rule.id)}
-                                title="Delete rule"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              <Can perform="proxy-rules:write">
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  aria-label={`Delete rule ${rule.id}`}
+                                  className="h-8 w-8 text-rose-400 hover:text-rose-500 hover:bg-rose-500/10"
+                                  disabled={deleteMutation.isPending}
+                                  onClick={() => handleDelete(rule.id)}
+                                  title="Delete rule"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </Can>
                             </div>
                           </div>
                         </div>
@@ -526,9 +550,9 @@ export default function ProxyRulesPage() {
               <CardContent className="p-6 pt-0 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                   <div className="md:col-span-3 space-y-1.5">
-                    <Label>{t("proxyRules.methodLabel")}</Label>
+                    <Label htmlFor="sim-method">{t("proxyRules.methodLabel")}</Label>
                     <Select value={testMethod} onValueChange={setTestMethod}>
-                      <SelectTrigger>
+                      <SelectTrigger id="sim-method">
                         <SelectValue placeholder="Select method" />
                       </SelectTrigger>
                       <SelectContent>
@@ -541,8 +565,9 @@ export default function ProxyRulesPage() {
                   </div>
 
                   <div className="md:col-span-6 space-y-1.5">
-                    <Label>{t("proxyRules.pathLabel")}</Label>
+                    <Label htmlFor="sim-path">{t("proxyRules.pathLabel")}</Label>
                     <Input
+                      id="sim-path"
                       value={testPath}
                       onChange={(e) => setTestPath(e.target.value)}
                       placeholder="/api/v1/resource"
@@ -659,9 +684,13 @@ export default function ProxyRulesPage() {
                       </div>
                     )}
                   </div>
-                ) : (
+                ) : hasSimulated ? (
                   <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-400 font-medium">
                     {t("proxyRules.noMatch")}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border/80 bg-muted/10 p-6 text-center text-xs text-muted-foreground">
+                    Enter an HTTP method and request path, then run a simulation to inspect matching Aegis rules and pipeline stages.
                   </div>
                 )}
               </CardContent>
@@ -726,6 +755,24 @@ export default function ProxyRulesPage() {
           </CloudSection>
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteRuleId)}
+        onOpenChange={(open) => !open && setPendingDeleteRuleId(null)}
+        title="Delete Proxy Rule"
+        description={
+          <>
+            Delete Aegis rule <strong className="font-mono">{pendingDeleteRuleId}</strong>? Requests matching this path
+            will immediately fall through to subsequent rules or fail closed.
+          </>
+        }
+        confirmLabel="Delete Rule"
+        variant="destructive"
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (pendingDeleteRuleId) deleteMutation.mutate(pendingDeleteRuleId);
+        }}
+      />
     </div>
   );
 }

@@ -7,6 +7,8 @@ import {
   FileBadge,
   Download,
   CheckCircle2,
+  XCircle,
+  AlertTriangle,
   RefreshCw,
   Search,
   Lock,
@@ -26,6 +28,12 @@ import {
   complianceEvidenceItemSchema,
   type ComplianceEvidenceItem,
 } from "@/lib/api/schemas/compliance";
+import type { AuditVerification } from "@/lib/api/schemas/audit";
+import { healthResponseSchema } from "@/lib/api/schemas/health";
+import { fetchAndParse } from "@/lib/api/schema";
+import { useApiQuery } from "@/lib/query/use-api-query";
+import { formatDateTime } from "@/lib/format/date-time";
+import { toast } from "sonner";
 
 export default function CompliancePage() {
   const [selectedFramework, setSelectedFramework] = React.useState<string>("ALL");
@@ -38,16 +46,34 @@ export default function CompliancePage() {
   const {
     data: complianceData,
     isLoading,
+    isError,
+    error: complianceError,
     refetch,
   } = useQuery<ComplianceEvidenceItem[]>({
     queryKey: ["compliance", "evidence", selectedFramework],
     queryFn: async () => {
       const res = await fetch("/api/compliance/evidence");
-      if (!res.ok) return [];
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `Failed to load compliance evidence (HTTP ${res.status})`);
+      }
       const json = await res.json();
       if (Array.isArray(json)) return json.map((it) => complianceEvidenceItemSchema.parse(it));
       if (json.data && Array.isArray(json.data)) return json.data.map((it: unknown) => complianceEvidenceItemSchema.parse(it));
       return [];
+    },
+  });
+
+  // Live cluster health & audit chain verification (never hardcoded)
+  const { data: healthData } = useApiQuery(["health"], () =>
+    fetchAndParse("/api/health", healthResponseSchema),
+  );
+  const { data: auditVerification } = useQuery<AuditVerification | null>({
+    queryKey: ["audit", "verification"],
+    queryFn: async () => {
+      const res = await fetch("/api/audit/verify");
+      if (!res.ok) return null;
+      return res.json();
     },
   });
 
@@ -72,43 +98,97 @@ export default function CompliancePage() {
   }, [controls, selectedFramework, searchTerm]);
 
   const passingCount = controls.filter((c) => c.status === "compliant").length;
+  const failingCount = controls.filter((c) => c.status !== "compliant").length;
   const totalCount = controls.length;
-  const passingPercent = totalCount > 0 ? Math.round((passingCount / totalCount) * 100) : 100;
+  const passingPercent = totalCount > 0 ? Math.round((passingCount / totalCount) * 100) : null;
+
+  const healthyProbes = healthData?.services?.filter((s) => s.status === "healthy").length ?? 0;
+  const totalProbes = healthData?.services?.length ?? 0;
+  const chainStatusLabel = !auditVerification
+    ? "UNVERIFIED"
+    : auditVerification.verified
+      ? "INTACT"
+      : "BROKEN";
 
   const handleGeneratePackage = async (framework: string) => {
     setIsGeneratingPackage(true);
     try {
+      const frameworkControls = filteredControls.filter((c) => {
+        if (framework === "ALL") return true;
+        if (framework.includes("SOC 2")) return c.framework.includes("SOC 2");
+        if (framework.includes("ISO")) return c.framework.includes("ISO");
+        return true;
+      });
+      const pkgPassing = frameworkControls.filter((c) => c.status === "compliant").length;
+      const pkgFailing = frameworkControls.length - pkgPassing;
+      const pkgPercent = frameworkControls.length > 0 ? Math.round((pkgPassing / frameworkControls.length) * 100) : 0;
+
       const payload = {
         framework: framework === "ALL" ? "SOC 2 Type II & ISO/IEC 27001:2022" : framework,
         period: selectedPeriod,
         generated_at: new Date().toISOString(),
         issuer: "Autorix Control Plane Security Evaluator",
         summary: {
-          total_controls: totalCount,
-          passing_controls: passingCount,
-          failing_controls: 0,
-          compliance_percentage: `${passingPercent}%`,
+          total_controls: frameworkControls.length,
+          passing_controls: pkgPassing,
+          failing_controls: pkgFailing,
+          compliance_percentage: frameworkControls.length > 0 ? `${pkgPercent}%` : "N/A",
         },
-        audit_trail_integrity: {
-          chain_length: 1042,
-          algorithm: "SHA-256",
-          status: "VERIFIED_TAMPER_EVIDENT",
-          head_hash: "a4f8e91c7b3d2e0f8a9c1b2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f",
-        },
-        controls: filteredControls,
+        audit_trail_integrity: auditVerification
+          ? {
+              chain_length: auditVerification.chain_length,
+              algorithm: auditVerification.algorithm || "SHA-256",
+              status: auditVerification.verified ? "VERIFIED_TAMPER_EVIDENT" : "INTEGRITY_FAILURE",
+              head_hash: auditVerification.head_hash || null,
+              verified_at: auditVerification.verified_at || null,
+            }
+          : {
+              chain_length: null,
+              algorithm: "SHA-256",
+              status: "UNVERIFIED",
+              head_hash: null,
+              verified_at: null,
+            },
+        controls: frameworkControls,
       };
 
-      // Download package
       const jsonBlob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(jsonBlob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `autorix-compliance-package-${framework.toLowerCase().replace(/\s+/g, "-")}-${selectedPeriod}.json`;
+      a.download = `autorix-compliance-package-${framework.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${selectedPeriod}.json`;
       a.click();
       URL.revokeObjectURL(url);
+      toast.success(`Compliance evidence package downloaded (${frameworkControls.length} control(s))`);
     } finally {
       setIsGeneratingPackage(false);
     }
+  };
+
+  const renderControlStatusBadge = (status: string) => {
+    const normalized = status.toLowerCase();
+    if (normalized === "compliant") {
+      return (
+        <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-xs gap-1 font-mono">
+          <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
+          COMPLIANT
+        </Badge>
+      );
+    }
+    if (normalized === "non_compliant" || normalized === "failed") {
+      return (
+        <Badge variant="destructive" className="text-xs gap-1 font-mono">
+          <XCircle className="w-3 h-3" aria-hidden="true" />
+          {status.toUpperCase()}
+        </Badge>
+      );
+    }
+    return (
+      <Badge variant="warning" className="text-xs gap-1 font-mono">
+        <AlertTriangle className="w-3 h-3" aria-hidden="true" />
+        {status.toUpperCase()}
+      </Badge>
+    );
   };
 
   return (
@@ -120,8 +200,14 @@ export default function CompliancePage() {
         description="Automated continuous compliance verification, auditor evidence export, and cryptographic access reviews across all 7 Autorix engines."
         icon={ShieldCheck}
         iconColor="text-emerald-400"
-        statusText="SOC2-ISO27001-CONTINUOUS-VERIFIED"
-        statusVariant="success"
+        statusText={
+          totalCount === 0
+            ? "EVIDENCE-UNAVAILABLE"
+            : failingCount === 0
+              ? "SOC2-ISO27001-CONTINUOUS-VERIFIED"
+              : `${failingCount}-CONTROL-FINDING(S)`
+        }
+        statusVariant={totalCount === 0 ? "warning" : failingCount === 0 ? "success" : "rose"}
         metrics={[
           {
             label: "Controls Evaluated",
@@ -131,19 +217,19 @@ export default function CompliancePage() {
           },
           {
             label: "Compliance Score",
-            value: `${passingPercent}%`,
-            hint: `${passingCount}/${totalCount} controls passing`,
+            value: passingPercent !== null ? `${passingPercent}%` : "—",
+            hint: totalCount > 0 ? `${passingCount}/${totalCount} controls passing` : "No controls evaluated",
             icon: ShieldCheck,
           },
           {
             label: "Evidence Probes",
-            value: "7/7 Online",
-            hint: "Continuous engine telemetry",
+            value: totalProbes > 0 ? `${healthyProbes}/${totalProbes} Online` : "—",
+            hint: "Live engine health probes",
             icon: Server,
           },
           {
             label: "Cryptographic Audit Chain",
-            value: "INTACT",
+            value: chainStatusLabel,
             hint: "SHA-256 tamper-evident proof",
             icon: Lock,
           },
@@ -172,10 +258,10 @@ export default function CompliancePage() {
               </div>
               <div>
                 <CardTitle className="text-base font-semibold">
-                  Auditor Evidence Package Generator (P8-S4-T4)
+                  Auditor Evidence Package Generator
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Generate a signed compliance bundle formatted for SOC 2 Type II and ISO 27001 external auditors
+                  Generate a structured compliance bundle formatted for SOC 2 Type II and ISO 27001 external auditors
                 </CardDescription>
               </div>
             </div>
@@ -185,10 +271,11 @@ export default function CompliancePage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
             {/* Audit Period Selection */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground block mb-1.5">
+              <label htmlFor="compliance-audit-period" className="text-xs font-medium text-muted-foreground block mb-1.5">
                 Audit Reporting Period
               </label>
               <select
+                id="compliance-audit-period"
                 value={selectedPeriod}
                 onChange={(e) => setSelectedPeriod(e.target.value)}
                 className="w-full h-9 rounded-md border border-input bg-background/80 px-3 py-1.5 text-xs text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
@@ -334,6 +421,16 @@ export default function CompliancePage() {
             <div className="py-16 text-center text-xs text-muted-foreground font-mono">
               Loading compliance controls and evidence probes...
             </div>
+          ) : isError ? (
+            <div role="alert" className="py-16 text-center space-y-2">
+              <AlertTriangle className="w-6 h-6 text-amber-400 mx-auto" aria-hidden="true" />
+              <p className="text-xs font-medium text-foreground">
+                {complianceError instanceof Error ? complianceError.message : "Failed to load compliance evidence."}
+              </p>
+              <Button type="button" variant="outline" size="sm" onClick={() => refetch()} className="text-xs h-7">
+                Retry
+              </Button>
+            </div>
           ) : filteredControls.length === 0 ? (
             <div className="py-16 text-center text-xs text-muted-foreground">
               No compliance controls found matching your search.
@@ -373,17 +470,16 @@ export default function CompliancePage() {
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                        <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-xs gap-1 font-mono">
-                          <CheckCircle2 className="w-3 h-3" />
-                          COMPLIANT
-                        </Badge>
+                        {renderControlStatusBadge(control.status)}
                         <Button
+                          type="button"
                           variant="ghost"
                           size="sm"
+                          aria-expanded={isExpanded}
                           onClick={() => setExpandedControlId(isExpanded ? null : control.id)}
                           className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
                         >
-                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" /> : <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />}
                           Evidence Proof
                         </Button>
                       </div>
@@ -406,7 +502,7 @@ export default function CompliancePage() {
                               Last Automated Evaluation
                             </span>
                             <span className="font-mono text-foreground">
-                              {new Date(control.last_evaluated_at).toLocaleString()}
+                              {formatDateTime(control.last_evaluated_at)}
                             </span>
                           </div>
                           <div>

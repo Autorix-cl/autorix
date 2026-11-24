@@ -36,7 +36,7 @@ export function EnvironmentSwitcher() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-44">
         <DropdownMenuLabel className="text-[10px] uppercase text-muted-foreground">
-          Active Environment (P4-S5-T1)
+          Active Environment
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {environments.map((env) => (

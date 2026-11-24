@@ -26,6 +26,9 @@ import {
 } from "@/lib/api/schemas/oauth2";
 import { LoadingState } from "@/components/state/loading-state";
 import { EmptyState } from "@/components/state/empty-state";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Can } from "@/lib/auth/use-permission";
+import { toast } from "sonner";
 import { z } from "zod";
 
 export function ScopeCatalogue() {
@@ -35,6 +38,8 @@ export function ScopeCatalogue() {
   const [description, setDescription] = React.useState("");
   const [claimsStr, setClaimsStr] = React.useState("");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [pendingDeleteScope, setPendingDeleteScope] = React.useState<string | null>(null);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
 
   const {
@@ -89,16 +94,23 @@ export function ScopeCatalogue() {
   };
 
   const handleDelete = async (scopeName: string) => {
-    if (!confirm(`Are you sure you want to delete scope "${scopeName}"?`)) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetchAndParse(
+        `/api/oauth2/scopes/${encodeURIComponent(scopeName)}`,
+        z.unknown(),
+        { method: "DELETE" }
+      );
 
-    const res = await fetchAndParse(
-      `/api/oauth2/scopes/${encodeURIComponent(scopeName)}`,
-      z.unknown(),
-      { method: "DELETE" }
-    );
-
-    if (res.ok) {
+      if (!res.ok) {
+        toast.error(res.error.message || "Failed to delete scope");
+        return;
+      }
+      toast.success(`Scope "${scopeName}" deleted.`);
+      setPendingDeleteScope(null);
       queryClient.invalidateQueries({ queryKey: ["oauth2-scopes"] });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -116,20 +128,22 @@ export function ScopeCatalogue() {
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <Button type="button" variant="outline" size="sm" aria-label="Refresh scopes" onClick={() => refetch()}>
               <RefreshCw className="w-4 h-4" />
             </Button>
-            <Button size="sm" onClick={() => setIsCreateOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              New Scope
-            </Button>
+            <Can perform="oauth2:write">
+              <Button type="button" size="sm" onClick={() => setIsCreateOpen(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                New Scope
+              </Button>
+            </Can>
           </div>
         </CardHeader>
         <CardContent>
           {isLoading && <LoadingState label="Loading scopes catalogue..." />}
 
           {isError && (
-            <div className="p-4 rounded border border-destructive/20 bg-destructive/10 text-destructive text-sm">
+            <div role="alert" className="p-4 rounded border border-destructive/20 bg-destructive/10 text-destructive text-sm">
               Failed to load scope catalogue from Janus.
             </div>
           )}
@@ -139,10 +153,12 @@ export function ScopeCatalogue() {
               title="No scopes defined"
               description="Register scopes to specify granted privileges and identity claims."
               action={
-                <Button size="sm" onClick={() => setIsCreateOpen(true)}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add First Scope
-                </Button>
+                <Can perform="oauth2:write">
+                  <Button type="button" size="sm" onClick={() => setIsCreateOpen(true)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add First Scope
+                  </Button>
+                </Can>
               }
             />
           )}
@@ -180,14 +196,18 @@ export function ScopeCatalogue() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(s.name)}
-                        className="text-muted-foreground hover:text-destructive h-8 w-8"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      <Can perform="oauth2:write">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Delete scope ${s.name}`}
+                          onClick={() => setPendingDeleteScope(s.name)}
+                          className="text-muted-foreground hover:text-destructive h-8 w-8"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </Can>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -196,6 +216,23 @@ export function ScopeCatalogue() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteScope)}
+        onOpenChange={(open) => !open && setPendingDeleteScope(null)}
+        title="Delete OAuth2 Scope"
+        description={
+          <>
+            Delete scope <strong className="font-mono">{pendingDeleteScope}</strong> from the Janus catalogue?
+          </>
+        }
+        confirmLabel="Delete Scope"
+        variant="destructive"
+        isLoading={isDeleting}
+        onConfirm={() => {
+          if (pendingDeleteScope) void handleDelete(pendingDeleteScope);
+        }}
+      />
 
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent>

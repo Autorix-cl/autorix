@@ -7,12 +7,12 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  return proxyRequest("ego", `/admin/identities/${id}/sessions`, sessionListSchema);
+  return proxyRequest("ego", `/admin/identities/${encodeURIComponent(id)}/sessions`, sessionListSchema);
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  return proxyRequest("ego", `/admin/identities/${id}/sessions`, z.any(), {
+  return proxyRequest("ego", `/admin/identities/${encodeURIComponent(id)}/sessions`, z.any(), {
     method: "DELETE",
   });
 }

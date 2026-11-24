@@ -9,7 +9,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const tenantId = req.nextUrl.searchParams.get("tenant_id") || "default";
   return proxyRequest(
     "themis",
-    `/policies/${id}/fixtures?tenant_id=${encodeURIComponent(tenantId)}`,
+    `/policies/${encodeURIComponent(id)}/fixtures?tenant_id=${encodeURIComponent(tenantId)}`,
     policyFixtureListSchema
   );
 }
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       expected_result: Boolean(body.expected_result),
     };
 
-    return proxyRequest("themis", `/policies/${id}/fixtures?tenant_id=${encodeURIComponent(tenantId)}`, policyFixtureSchema, {
+    return proxyRequest("themis", `/policies/${encodeURIComponent(id)}/fixtures?tenant_id=${encodeURIComponent(tenantId)}`, policyFixtureSchema, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

@@ -18,6 +18,17 @@ import {
 import { toast } from "sonner";
 import type { UnifiedSubject } from "@/lib/api/schemas/explorer";
 
+function formatTraitName(rawName: unknown, fallback: string): string {
+  if (typeof rawName === "string" && rawName.trim()) return rawName;
+  if (rawName && typeof rawName === "object") {
+    const obj = rawName as { first?: unknown; last?: unknown; full?: unknown };
+    if (typeof obj.full === "string" && obj.full.trim()) return obj.full;
+    const combined = [obj.first, obj.last].filter((p) => typeof p === "string" && p.trim()).join(" ");
+    if (combined) return combined;
+  }
+  return fallback;
+}
+
 export function UnifiedSubjectView() {
   const [subjectQuery, setSubjectQuery] = React.useState("alice");
   const [isLoading, setIsLoading] = React.useState(false);
@@ -54,6 +65,7 @@ export function UnifiedSubjectView() {
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
           <Input
+            aria-label="Search Subject ID or Username"
             placeholder="Search Subject ID or Username (e.g. alice)"
             value={subjectQuery}
             onChange={(e) => setSubjectQuery(e.target.value)}
@@ -100,7 +112,7 @@ export function UnifiedSubjectView() {
                   </div>
                   <div>
                     <span className="text-muted-foreground">name: </span>
-                    <span>{String(subject.identity?.traits?.name || subject.id)}</span>
+                    <span>{formatTraitName(subject.identity?.traits?.name, subject.id)}</span>
                   </div>
                 </div>
 

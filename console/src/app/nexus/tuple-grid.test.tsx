@@ -1,7 +1,19 @@
+import * as React from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { TupleGrid, Tuple } from "./tuple-grid";
+
+vi.mock("@/lib/auth/use-permission", () => ({
+  usePermission: () => ({
+    operator: { id: "op-1", email: "admin@example.com", name: "Admin", role: "owner", is_local: true, is_active: true },
+    isLoading: false,
+    can: () => true,
+    hasRole: () => true,
+    checkSession: vi.fn().mockResolvedValue(true),
+  }),
+  Can: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
 
 const mockTuples: Tuple[] = [
   { id: "t1", objectType: "document", objectId: "doc_123", relation: "viewer", subjectType: "user", subjectId: "alice" },
@@ -39,10 +51,14 @@ describe("TupleGrid", () => {
     await user.click(checkboxes[1]);
     
     // Delete button should appear in the bulk action bar
-    const deleteBtn = await screen.findByRole("button", { name: /Delete/i });
+    const deleteBtn = await screen.findByRole("button", { name: /^Delete$/i });
     expect(deleteBtn).toBeInTheDocument();
     
     await user.click(deleteBtn);
+
+    // Confirm deletion inside the accessible ConfirmDialog
+    const confirmBtn = await screen.findByRole("button", { name: /Delete Tuples/i });
+    await user.click(confirmBtn);
     
     expect(handleDelete).toHaveBeenCalledWith(["t1"]);
   });

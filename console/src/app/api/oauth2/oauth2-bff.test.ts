@@ -129,7 +129,7 @@ describe("OAuth2 BFF Routes", () => {
 
       expect(proxyRequest).toHaveBeenCalledWith(
         "janus",
-        "/admin/scopes/custom:scope",
+        "/admin/scopes/custom%3Ascope",
         expect.anything(),
         expect.objectContaining({ method: "DELETE" }),
       );

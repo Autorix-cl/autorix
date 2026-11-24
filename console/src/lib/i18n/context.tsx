@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import { translations, Locale } from "./translations";
 
 type TranslationKey = string;
@@ -26,58 +26,72 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
         setLocaleState(saved);
       }
     } catch {
-      // ignore
+      // Ignore storage access failures in restricted environments
     }
   }, []);
 
-  const setLocale = (newLocale: Locale) => {
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = locale;
+    }
+  }, [locale]);
+
+  const setLocale = useCallback((newLocale: Locale) => {
     setLocaleState(newLocale);
     try {
       localStorage.setItem(STORAGE_KEY, newLocale);
     } catch {
-      // ignore
+      // Ignore storage access failures in restricted environments
     }
-  };
+  }, []);
 
   const currentDict = translations[locale] || translations.en;
 
-  const t = (key: TranslationKey, params?: Record<string, string | number>): string => {
-    const keys = key.split(".");
-    let current: unknown = currentDict;
+  const t = useCallback(
+    (key: TranslationKey, params?: Record<string, string | number>): string => {
+      const keys = key.split(".");
+      let current: unknown = currentDict;
 
-    for (const k of keys) {
-      if (current && typeof current === "object" && k in current) {
-        current = (current as Record<string, unknown>)[k];
-      } else {
-        // Fallback to English
-        let fallback: unknown = translations.en;
-        for (const fbKey of keys) {
-          if (fallback && typeof fallback === "object" && fbKey in fallback) {
-            fallback = (fallback as Record<string, unknown>)[fbKey];
-          } else {
-            return key;
+      for (const k of keys) {
+        if (current && typeof current === "object" && k in current) {
+          current = (current as Record<string, unknown>)[k];
+        } else {
+          // Fallback to English
+          let fallback: unknown = translations.en;
+          for (const fbKey of keys) {
+            if (fallback && typeof fallback === "object" && fbKey in fallback) {
+              fallback = (fallback as Record<string, unknown>)[fbKey];
+            } else {
+              return key;
+            }
           }
+          current = fallback;
+          break;
         }
-        current = fallback;
-        break;
       }
-    }
 
-    if (typeof current !== "string") {
-      return key;
-    }
+      if (typeof current !== "string") {
+        return key;
+      }
 
-    let result = current;
-    if (params) {
-      Object.entries(params).forEach(([paramKey, paramValue]) => {
-        result = result.replace(new RegExp(`{${paramKey}}`, "g"), String(paramValue));
-      });
-    }
+      let result = current;
+      if (params) {
+        Object.entries(params).forEach(([paramKey, paramValue]) => {
+          result = result.replace(new RegExp(`{${paramKey}}`, "g"), String(paramValue));
+        });
+      }
 
-    return result;
-  };
+      return result;
+    },
+    [currentDict],
+  );
 
-  return <I18nContext.Provider value={{ locale, setLocale, t, dict: currentDict }}>{children}</I18nContext.Provider>;
+  const value = useMemo(
+    () => ({ locale, setLocale, t, dict: currentDict }),
+    [locale, setLocale, t, currentDict],
+  );
+
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
 export function useI18n() {

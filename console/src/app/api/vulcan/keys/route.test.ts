@@ -1,91 +1,127 @@
-/* eslint-disable */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { GET, POST } from "./route";
-import { vulcanDb } from "@/lib/server/db";
 
-// Mock the DB so we don't write to the real file during tests
-vi.mock("@/lib/server/db", () => {
-  let store: any[] = [];
-  return {
-    vulcanDb: {
-      getKeys: () => store,
-      getKeyById: (id: string) => store.find(k => k.id === id),
-      addKey: (k: any) => store.push(k),
-      revokeKey: (id: string) => {
-        const k = store.find(k => k.id === id);
-        if (k) { k.revoked = true; return true; }
-        return false;
-      },
-      // Helper for tests to reset state
-      _reset: () => { store = []; }
-    }
-  };
-});
+vi.mock("@/lib/auth/session", () => ({
+  getCurrentOperator: vi.fn().mockResolvedValue({
+    id: "op-1",
+    email: "admin@autorix.io",
+    name: "Admin",
+    role: "admin",
+    is_local: true,
+    is_active: true,
+  }),
+  SESSION_COOKIE_NAME: "autorix_session",
+}));
 
 describe("Vulcan API Routes", () => {
   beforeEach(() => {
-    (vulcanDb as any)._reset();
+    vi.clearAllMocks();
   });
 
-  it("POST /api/vulcan/keys should create a key and return the secret ONCE", async () => {
-    const payload = {
-      name: "Test Key",
-      expires_in: "30d",
-      scopes: ["read:users"]
-    };
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("POST /api/vulcan/keys proxies to Vulcan and returns metadata + one-time secret", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            api_key: {
+              id: "k-1",
+              name: "Test Key",
+              key_prefix: "av_live_",
+              key_hint: "abcd",
+              scopes: ["read:users"],
+              state: "active",
+              created_at: "2026-01-01T00:00:00Z",
+              expires_at: "2026-01-31T00:00:00Z",
+            },
+            raw_token: "av_live_secret_token_once",
+            macaroon: { location: "https://api.autorix.io", key_id: "k-1", caveats: [], signature: "sig" },
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
 
     const req = new Request("http://localhost/api/vulcan/keys", {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        name: "Test Key",
+        expires_in: "30d",
+        scopes: ["read:users"],
+      }),
     });
 
     const res = await POST(req);
     expect(res.status).toBe(201);
-    
+
     const body = await res.json();
-    
-    // Should return both metadata and secret
     expect(body.metadata).toBeDefined();
     expect(body.metadata.name).toBe("Test Key");
-    expect(body.metadata.prefix).toMatch(/^av_live_.*\\*\\*\\*\\*$/);
-    expect(body.secret).toBeDefined();
-    expect(body.secret.startsWith("av_live_")).toBe(true);
-    
-    // Make sure secret is NOT in metadata
+    expect(body.metadata.prefix).toBe("av_live_abcd");
+    expect(body.secret).toBe("av_live_secret_token_once");
     expect(body.metadata.secret).toBeUndefined();
   });
 
-  it("GET /api/vulcan/keys should return list WITHOUT secrets", async () => {
-    // First create a key
-    const payload = {
-      name: "Test Key",
-      expires_in: "30d",
-      scopes: ["read:users"]
-    };
-    await POST(new Request("http://localhost", { method: "POST", body: JSON.stringify(payload) }));
+  it("POST /api/vulcan/keys propagates upstream failure instead of fabricating a local 201 key", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new TypeError("connect ECONNREFUSED")));
 
-    // Now GET them
-    const req = new Request("http://localhost/api/vulcan/keys", { method: "GET" });
-    const res = await GET(req);
-    
-    expect(res.status).toBe(200);
-    const keys = await res.json();
-    
-    expect(keys.length).toBe(1);
-    expect(keys[0].name).toBe("Test Key");
-    // CRITICAL: The secret must NEVER be leaked in the list
-    expect(keys[0].secret).toBeUndefined();
-  });
-
-  it("POST /api/vulcan/keys should reject invalid payload", async () => {
     const req = new Request("http://localhost/api/vulcan/keys", {
       method: "POST",
-      body: JSON.stringify({ name: "a" }) // name too short, missing scopes
+      body: JSON.stringify({
+        name: "Offline Key",
+        expires_in: "30d",
+        scopes: ["read:users"],
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(502);
+  });
+
+  it("GET /api/vulcan/keys strips any secret fields from returned list", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              id: "k-1",
+              name: "Test Key",
+              key_prefix: "av_live_",
+              key_hint: "abcd",
+              secret: "should-never-leak",
+              root_signature_key: "should-never-leak",
+            },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+
+    const req = new Request("http://localhost/api/vulcan/keys", { method: "GET" });
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    const keys = await res.json();
+    expect(keys).toHaveLength(1);
+    expect(keys[0].name).toBe("Test Key");
+    expect(keys[0].secret).toBeUndefined();
+    expect(keys[0].root_signature_key).toBeUndefined();
+  });
+
+  it("POST /api/vulcan/keys rejects invalid payload with 400", async () => {
+    const req = new Request("http://localhost/api/vulcan/keys", {
+      method: "POST",
+      body: JSON.stringify({ name: "a" }),
     });
 
     const res = await POST(req);
     expect(res.status).toBe(400);
-    
+
     const body = await res.json();
     expect(body.error).toBe("Invalid input");
   });

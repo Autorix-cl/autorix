@@ -15,6 +15,8 @@ function defaultFixFor(kind: ApiError["kind"]): string {
       return "Check that the engine is running and reachable, then try again.";
     case "unauthorized":
       return "Sign in again and retry.";
+    case "forbidden":
+      return "Your operator role does not have permission to perform this action.";
     case "validation":
       return "Fix the highlighted fields and try again.";
     case "engine-error":

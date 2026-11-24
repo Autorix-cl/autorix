@@ -51,13 +51,19 @@ export function CodeBlock({
           <span className="text-[11px] font-medium text-foreground/80">{title || language.toUpperCase()}</span>
         </div>
         <Button
+          type="button"
           variant="ghost"
           size="icon-sm"
           onClick={handleCopy}
           className="h-6 w-6 text-muted-foreground hover:text-foreground"
+          aria-label={copied ? "Copied code to clipboard" : "Copy code to clipboard"}
           title="Copy code"
         >
-          {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? (
+            <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+          )}
         </Button>
       </div>
 

@@ -3,8 +3,11 @@ import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Can } from "@/lib/auth/use-permission";
 import { Trash2, X, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { toast } from "sonner";
 import { TupleBuilder } from "./tuple-builder";
 
 export interface Tuple {
@@ -86,7 +89,10 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
   const [importText, setImportText] = React.useState("");
   const [importFormat, setImportFormat] = React.useState<"csv" | "json">("csv");
   const [isImporting, setIsImporting] = React.useState(false);
+  const [importError, setImportError] = React.useState<string | null>(null);
   const [namespaceFilter, setNamespaceFilter] = React.useState("all");
+  const [pendingDelete, setPendingDelete] = React.useState<{ ids: string[]; reset: () => void } | null>(null);
+  const [isDeleting, setIsDeleting] = React.useState(false);
 
   const filteredTuples = React.useMemo(() => {
     if (namespaceFilter === "all") return tuples;
@@ -104,6 +110,7 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
   const handleBulkImport = async () => {
     if (!importText.trim()) return;
     setIsImporting(true);
+    setImportError(null);
     try {
       const parsed: import("./tuple-builder").TupleData[] = [];
       if (importFormat === "json") {
@@ -137,6 +144,10 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
         }
       }
 
+      if (parsed.length === 0) {
+        throw new Error("No valid relation tuples found in input.");
+      }
+
       if (onBulkAdd) {
         await onBulkAdd(parsed);
       } else {
@@ -148,7 +159,9 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
       setImportText("");
       setIsImportOpen(false);
     } catch (err) {
-      console.error("Bulk import failed", err);
+      const msg = err instanceof Error ? err.message : "Bulk import failed";
+      setImportError(msg);
+      toast.error(msg);
     } finally {
       setIsImporting(false);
     }
@@ -161,6 +174,7 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
           <h3 className="font-semibold text-sm">Relation Tuples</h3>
           {uniqueNamespaces.length > 0 && (
             <select
+              aria-label="Filter tuples by namespace"
               value={namespaceFilter}
               onChange={(e) => setNamespaceFilter(e.target.value)}
               className="text-xs bg-muted/40 border border-input rounded px-2 py-1"
@@ -173,81 +187,90 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Bulk Import Modal */}
-          <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">Bulk Import</Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-xl">
-              <DialogHeader>
-                <DialogTitle>Bulk Import Relation Tuples</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-2">
-                <div className="flex items-center gap-4 text-xs">
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="format"
-                      checked={importFormat === "csv"}
-                      onChange={() => setImportFormat("csv")}
-                    />
-                    CSV (namespace,object,relation,subject_namespace,subject_id)
-                  </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="format"
-                      checked={importFormat === "json"}
-                      onChange={() => setImportFormat("json")}
-                    />
-                    JSON Array
-                  </label>
-                </div>
+        <Can perform="permissions:write">
+          <div className="flex items-center gap-2">
+            {/* Bulk Import Modal */}
+            <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+              <DialogTrigger asChild>
+                <Button type="button" variant="outline" size="sm">Bulk Import</Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-xl">
+                <DialogHeader>
+                  <DialogTitle>Bulk Import Relation Tuples</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-2">
+                  <div className="flex flex-wrap items-center gap-4 text-xs">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="format"
+                        checked={importFormat === "csv"}
+                        onChange={() => setImportFormat("csv")}
+                      />
+                      CSV (namespace,object,relation,subject_namespace,subject_id)
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="format"
+                        checked={importFormat === "json"}
+                        onChange={() => setImportFormat("json")}
+                      />
+                      JSON Array
+                    </label>
+                  </div>
 
-                <textarea
-                  value={importText}
-                  onChange={(e) => setImportText(e.target.value)}
-                  placeholder={
-                    importFormat === "csv"
-                      ? "document,doc_1,viewer,user,alice\ndocument,doc_1,editor,user,bob"
-                      : '[{"objectType":"document","objectId":"doc_1","relation":"viewer","subjectType":"user","subjectId":"alice"}]'
-                  }
-                  rows={6}
-                  className="w-full text-xs font-mono p-3 rounded border bg-muted/20"
+                  <textarea
+                    aria-label="Bulk import tuple payload"
+                    value={importText}
+                    onChange={(e) => setImportText(e.target.value)}
+                    placeholder={
+                      importFormat === "csv"
+                        ? "document,doc_1,viewer,user,alice\ndocument,doc_1,editor,user,bob"
+                        : '[{"objectType":"document","objectId":"doc_1","relation":"viewer","subjectType":"user","subjectId":"alice"}]'
+                    }
+                    rows={6}
+                    className="w-full text-xs font-mono p-3 rounded border bg-muted/20"
+                  />
+
+                  {importError && (
+                    <div role="alert" className="text-xs text-destructive">
+                      {importError}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setIsImportOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="button" size="sm" onClick={handleBulkImport} disabled={isImporting || !importText.trim()}>
+                      {isImporting ? "Importing..." : "Validate & Commit"}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Add Tuple Modal */}
+            <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+              <DialogTrigger asChild>
+                <Button type="button" size="sm"><Plus className="w-4 h-4 mr-2" /> Add Tuple</Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Add Relation Tuple</DialogTitle>
+                </DialogHeader>
+                <TupleBuilder 
+                  onSubmit={async (data) => {
+                    await onAdd(data);
+                    setIsAddOpen(false);
+                  }}
+                  onCancel={() => setIsAddOpen(false)}
                 />
-
-                <div className="flex justify-end gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => setIsImportOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button size="sm" onClick={handleBulkImport} disabled={isImporting || !importText.trim()}>
-                    {isImporting ? "Importing..." : "Validate & Commit"}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          {/* Add Tuple Modal */}
-          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm"><Plus className="w-4 h-4 mr-2" /> Add Tuple</Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Add Relation Tuple</DialogTitle>
-              </DialogHeader>
-              <TupleBuilder 
-                onSubmit={async (data) => {
-                  await onAdd(data);
-                  setIsAddOpen(false);
-                }}
-                onCancel={() => setIsAddOpen(false)}
-              />
-            </DialogContent>
-          </Dialog>
-        </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </Can>
       </div>
       <div className="flex-1 p-4 overflow-y-auto">
         <DataTable 
@@ -260,30 +283,67 @@ export function TupleGrid({ tuples, onDelete, onAdd, onBulkAdd }: TupleGridProps
             if (selectedCount === 0) return null;
 
             return (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-foreground text-background px-4 py-3 rounded-lg shadow-xl animate-in slide-in-from-bottom-5">
+              <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-foreground text-background px-4 py-3 rounded-lg shadow-xl">
                 <div className="flex items-center gap-2 border-r border-background/20 pr-4">
                   <span className="text-sm font-medium">{selectedCount} selected</span>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 text-background hover:bg-background/20" onClick={() => table.resetRowSelection()}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Clear tuple selection"
+                    className="h-6 w-6 text-background hover:bg-background/20"
+                    onClick={() => table.resetRowSelection()}
+                  >
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
-                <Button 
-                  variant="destructive" 
-                  size="sm" 
-                  onClick={async () => {
-                    const ids = selectedRows.map(r => r.original.id);
-                    await onDelete(ids);
-                    table.resetRowSelection();
-                  }}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </Button>
+                <Can perform="permissions:write">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      const ids = selectedRows.map((r) => r.original.id);
+                      setPendingDelete({ ids, reset: () => table.resetRowSelection() });
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </Button>
+                </Can>
               </div>
             );
           }}
         />
       </div>
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title="Delete Relation Tuples"
+        description={
+          <>
+            Delete <strong>{pendingDelete?.ids.length ?? 0}</strong> selected Zanzibar relation tuple(s)? Subjects
+            relying on these relations will immediately lose derived permissions.
+          </>
+        }
+        confirmLabel="Delete Tuples"
+        variant="destructive"
+        isLoading={isDeleting}
+        onConfirm={async () => {
+          if (!pendingDelete) return;
+          setIsDeleting(true);
+          try {
+            await onDelete(pendingDelete.ids);
+            pendingDelete.reset();
+            setPendingDelete(null);
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Failed to delete tuples");
+          } finally {
+            setIsDeleting(false);
+          }
+        }}
+      />
     </div>
   );
 }

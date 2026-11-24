@@ -93,14 +93,18 @@ export function DataTable<TData, TValue>({
   });
 
   React.useEffect(() => {
-    if (controlledPageSize !== undefined && controlledPageSize !== pagination.pageSize) {
-      setPagination((prev) => ({ ...prev, pageSize: controlledPageSize, pageIndex: 0 }));
+    if (controlledPageSize !== undefined) {
+      setPagination((prev) =>
+        prev.pageSize === controlledPageSize ? prev : { ...prev, pageSize: controlledPageSize, pageIndex: 0 },
+      );
     }
   }, [controlledPageSize]);
 
   React.useEffect(() => {
-    if (controlledPageIndex !== undefined && controlledPageIndex !== pagination.pageIndex) {
-      setPagination((prev) => ({ ...prev, pageIndex: controlledPageIndex }));
+    if (controlledPageIndex !== undefined) {
+      setPagination((prev) =>
+        prev.pageIndex === controlledPageIndex ? prev : { ...prev, pageIndex: controlledPageIndex },
+      );
     }
   }, [controlledPageIndex]);
 

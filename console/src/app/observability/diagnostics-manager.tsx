@@ -86,7 +86,14 @@ export function DiagnosticsManager() {
     try {
       const res = await fetchJSON<DiagnosticBundle>("/api/diagnostics/bundle", { method: "POST" });
       if (!res.ok) throw new Error(res.error.message);
-      toast.success(`Diagnostic bundle ${res.data.bundle_id} generated successfully!`);
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `autorix-diagnostic-bundle-${res.data.bundle_id || Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Diagnostic bundle ${res.data.bundle_id} downloaded`);
     } catch {
       toast.error("Failed to generate diagnostic bundle");
     } finally {
@@ -276,7 +283,9 @@ export function DiagnosticsManager() {
                         {renderStageIcon(probeResult.http_status)}
                       </div>
                       <p className="text-[11px] font-mono text-muted-foreground">
-                        {probeResult.http_code} OK ({probeResult.http_latency_ms.toFixed(1)} ms)
+                        {probeResult.http_code
+                          ? `HTTP ${probeResult.http_code} (${probeResult.http_latency_ms.toFixed(1)} ms)`
+                          : `Unreachable (${probeResult.http_latency_ms.toFixed(1)} ms)`}
                       </p>
                     </div>
                   </div>
@@ -357,22 +366,28 @@ export function DiagnosticsManager() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {migrations.map((mig) => (
+                {migrations.map((mig) => {
+                  const isUpToDate = mig.current_schema_version === mig.expected_schema_version && mig.status !== "behind" && mig.status !== "error";
+                  return (
                   <tr key={mig.engine_type} className="hover:bg-muted/20">
                     <td className="px-4 py-2.5 font-semibold uppercase tracking-wide">{mig.engine_type}</td>
                     <td className="px-3 py-2.5 font-mono text-muted-foreground">{mig.instance_id}</td>
                     <td className="px-3 py-2.5 font-mono">v{mig.current_schema_version}</td>
                     <td className="px-3 py-2.5 font-mono">v{mig.expected_schema_version}</td>
                     <td className="px-3 py-2.5">
-                      <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-emerald-600">
-                        Up to date
+                      <Badge
+                        variant={isUpToDate ? "default" : "warning"}
+                        className={`text-[10px] px-1.5 py-0 ${isUpToDate ? "bg-emerald-600" : ""}`}
+                      >
+                        {isUpToDate ? "Up to date" : mig.status || "Pending"}
                       </Badge>
                     </td>
                     <td className="px-3 py-2.5 text-right text-muted-foreground font-mono">
                       {new Date(mig.last_migrated_at).toLocaleDateString()}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </CardContent>

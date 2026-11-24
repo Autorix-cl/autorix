@@ -1,8 +1,10 @@
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { getServiceUrl } from "../api-config";
-import type { Operator, SessionResponse } from "./types";
+import { hasPermission, type Operator, type SessionResponse } from "./types";
 
 export const SESSION_COOKIE_NAME = "autorix_session";
+const SESSION_VALIDATION_TIMEOUT_MS = 8_000;
 
 export async function getSessionToken(): Promise<string | undefined> {
   const cookieStore = await cookies();
@@ -20,6 +22,7 @@ export async function validateSessionToken(token: string): Promise<{ valid: bool
         Authorization: `Bearer ${token}`,
       },
       cache: "no-store",
+      signal: AbortSignal.timeout(SESSION_VALIDATION_TIMEOUT_MS),
     });
 
     if (!res.ok) {
@@ -38,4 +41,39 @@ export async function getCurrentOperator(): Promise<Operator | null> {
   if (!token) return null;
   const { valid, operator } = await validateSessionToken(token);
   return valid && operator ? operator : null;
+}
+
+export type OperatorAuthResult =
+  | { ok: true; operator: Operator }
+  | { ok: false; response: NextResponse };
+
+export async function requireOperator(
+  requiredPermission?: string,
+  extraHeaders?: Record<string, string>,
+): Promise<OperatorAuthResult> {
+  const operator = await getCurrentOperator();
+  if (!operator) {
+    const response = NextResponse.json(
+      { error: "unauthorized: authentication required" },
+      { status: 401, headers: extraHeaders },
+    );
+    response.cookies.delete(SESSION_COOKIE_NAME);
+    return { ok: false, response };
+  }
+
+  if (requiredPermission && !hasPermission(operator.role, requiredPermission)) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: `forbidden: operator role '${operator.role}' lacks required permission '${requiredPermission}'`,
+          required_permission: requiredPermission,
+          role: operator.role,
+        },
+        { status: 403, headers: extraHeaders },
+      ),
+    };
+  }
+
+  return { ok: true, operator };
 }

@@ -20,6 +20,7 @@ import { CodeBlock } from "@/components/ui/code-block";
 import { toast } from "sonner";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { fetchAndParse } from "@/lib/api/schema";
+import { getCsrfHeaders } from "@/lib/api/client";
 import { handlerCatalogueSchema, type Rule } from "@/lib/api/schemas/aegis";
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"];
@@ -63,27 +64,39 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
     );
   };
 
-  const parsedAuthConfig = React.useMemo(() => {
+  const authJsonState = React.useMemo(() => {
     try {
-      return JSON.parse(authConfig);
+      const value = JSON.parse(authConfig);
+      if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        return { value: {}, error: "Authenticator config must be a JSON object." };
+      }
+      return { value: value as Record<string, unknown>, error: null as string | null };
     } catch {
-      return {};
+      return { value: {}, error: "Invalid JSON syntax in authenticator configuration." };
     }
   }, [authConfig]);
 
-  const parsedAuthorizerConfig = React.useMemo(() => {
+  const authorizerJsonState = React.useMemo(() => {
     try {
-      return JSON.parse(authorizerConfig);
+      const value = JSON.parse(authorizerConfig);
+      if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        return { value: {}, error: "Authorizer config must be a JSON object." };
+      }
+      return { value: value as Record<string, unknown>, error: null as string | null };
     } catch {
-      return {};
+      return { value: {}, error: "Invalid JSON syntax in authorizer configuration." };
     }
   }, [authorizerConfig]);
 
-  const parsedMutatorConfig = React.useMemo(() => {
+  const mutatorJsonState = React.useMemo(() => {
     try {
-      return JSON.parse(mutatorConfig);
+      const value = JSON.parse(mutatorConfig);
+      if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        return { value: {}, error: "Mutator config must be a JSON object." };
+      }
+      return { value: value as Record<string, unknown>, error: null as string | null };
     } catch {
-      return {};
+      return { value: {}, error: "Invalid JSON syntax in mutator configuration." };
     }
   }, [mutatorConfig]);
 
@@ -94,12 +107,12 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
       url: urlPattern.trim() || "/<.*>",
       methods: selectedMethods.length > 0 ? selectedMethods : ["GET"],
     },
-    authenticators: authHandler !== "none" ? [{ handler: authHandler, config: parsedAuthConfig }] : [],
+    authenticators: authHandler !== "none" ? [{ handler: authHandler, config: authJsonState.value }] : [],
     authorizer: {
       handler: authorizerHandler,
-      config: parsedAuthorizerConfig,
+      config: authorizerJsonState.value,
     },
-    mutators: mutatorHandler !== "none" ? [{ handler: mutatorHandler, config: parsedMutatorConfig }] : [],
+    mutators: mutatorHandler !== "none" ? [{ handler: mutatorHandler, config: mutatorJsonState.value }] : [],
     upstream: {
       url: upstreamUrl.trim() || "http://localhost:8080",
       ...(stripPrefix.trim() ? { strip_prefix: stripPrefix.trim() } : {}),
@@ -111,11 +124,11 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
     urlPattern,
     selectedMethods,
     authHandler,
-    parsedAuthConfig,
+    authJsonState.value,
     authorizerHandler,
-    parsedAuthorizerConfig,
+    authorizerJsonState.value,
     mutatorHandler,
-    parsedMutatorConfig,
+    mutatorJsonState.value,
     upstreamUrl,
     stripPrefix,
     rewritePath,
@@ -125,7 +138,7 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
     mutationFn: async (rule: Rule) => {
       const res = await fetch("/api/proxy-rules", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
         body: JSON.stringify(rule),
       });
       const data = await res.json();
@@ -162,6 +175,26 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
     if (!ruleId.trim()) {
       toast.error("Rule ID is required");
       setCurrentStep(1);
+      return;
+    }
+    if (selectedMethods.length === 0) {
+      toast.error("Select at least one HTTP method");
+      setCurrentStep(1);
+      return;
+    }
+    if (authHandler !== "none" && authJsonState.error) {
+      toast.error(authJsonState.error);
+      setCurrentStep(2);
+      return;
+    }
+    if (authorizerJsonState.error) {
+      toast.error(authorizerJsonState.error);
+      setCurrentStep(3);
+      return;
+    }
+    if (mutatorHandler !== "none" && mutatorJsonState.error) {
+      toast.error(mutatorJsonState.error);
+      setCurrentStep(4);
       return;
     }
     createMutation.mutate(previewRule);
@@ -248,19 +281,24 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
               </div>
 
               <div className="space-y-2">
-                <Label>HTTP Methods *</Label>
-                <div className="flex flex-wrap gap-2">
+                <span className="text-sm font-medium leading-none">HTTP Methods *</span>
+                <div className="flex flex-wrap gap-2" role="group" aria-label="HTTP Methods">
                   {HTTP_METHODS.map((method) => {
                     const active = selectedMethods.includes(method);
                     return (
-                      <Badge
+                      <button
                         key={method}
-                        variant={active ? "default" : "outline"}
-                        className="cursor-pointer select-none"
+                        type="button"
+                        aria-pressed={active}
                         onClick={() => toggleMethod(method)}
+                        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                          active
+                            ? "border-transparent bg-primary text-primary-foreground hover:bg-primary/90"
+                            : "border-border bg-transparent text-foreground hover:bg-muted/50"
+                        }`}
                       >
                         {method}
-                      </Badge>
+                      </button>
                     );
                   })}
                 </div>
@@ -272,9 +310,9 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
           {currentStep === 2 && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Authenticator Handler</Label>
+                <Label htmlFor="auth-handler">Authenticator Handler</Label>
                 <Select value={authHandler} onValueChange={setAuthHandler}>
-                  <SelectTrigger>
+                  <SelectTrigger id="auth-handler">
                     <SelectValue placeholder="Select authenticator" />
                   </SelectTrigger>
                   <SelectContent>
@@ -294,13 +332,20 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
 
               {authHandler !== "none" && (
                 <div className="space-y-2">
-                  <Label>Configuration JSON</Label>
+                  <Label htmlFor="auth-config-json">Configuration JSON</Label>
                   <textarea
+                    id="auth-config-json"
                     rows={4}
                     value={authConfig}
                     onChange={(e) => setAuthConfig(e.target.value)}
+                    aria-invalid={Boolean(authJsonState.error)}
                     className="w-full font-mono text-xs p-2 border rounded-md bg-muted/40"
                   />
+                  {authJsonState.error && (
+                    <p role="alert" className="text-xs text-destructive">
+                      {authJsonState.error}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -310,9 +355,9 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
           {currentStep === 3 && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Authorizer Handler</Label>
+                <Label htmlFor="authorizer-handler">Authorizer Handler</Label>
                 <Select value={authorizerHandler} onValueChange={setAuthorizerHandler}>
-                  <SelectTrigger>
+                  <SelectTrigger id="authorizer-handler">
                     <SelectValue placeholder="Select authorizer" />
                   </SelectTrigger>
                   <SelectContent>
@@ -326,13 +371,20 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
               </div>
 
               <div className="space-y-2">
-                <Label>Configuration JSON</Label>
+                <Label htmlFor="authorizer-config-json">Configuration JSON</Label>
                 <textarea
+                  id="authorizer-config-json"
                   rows={4}
                   value={authorizerConfig}
                   onChange={(e) => setAuthorizerConfig(e.target.value)}
+                  aria-invalid={Boolean(authorizerJsonState.error)}
                   className="w-full font-mono text-xs p-2 border rounded-md bg-muted/40"
                 />
+                {authorizerJsonState.error && (
+                  <p role="alert" className="text-xs text-destructive">
+                    {authorizerJsonState.error}
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -341,9 +393,9 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
           {currentStep === 4 && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Mutator Handler</Label>
+                <Label htmlFor="mutator-handler">Mutator Handler</Label>
                 <Select value={mutatorHandler} onValueChange={setMutatorHandler}>
-                  <SelectTrigger>
+                  <SelectTrigger id="mutator-handler">
                     <SelectValue placeholder="Select mutator" />
                   </SelectTrigger>
                   <SelectContent>
@@ -357,13 +409,20 @@ export function RuleBuilderSheet({ onSuccess }: RuleBuilderSheetProps) {
 
               {mutatorHandler !== "none" && (
                 <div className="space-y-2">
-                  <Label>Configuration JSON</Label>
+                  <Label htmlFor="mutator-config-json">Configuration JSON</Label>
                   <textarea
+                    id="mutator-config-json"
                     rows={4}
                     value={mutatorConfig}
                     onChange={(e) => setMutatorConfig(e.target.value)}
+                    aria-invalid={Boolean(mutatorJsonState.error)}
                     className="w-full font-mono text-xs p-2 border rounded-md bg-muted/40"
                   />
+                  {mutatorJsonState.error && (
+                    <p role="alert" className="text-xs text-destructive">
+                      {mutatorJsonState.error}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

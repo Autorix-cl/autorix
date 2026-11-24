@@ -7,6 +7,17 @@ import { SAMLConnectionWizard } from "./saml-connection-wizard";
 import { SCIMSyncMonitor } from "./scim-sync-monitor";
 import type { SAMLProvider, SCIMUser } from "@/lib/api/schemas/hermes";
 
+vi.mock("@/lib/auth/use-permission", () => ({
+  usePermission: () => ({
+    operator: { id: "op-1", email: "admin@example.com", name: "Admin", role: "owner", is_local: true, is_active: true },
+    isLoading: false,
+    can: () => true,
+    hasRole: () => true,
+    checkSession: vi.fn().mockResolvedValue(true),
+  }),
+  Can: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 describe("Hermes Enterprise UI Components", () => {
   beforeEach(() => {
     vi.clearAllMocks();

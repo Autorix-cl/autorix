@@ -10,7 +10,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
   return proxyRequest(
     "themis",
-    `/policies/${id}/fixtures/${fixture_id}?tenant_id=${encodeURIComponent(tenantId)}`,
+    `/policies/${encodeURIComponent(id)}/fixtures/${encodeURIComponent(fixture_id)}?tenant_id=${encodeURIComponent(tenantId)}`,
     z.any(),
     { method: "DELETE" }
   );

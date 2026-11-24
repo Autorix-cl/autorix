@@ -12,6 +12,18 @@ import {
 } from "./scim/groups/[id]/route";
 import { GET as listSyncHistory, POST as triggerSync } from "./scim/sync/route";
 
+vi.mock("@/lib/auth/session", () => ({
+  getCurrentOperator: vi.fn().mockResolvedValue({
+    id: "op-1",
+    email: "admin@autorix.io",
+    name: "Admin",
+    role: "admin",
+    is_local: true,
+    is_active: true,
+  }),
+  SESSION_COOKIE_NAME: "autorix_session",
+}));
+
 describe("Hermes Enterprise BFF Routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();

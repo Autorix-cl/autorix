@@ -21,6 +21,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getCsrfHeaders } from "@/lib/api/client";
 
 interface SAMLConnectionWizardProps {
   isOpen: boolean;
@@ -94,7 +95,16 @@ export function SAMLConnectionWizard({
     }
   };
 
+  const hasValidPemFormat =
+    certificatePem.includes("-----BEGIN CERTIFICATE-----") &&
+    certificatePem.includes("-----END CERTIFICATE-----");
+
   const handleCreate = async () => {
+    if (!hasValidPemFormat) {
+      toast.error("A valid PEM-encoded X.509 certificate is required.");
+      setStep(1);
+      return;
+    }
     setIsSubmitting(true);
     try {
       const payload = {
@@ -102,18 +112,18 @@ export function SAMLConnectionWizard({
         name: displayName.trim() || providerId.trim(),
         idpEntityId: idpEntityId.trim() || `https://sts.example.com/${providerId.trim()}`,
         ssoUrl: idpSsoUrl.trim(),
-        certificatePem: certificatePem.trim() || undefined,
+        certificatePem: certificatePem.trim(),
         attribute_mapping: attributeMapping,
       };
 
       const res = await fetch("/api/enterprise/saml", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
         body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "Failed to register connection");
       }
 
@@ -160,8 +170,9 @@ export function SAMLConnectionWizard({
           <div className="space-y-3 pt-2 text-xs">
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <Label className="text-[11px]">Provider Slug</Label>
+                <Label htmlFor="saml-provider-slug" className="text-[11px]">Provider Slug</Label>
                 <Input
+                  id="saml-provider-slug"
                   placeholder="e.g. okta-corporate"
                   value={providerId}
                   onChange={(e) => setProviderId(e.target.value)}
@@ -170,8 +181,9 @@ export function SAMLConnectionWizard({
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[11px]">Display Name</Label>
+                <Label htmlFor="saml-display-name" className="text-[11px]">Display Name</Label>
                 <Input
+                  id="saml-display-name"
                   placeholder="e.g. Okta Corporate"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
@@ -181,8 +193,10 @@ export function SAMLConnectionWizard({
             </div>
 
             <div className="space-y-1">
-              <Label className="text-[11px]">IdP SSO Service URL (HTTP-POST)</Label>
+              <Label htmlFor="saml-sso-url" className="text-[11px]">IdP SSO Service URL (HTTPS)</Label>
               <Input
+                id="saml-sso-url"
+                type="url"
                 placeholder="https://company.okta.com/app/autorix/sso/saml"
                 value={idpSsoUrl}
                 onChange={(e) => setIdpSsoUrl(e.target.value)}
@@ -192,8 +206,9 @@ export function SAMLConnectionWizard({
             </div>
 
             <div className="space-y-1">
-              <Label className="text-[11px]">IdP Entity ID (Issuer URI)</Label>
+              <Label htmlFor="saml-entity-id" className="text-[11px]">IdP Entity ID (Issuer URI)</Label>
               <Input
+                id="saml-entity-id"
                 placeholder="https://www.okta.com/exk123456"
                 value={idpEntityId}
                 onChange={(e) => setIdpEntityId(e.target.value)}
@@ -202,21 +217,29 @@ export function SAMLConnectionWizard({
             </div>
 
             <div className="space-y-1">
-              <Label className="text-[11px]">X.509 Certificate (PEM)</Label>
+              <Label htmlFor="saml-cert-pem" className="text-[11px]">X.509 Signing Certificate (PEM) *</Label>
               <textarea
+                id="saml-cert-pem"
                 rows={3}
+                required
                 placeholder="-----BEGIN CERTIFICATE----- ... -----END CERTIFICATE-----"
                 value={certificatePem}
                 onChange={(e) => setCertificatePem(e.target.value)}
                 className="w-full text-xs font-mono p-2 rounded border bg-muted/20"
               />
+              {certificatePem.trim().length > 0 && !hasValidPemFormat && (
+                <p role="alert" className="text-[11px] text-destructive">
+                  Certificate must include PEM header and footer markers.
+                </p>
+              )}
             </div>
 
             <DialogFooter className="pt-2">
               <Button
+                type="button"
                 size="sm"
                 onClick={() => setStep(2)}
-                disabled={!providerId.trim() || !idpSsoUrl.trim()}
+                disabled={!providerId.trim() || !idpSsoUrl.trim() || !hasValidPemFormat}
                 className="gap-1 text-xs"
               >
                 Next <ChevronRight className="w-3.5 h-3.5" />

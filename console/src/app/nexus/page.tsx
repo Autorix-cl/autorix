@@ -53,9 +53,9 @@ export default function NexusPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] overflow-hidden">
+    <div className="flex flex-col lg:h-[calc(100vh-120px)] lg:overflow-hidden space-y-3">
       {/* Page Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-3 flex-shrink-0">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between flex-shrink-0">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Nexus Playground</h1>
           <p className="text-xs text-muted-foreground mt-1">Design, test, and manage your authorization schema and Zanzibar relationship graph.</p>
@@ -63,8 +63,8 @@ export default function NexusPage() {
       </div>
 
       {/* Tabs Container */}
-      <Tabs defaultValue="playground" className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between mb-3 flex-shrink-0">
+      <Tabs defaultValue="playground" className="flex-1 flex flex-col lg:overflow-hidden">
+        <div className="flex items-center justify-between mb-3 flex-shrink-0 overflow-x-auto">
           <TabsList className="bg-muted/60 p-1">
             <TabsTrigger value="playground" className="text-xs">
               <LayoutGrid className="w-3.5 h-3.5 mr-1.5" /> Playground
@@ -81,10 +81,10 @@ export default function NexusPage() {
           </TabsList>
         </div>
 
-        {/* Tab 1: Playground (Split Schema & Simulator) */}
-        <TabsContent value="playground" className="flex-1 flex gap-6 overflow-hidden m-0 p-0">
+        {/* Tab 1: Playground (Responsive Split Schema & Simulator) */}
+        <TabsContent value="playground" className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 lg:overflow-hidden m-0 p-0">
           {/* Left Pane: Schema Editor */}
-          <div className="w-1/2 flex flex-col min-w-[400px]">
+          <div className="flex flex-col min-h-[360px] lg:min-h-0">
             {isLoadingSchema ? (
               <div className="flex-1 flex items-center justify-center border rounded-md bg-muted/10">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -101,7 +101,7 @@ export default function NexusPage() {
           </div>
 
           {/* Right Pane: Tuples & Simulator */}
-          <div className="w-1/2 flex flex-col gap-6 overflow-y-auto pr-2 pb-6">
+          <div className="flex flex-col gap-6 lg:overflow-y-auto lg:pr-2 pb-6">
             <div className="h-[400px]">
               {isLoadingTuples ? (
                 <div className="flex-1 h-full flex items-center justify-center border rounded-md bg-muted/10">

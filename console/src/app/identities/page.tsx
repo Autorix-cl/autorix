@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Users, Plus, UserCheck, Search, RefreshCw, UploadCloud, Download, FileCode, Shield, BookOpen } from "lucide-react";
 import { ServiceHeader } from "@/components/layout/service-header";
 import { CloudSection } from "@/components/layout/cloud-section";
@@ -10,9 +12,12 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Can } from "@/lib/auth/use-permission";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { fetchAndParse } from "@/lib/api/schema";
 import { paginatedIdentityListSchema, type Identity, type PaginatedIdentities } from "@/lib/api/schemas/identity";
+import { formatDateTime } from "@/lib/format/date-time";
 import { ErrorState } from "@/components/state/error-state";
 import { NotConnectedState } from "@/components/state/not-connected-state";
 import { NotConnectedEngine } from "@/components/resources/not-connected-engine";
@@ -27,6 +32,18 @@ import { BulkActionBar } from "./bulk-action-bar";
 import { BulkImportDialog } from "./bulk-import-dialog";
 import { toast } from "sonner";
 
+function escapeCsvCell(value: unknown): string {
+  const str = String(value ?? "");
+  const neutralized = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+  return `"${neutralized.replace(/"/g, '""')}"`;
+}
+
+function readCsrfCookie(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const match = document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
 function toIdentityItem(item: Identity): IdentityItem {
   const traits = item.traits as { email?: string; name?: { first?: string; last?: string } };
   return {
@@ -36,24 +53,31 @@ function toIdentityItem(item: Identity): IdentityItem {
       ? `${traits.name.first || ""} ${traits.name.last || ""}`.trim()
       : traits?.email?.split("@")[0] || "User",
     state: item.state || "active",
-    createdAt: item.created_at ? new Date(item.created_at).toLocaleString() : "Recently",
+    createdAt: item.created_at ? formatDateTime(item.created_at) : "Recently",
     original: item,
   };
 }
 
-export default function IdentitiesPage() {
+function IdentitiesPageContent() {
   const { t } = useTranslation();
   const { isEngineConnected } = useCapabilities();
+  const searchParams = useSearchParams();
+  const requestedId = searchParams.get("id");
 
   const [searchQueryInput, setSearchQueryInput] = React.useState("");
   const [searchQuery, setSearchQuery] = React.useState("");
   const [pageSize, setPageSize] = React.useState(10);
   const [cursor, setCursor] = React.useState("");
   const [cursorHistory, setCursorHistory] = React.useState<string[]>([]);
-  
+
   const [selectedIdentity, setSelectedIdentity] = React.useState<IdentityItem | null>(null);
   const [isBuilderOpen, setIsBuilderOpen] = React.useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = React.useState(false);
+  const [pendingSuspend, setPendingSuspend] = React.useState<{
+    ids: string[];
+    clear: () => void;
+  } | null>(null);
+  const [isSuspending, setIsSuspending] = React.useState(false);
 
   React.useEffect(() => {
     const handler = setTimeout(() => {
@@ -74,23 +98,65 @@ export default function IdentitiesPage() {
   } = useApiQuery(
     ["identities", { q: searchQuery, cursor, limit: pageSize }],
     () => fetchAndParse<PaginatedIdentities>(
-      `/api/identities?q=${encodeURIComponent(searchQuery)}&cursor=${encodeURIComponent(cursor)}&limit=${pageSize}`, 
+      `/api/identities?q=${encodeURIComponent(searchQuery)}&cursor=${encodeURIComponent(cursor)}&limit=${pageSize}`,
       paginatedIdentityListSchema
     )
   );
 
   const identities: IdentityItem[] = React.useMemo(() => (identitiesRaw?.data ?? []).map(toIdentityItem), [identitiesRaw]);
-  
+
+  React.useEffect(() => {
+    if (!requestedId || selectedIdentity?.id === requestedId) return;
+    const match = identities.find((i) => i.id === requestedId);
+    if (match) {
+      setSelectedIdentity(match);
+    }
+  }, [requestedId, identities, selectedIdentity?.id]);
+
   const columns = React.useMemo(() => getColumns((identity) => setSelectedIdentity(identity)), []);
+
+  const handleConfirmBulkSuspend = async () => {
+    if (!pendingSuspend || pendingSuspend.ids.length === 0) return;
+    setIsSuspending(true);
+    try {
+      const csrf = readCsrfCookie();
+      const results = await Promise.allSettled(
+        pendingSuspend.ids.map(async (id) => {
+          const res = await fetch(`/api/identities/${encodeURIComponent(id)}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+            },
+            body: JSON.stringify({ state: "suspended" }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        }),
+      );
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.length - succeeded;
+      if (succeeded > 0) {
+        toast.success(`Suspended ${succeeded} identit${succeeded === 1 ? "y" : "ies"}`);
+      }
+      if (failed > 0) {
+        toast.error(`Failed to suspend ${failed} identit${failed === 1 ? "y" : "ies"}`);
+      }
+      pendingSuspend.clear();
+      setPendingSuspend(null);
+      refetch();
+    } finally {
+      setIsSuspending(false);
+    }
+  };
 
   const handleExportCsv = () => {
     if (identities.length === 0) {
       toast.info("No identities to export");
       return;
     }
-    const headers = "id,email,name,state,createdAt\n";
+    const headers = ["id", "email", "name", "state", "createdAt"].map((h) => escapeCsvCell(h)).join(",") + "\n";
     const csvContent = identities
-      .map((i) => `"${i.id}","${i.email}","${i.name}","${i.state}","${i.createdAt}"`)
+      .map((i) => [i.id, i.email, i.name, i.state, i.createdAt].map((c) => escapeCsvCell(c)).join(","))
       .join("\n");
     const blob = new Blob([headers + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -100,6 +166,7 @@ export default function IdentitiesPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     toast.success(`Exported ${identities.length} identities`);
   };
 
@@ -210,17 +277,21 @@ export default function IdentitiesPage() {
               <Download className="h-3.5 w-3.5" />
               <span>Export CSV</span>
             </Button>
+            <Can perform="identities:write">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsBulkImportOpen(true)}
+                className="h-8 gap-1.5 text-xs shrink-0"
+                title="Bulk import CSV or JSON identities"
+              >
+                <UploadCloud className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Bulk Import</span>
+              </Button>
+            </Can>
             <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsBulkImportOpen(true)}
-              className="h-8 gap-1.5 text-xs shrink-0"
-              title="Bulk import CSV or JSON identities"
-            >
-              <UploadCloud className="h-3.5 w-3.5" />
-              <span>Bulk Import</span>
-            </Button>
-            <Button
+              type="button"
               variant="outline"
               size="icon-sm"
               onClick={() => refetch()}
@@ -229,16 +300,19 @@ export default function IdentitiesPage() {
               title={t("common.refresh")}
               aria-label={t("common.refresh")}
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} aria-hidden="true" />
             </Button>
-            <Button
-              size="sm"
-              onClick={() => setIsBuilderOpen(true)}
-              className="h-8 gap-1.5 text-xs bg-cyan-600 hover:bg-cyan-700 text-white font-medium shadow-xs shrink-0"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>{t("identities.createButton") || "Create Identity"}</span>
-            </Button>
+            <Can perform="identities:write">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setIsBuilderOpen(true)}
+                className="h-8 gap-1.5 text-xs bg-cyan-600 hover:bg-cyan-700 text-white font-medium shadow-xs shrink-0"
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>{t("identities.createButton") || "Create Identity"}</span>
+              </Button>
+            </Can>
           </div>
         }
       />
@@ -318,16 +392,21 @@ export default function IdentitiesPage() {
                     canNextPage={!!identitiesRaw?.has_more}
                     canPreviousPage={cursorHistory.length > 0}
                     renderToolbar={(table) => {
-                      const selectedCount = Object.keys(table.getState().rowSelection).length;
+                      const selectedRows = table.getFilteredSelectedRowModel().rows;
+                      const selectedCount = selectedRows.length;
                       return (
-                        <BulkActionBar 
-                          selectedCount={selectedCount} 
-                          onSuspend={() => {
-                            toast.success(`Suspended ${selectedCount} identities`);
-                            table.resetRowSelection();
-                          }}
-                          onClearSelection={() => table.resetRowSelection()}
-                        />
+                        <Can perform="identities:write">
+                          <BulkActionBar
+                            selectedCount={selectedCount}
+                            onSuspend={() => {
+                              setPendingSuspend({
+                                ids: selectedRows.map((r) => r.original.id),
+                                clear: () => table.resetRowSelection(),
+                              });
+                            }}
+                            onClearSelection={() => table.resetRowSelection()}
+                          />
+                        </Can>
                       );
                     }}
                   />
@@ -363,6 +442,24 @@ export default function IdentitiesPage() {
           </CloudSection>
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={Boolean(pendingSuspend)}
+        onOpenChange={(open) => !open && setPendingSuspend(null)}
+        title="Suspend Selected Identities"
+        description={`Are you sure you want to suspend ${pendingSuspend?.ids.length ?? 0} selected identit${(pendingSuspend?.ids.length ?? 0) === 1 ? "y" : "ies"}? Active sessions will be invalidated and logins blocked until reactivated.`}
+        confirmLabel="Suspend Selected"
+        isLoading={isSuspending}
+        onConfirm={handleConfirmBulkSuspend}
+      />
     </div>
+  );
+}
+
+export default function IdentitiesPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-xs text-muted-foreground font-mono">Loading identities...</div>}>
+      <IdentitiesPageContent />
+    </Suspense>
   );
 }

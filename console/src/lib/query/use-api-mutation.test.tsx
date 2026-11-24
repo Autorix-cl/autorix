@@ -8,7 +8,7 @@ vi.mock("sonner", () => ({
 }));
 
 import { toast } from "sonner";
-import { useApiMutation } from "./use-api-mutation";
+import { useApiMutation, ApiRequestError } from "./use-api-mutation";
 import type { ApiResult } from "../api/client";
 
 beforeEach(() => {
@@ -38,10 +38,10 @@ describe("useApiMutation", () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it("toasts the ApiError and does not call onSuccess when the underlying call fails", async () => {
+  it("toasts the ApiError and preserves ApiError metadata on the thrown error", async () => {
     const mutationFn = vi.fn(async (): Promise<ApiResult<{ id: string }>> => ({
       ok: false,
-      error: { kind: "validation", message: "email is required" },
+      error: { kind: "validation", status: 422, requestId: "req-99", message: "email is required" },
     }));
     const onSuccess = vi.fn();
 
@@ -56,6 +56,11 @@ describe("useApiMutation", () => {
     expect(toast.error).toHaveBeenCalledWith("email is required", expect.any(Object));
     expect(toast.success).not.toHaveBeenCalled();
     expect(onSuccess).not.toHaveBeenCalled();
+    expect(result.current.error).toBeInstanceOf(ApiRequestError);
+    expect(result.current.error?.kind).toBe("validation");
+    expect(result.current.error?.status).toBe(422);
+    expect(result.current.error?.requestId).toBe("req-99");
+    expect(result.current.error?.apiError.kind).toBe("validation");
   });
 
   it("supports a function successMessage computed from the result", async () => {

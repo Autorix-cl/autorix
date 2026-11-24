@@ -13,16 +13,16 @@ export default function ExplorerPage() {
   const [activeTab, setActiveTab] = React.useState<"subject" | "access" | "simulator" | "consistency">("subject");
 
   return (
-    <div className="space-y-6 p-8">
+    <div className="space-y-6">
       {/* Page Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
               Cross-Engine Intelligence & Explorer
             </h1>
             <Badge variant="outline" className="text-[10px] font-mono border-primary/40 text-primary">
-              PHASE 6 DEPTH
+              LIVE CORRELATION
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
@@ -31,41 +31,53 @@ export default function ExplorerPage() {
         </div>
 
         {/* View Switcher Tabs */}
-        <div className="flex items-center gap-1.5 bg-muted/40 p-1 rounded-lg border">
+        <div role="tablist" aria-label="Explorer views" className="flex flex-wrap items-center gap-1.5 bg-muted/40 p-1 rounded-lg border">
           <Button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "subject"}
             variant={activeTab === "subject" ? "default" : "ghost"}
             size="sm"
             onClick={() => setActiveTab("subject")}
             className="h-7 text-xs gap-1.5"
           >
-            <User className="w-3.5 h-3.5" />
+            <User className="w-3.5 h-3.5" aria-hidden="true" />
             Unified Subject
           </Button>
           <Button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "access"}
             variant={activeTab === "access" ? "default" : "ghost"}
             size="sm"
             onClick={() => setActiveTab("access")}
             className="h-7 text-xs gap-1.5"
           >
-            <ShieldCheck className="w-3.5 h-3.5" />
+            <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
             Effective Access
           </Button>
           <Button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "simulator"}
             variant={activeTab === "simulator" ? "default" : "ghost"}
             size="sm"
             onClick={() => setActiveTab("simulator")}
             className="h-7 text-xs gap-1.5"
           >
-            <Zap className="w-3.5 h-3.5" />
+            <Zap className="w-3.5 h-3.5" aria-hidden="true" />
             Request Simulator
           </Button>
           <Button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "consistency"}
             variant={activeTab === "consistency" ? "default" : "ghost"}
             size="sm"
             onClick={() => setActiveTab("consistency")}
             className="h-7 text-xs gap-1.5"
           >
-            <ShieldAlert className="w-3.5 h-3.5" />
+            <ShieldAlert className="w-3.5 h-3.5" aria-hidden="true" />
             Consistency Checks
           </Button>
         </div>

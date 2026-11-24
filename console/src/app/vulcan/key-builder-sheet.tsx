@@ -9,29 +9,51 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Copy, AlertTriangle, Check } from "lucide-react";
 import { CreateKeySchema, CreateKeyInput } from "@/lib/schemas/vulcan";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-const AVAILABLE_SCOPES = [
+const DEFAULT_SCOPES = [
   { id: "read:users", label: "Read Users" },
   { id: "write:users", label: "Write Users" },
   { id: "read:billing", label: "Read Billing" },
   { id: "read:audit", label: "Read Audit Logs" },
 ];
 
+function readCsrfCookie(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const match = document.cookie.match(/(?:^|;\s*)autorix_csrf=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
 export function KeyBuilderSheet() {
   const [open, setOpen] = useState(false);
   const [showSecretModal, setShowSecretModal] = useState(false);
   const [newSecret, setNewSecret] = useState<string>("");
   const [copied, setCopied] = useState(false);
-  
+
   const [name, setName] = useState("");
   const [expiresIn, setExpiresIn] = useState<string>("30d");
   const [scopes, setScopes] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const queryClient = useQueryClient();
+
+  const { data: catalogScopes } = useQuery<Array<{ name: string; description?: string }>>({
+    queryKey: ["vulcan-scopes"],
+    queryFn: async () => {
+      const res = await fetch("/api/vulcan/scopes");
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : data.data || [];
+    },
+    enabled: open,
+  });
+
+  const availableScopes =
+    catalogScopes && catalogScopes.length > 0
+      ? catalogScopes.map((s) => ({ id: s.name, label: s.description || s.name }))
+      : DEFAULT_SCOPES;
 
   const resetForm = () => {
     setName("");
@@ -42,9 +64,13 @@ export function KeyBuilderSheet() {
 
   const createMutation = useMutation({
     mutationFn: async (data: CreateKeyInput) => {
+      const csrf = readCsrfCookie();
       const res = await fetch("/api/vulcan/keys", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        },
         body: JSON.stringify(data),
       });
       if (!res.ok) {
@@ -154,7 +180,7 @@ export function KeyBuilderSheet() {
             <div className="space-y-3">
               <Label>Base Scopes</Label>
               <div className="space-y-2 border rounded-md p-4 bg-muted/30">
-                {AVAILABLE_SCOPES.map((scope) => (
+                {availableScopes.map((scope) => (
                   <div key={scope.id} className="flex items-center space-x-2">
                     <Checkbox 
                       id={`scope-${scope.id}`} 

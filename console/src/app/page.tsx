@@ -53,7 +53,9 @@ function averageLatency(services: ServiceHealth[]): number | null {
 }
 
 import { useEnvironment } from "@/lib/environment/environment-context";
+import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
+import { formatDateTime } from "@/lib/format/date-time";
 
 export default function DashboardPage() {
   const { t } = useTranslation();
@@ -63,7 +65,25 @@ export default function DashboardPage() {
     data: healthData,
     isFetching: refreshing,
     refetch: fetchHealth,
-  } = useApiQuery(["health", currentEnv.id], () => fetchAndParse("/api/health", healthResponseSchema));
+  } = useApiQuery(["health"], () => fetchAndParse("/api/health", healthResponseSchema));
+
+  const { data: metricsData } = useQuery<{ total_rps?: number | null; status?: string } | null>({
+    queryKey: ["dashboard", "metrics"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/observability/metrics");
+        if (!res.ok) return null;
+        return await res.json();
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 30_000,
+  });
+
+  const liveRps = typeof metricsData?.total_rps === "number" && Number.isFinite(metricsData.total_rps)
+    ? metricsData.total_rps
+    : null;
 
   const rawServices = healthData?.services ?? [];
   const services = isProduction ? rawServices : [];
@@ -175,17 +195,18 @@ export default function DashboardPage() {
         <div className="flex items-center gap-2.5">
           {healthData?.checkedAt && (
             <span className="text-[11px] font-mono text-muted-foreground">
-              {t("dashboard.lastChecked", { time: new Date(healthData.checkedAt).toLocaleTimeString() })}
+              {t("dashboard.lastChecked", { time: formatDateTime(healthData.checkedAt) })}
             </span>
           )}
           <Button
+            type="button"
             variant="outline"
             size="sm"
             onClick={() => fetchHealth()}
             disabled={refreshing}
             className="gap-1.5 text-xs h-8"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />
             <span>{t("common.refresh")}</span>
           </Button>
         </div>
@@ -194,7 +215,7 @@ export default function DashboardPage() {
       {!isProduction && (
         <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
+            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" aria-hidden="true" />
             <div>
               <h4 className="text-xs font-semibold text-amber-300">
                 Viewing {currentEnv.name} Environment
@@ -204,12 +225,12 @@ export default function DashboardPage() {
               </p>
             </div>
           </div>
-          <Link href={`/fleet/enroll?env=${currentEnv.id}`}>
-            <Button size="sm" variant="outline" className="text-xs gap-1.5 h-8 border-amber-500/40 text-amber-300 hover:bg-amber-500/20 shrink-0">
-              <Plus className="h-3 w-3" />
+          <Button asChild size="sm" variant="outline" className="text-xs gap-1.5 h-8 border-amber-500/40 text-amber-300 hover:bg-amber-500/20 shrink-0">
+            <Link href={`/fleet/enroll?env=${currentEnv.id}`}>
+              <Plus className="h-3 w-3" aria-hidden="true" />
               Enroll {currentEnv.name} Instance
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       )}
 
@@ -253,12 +274,12 @@ export default function DashboardPage() {
 
         <StatCard
           title={t("dashboard.stats.requests")}
-          value={t("dashboard.stats.notAvailable")}
+          value={isProduction && liveRps !== null ? `${liveRps.toFixed(1)} req/s` : t("dashboard.stats.notAvailable")}
           subtitle={t("dashboard.stats.requestsSub")}
           icon={Cpu}
           iconColor="text-cyan-400"
-          badgeText={t("dashboard.stats.notAvailable")}
-          badgeVariant="outline"
+          badgeText={isProduction && liveRps !== null ? "Prometheus" : t("dashboard.stats.notAvailable")}
+          badgeVariant={isProduction && liveRps !== null ? "cyan" : "outline"}
         />
       </div>
 
@@ -318,16 +339,17 @@ export default function DashboardPage() {
                       )}
                     </div>
 
-                    <Link href={href}>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="h-7 gap-1 px-2.5 text-xs group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
-                      >
+                    <Button
+                      asChild
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 gap-1 px-2.5 text-xs group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
+                    >
+                      <Link href={href}>
                         <span>{t("dashboard.openStudio")}</span>
-                        <ArrowUpRight className="h-3 w-3" />
-                      </Button>
-                    </Link>
+                        <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                      </Link>
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -342,50 +364,50 @@ export default function DashboardPage() {
         <Card className="lg:col-span-1 bg-card/80">
           <CardHeader className="p-5 pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <SlidersHorizontal className="h-4 w-4 text-primary" />
+              <SlidersHorizontal className="h-4 w-4 text-primary" aria-hidden="true" />
               <span>{t("dashboard.quickActions")}</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-5 pt-0 space-y-2">
-            <Link href="/identities" className="block">
-              <Button variant="outline" className="w-full justify-between h-9 text-xs">
+            <Button asChild variant="outline" className="w-full justify-between h-9 text-xs">
+              <Link href="/identities">
                 <div className="flex items-center gap-2">
-                  <Users className="h-3.5 w-3.5 text-blue-400" />
+                  <Users className="h-3.5 w-3.5 text-blue-400" aria-hidden="true" />
                   <span>{t("dashboard.quickNewUser")}</span>
                 </div>
-                <ArrowRight className="h-3.5 w-3.5 opacity-60" />
-              </Button>
-            </Link>
+                <ArrowRight className="h-3.5 w-3.5 opacity-60" aria-hidden="true" />
+              </Link>
+            </Button>
 
-            <Link href="/vulcan" className="block">
-              <Button variant="outline" className="w-full justify-between h-9 text-xs">
+            <Button asChild variant="outline" className="w-full justify-between h-9 text-xs">
+              <Link href="/vulcan">
                 <div className="flex items-center gap-2">
-                  <Key className="h-3.5 w-3.5 text-cyan-400" />
+                  <Key className="h-3.5 w-3.5 text-cyan-400" aria-hidden="true" />
                   <span>{t("dashboard.quickNewKey")}</span>
                 </div>
-                <ArrowRight className="h-3.5 w-3.5 opacity-60" />
-              </Button>
-            </Link>
+                <ArrowRight className="h-3.5 w-3.5 opacity-60" aria-hidden="true" />
+              </Link>
+            </Button>
 
-            <Link href="/permissions" className="block">
-              <Button variant="outline" className="w-full justify-between h-9 text-xs">
+            <Button asChild variant="outline" className="w-full justify-between h-9 text-xs">
+              <Link href="/permissions">
                 <div className="flex items-center gap-2">
-                  <Network className="h-3.5 w-3.5 text-purple-400" />
+                  <Network className="h-3.5 w-3.5 text-purple-400" aria-hidden="true" />
                   <span>{t("dashboard.quickSimulate")}</span>
                 </div>
-                <ArrowRight className="h-3.5 w-3.5 opacity-60" />
-              </Button>
-            </Link>
+                <ArrowRight className="h-3.5 w-3.5 opacity-60" aria-hidden="true" />
+              </Link>
+            </Button>
 
-            <Link href="/proxy-rules" className="block">
-              <Button variant="outline" className="w-full justify-between h-9 text-xs">
+            <Button asChild variant="outline" className="w-full justify-between h-9 text-xs">
+              <Link href="/proxy-rules">
                 <div className="flex items-center gap-2">
-                  <Shield className="h-3.5 w-3.5 text-emerald-400" />
+                  <Shield className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
                   <span>{t("dashboard.quickProxyRule")}</span>
                 </div>
-                <ArrowRight className="h-3.5 w-3.5 opacity-60" />
-              </Button>
-            </Link>
+                <ArrowRight className="h-3.5 w-3.5 opacity-60" aria-hidden="true" />
+              </Link>
+            </Button>
           </CardContent>
         </Card>
 

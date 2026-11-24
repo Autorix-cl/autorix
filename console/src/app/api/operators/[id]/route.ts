@@ -9,11 +9,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params;
   try {
     const body = await req.json();
-    return proxyRequest("argus", `/v1/operators/${id}`, operatorSchema, {
+    return proxyRequest("argus", `/v1/operators/${encodeURIComponent(id)}`, operatorSchema, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      requiredPermission: "identities:write",
+      requiredPermission: "operators:write",
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Invalid update payload";
@@ -23,8 +23,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  return proxyRequest("argus", `/v1/operators/${id}`, z.any(), {
+  return proxyRequest("argus", `/v1/operators/${encodeURIComponent(id)}`, z.any(), {
     method: "DELETE",
-    requiredPermission: "identities:write",
+    requiredPermission: "operators:write",
   });
 }

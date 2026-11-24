@@ -26,8 +26,25 @@ import { useTranslation } from "@/lib/i18n";
 import { useApiQuery } from "@/lib/query/use-api-query";
 import { fetchAndParse } from "@/lib/api/schema";
 import { healthResponseSchema } from "@/lib/api/schemas/health";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 
-export function Sidebar() {
+export interface SidebarProps {
+  mobileOpen?: boolean;
+  onMobileOpenChange?: (open: boolean) => void;
+}
+
+function isNavItemActive(pathname: string | null, href: string, allHrefs: string[]): boolean {
+  if (!pathname) return false;
+  if (pathname === href) return true;
+  if (href === "/") return false;
+  if (!pathname.startsWith(`${href}/`)) return false;
+  // Avoid highlighting a parent route (e.g. /fleet) when a more specific sibling nav item matches (/fleet/enroll)
+  return !allHrefs.some(
+    (other) => other !== href && other.startsWith(`${href}/`) && (pathname === other || pathname.startsWith(`${other}/`)),
+  );
+}
+
+export function Sidebar({ mobileOpen = false, onMobileOpenChange }: SidebarProps) {
   const pathname = usePathname();
   const { t } = useTranslation();
 
@@ -72,7 +89,6 @@ export function Sidebar() {
           icon: Activity,
         },
       ],
-
     },
     {
       group: t("nav.coreEngines"),
@@ -146,12 +162,14 @@ export function Sidebar() {
     },
   ];
 
-  return (
-    <aside className="w-64 flex-shrink-0 flex flex-col border-r border-border/70 bg-card/60 backdrop-blur-md">
+  const allHrefs = navItems.flatMap((section) => section.items.map((item) => item.href));
+
+  const renderSidebarContent = (onNavigate?: () => void) => (
+    <div className="flex h-full flex-col">
       {/* Brand Header */}
-      <div className="flex h-16 items-center gap-3 border-b border-border/60 px-5 bg-card/40">
+      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-border/60 px-5 bg-card/40">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 shadow-md shadow-blue-500/20 ring-1 ring-white/20">
-          <Shield className="h-5 w-5 text-white" />
+          <Shield className="h-5 w-5 text-white" aria-hidden="true" />
         </div>
         <div>
           <div className="flex items-center gap-1.5">
@@ -165,39 +183,45 @@ export function Sidebar() {
       </div>
 
       {/* Navigation List */}
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
+      <nav aria-label="Primary" className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
         {navItems.map((section) => (
           <div key={section.group} className="space-y-1">
             <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
               {section.group}
             </div>
-            {section.items.map((item) => {
-              const isActive = pathname === item.href;
-              const Icon = item.icon;
+            <ul className="space-y-1">
+              {section.items.map((item) => {
+                const isActive = isNavItemActive(pathname, item.href, allHrefs);
+                const Icon = item.icon;
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "group flex items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-all duration-150",
-                    isActive
-                      ? "bg-primary/10 text-primary border border-primary/20 shadow-sm"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground border border-transparent",
-                  )}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Icon
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      aria-current={isActive ? "page" : undefined}
+                      onClick={onNavigate}
                       className={cn(
-                        "h-4 w-4 transition-colors",
-                        isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground",
+                        "group flex items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        isActive
+                          ? "bg-primary/10 text-primary border border-primary/20 shadow-sm"
+                          : "text-muted-foreground hover:bg-accent hover:text-foreground border border-transparent",
                       )}
-                    />
-                    <span className="truncate">{item.name}</span>
-                  </div>
-                </Link>
-              );
-            })}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Icon
+                          aria-hidden="true"
+                          className={cn(
+                            "h-4 w-4 shrink-0 transition-colors",
+                            isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground",
+                          )}
+                        />
+                        <span className="truncate">{item.name}</span>
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         ))}
 
@@ -209,21 +233,20 @@ export function Sidebar() {
           <a
             href="https://github.com/Autorix-cl/autorix"
             target="_blank"
-            rel="noreferrer"
-            className="flex items-center justify-between rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <div className="flex items-center gap-2.5">
-              <FileCode2 className="h-4 w-4" />
+              <FileCode2 className="h-4 w-4" aria-hidden="true" />
               <span>GitHub Architecture</span>
             </div>
-            <ExternalLink className="h-3 w-3 opacity-60" />
+            <ExternalLink className="h-3 w-3 opacity-60" aria-hidden="true" />
           </a>
         </div>
-      </div>
+      </nav>
 
-      {/* Footer / Cluster Status — driven by the real /api/health probe,
-          never a hardcoded "7/7 UP" (see src/app/api/health/route.ts). */}
-      <div className="border-t border-border/60 bg-muted/20 p-4">
+      {/* Footer / Cluster Status — driven by the real /api/health probe */}
+      <div className="shrink-0 border-t border-border/60 bg-muted/20 p-4">
         <div
           className={cn(
             "rounded-lg border p-3",
@@ -232,16 +255,16 @@ export function Sidebar() {
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
+              <span className="relative flex h-2 w-2" aria-hidden="true">
                 {allHealthy && (
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                 )}
                 <span
                   className={cn(
                     "relative inline-flex h-2 w-2 rounded-full",
                     allHealthy ? "bg-emerald-500" : totalCount === 0 ? "bg-slate-400" : "bg-amber-500",
                   )}
-                ></span>
+                />
               </span>
               <span className={cn("text-xs font-semibold", allHealthy ? "text-emerald-400" : "text-muted-foreground")}>
                 {t("common.clusterStatus")}
@@ -261,6 +284,21 @@ export function Sidebar() {
           </p>
         </div>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      <aside className="hidden lg:flex w-64 flex-shrink-0 flex-col border-r border-border/70 bg-card/60 backdrop-blur-md">
+        {renderSidebarContent()}
+      </aside>
+
+      <Sheet open={mobileOpen} onOpenChange={onMobileOpenChange}>
+        <SheetContent side="left" className="w-72 p-0 bg-card border-r border-border/70 lg:hidden">
+          <SheetTitle className="sr-only">Navigation menu</SheetTitle>
+          {renderSidebarContent(() => onMobileOpenChange?.(false))}
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

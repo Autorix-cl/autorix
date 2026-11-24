@@ -5,6 +5,17 @@ import { ScopeCatalogSheet } from "./scope-catalog-sheet";
 import { KeyRotateDialog } from "./key-rotate-dialog";
 import { MacaroonInspector } from "./macaroon-inspector";
 
+vi.mock("@/lib/auth/use-permission", () => ({
+  usePermission: () => ({
+    operator: { id: "op-1", email: "admin@example.com", name: "Admin", role: "owner", is_local: true, is_active: true },
+    isLoading: false,
+    can: () => true,
+    hasRole: () => true,
+    checkSession: vi.fn().mockResolvedValue(true),
+  }),
+  Can: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 describe("Vulcan UI Components", () => {
   beforeEach(() => {
     vi.clearAllMocks();

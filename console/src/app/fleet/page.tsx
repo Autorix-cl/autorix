@@ -25,6 +25,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useCapabilities, type EngineType } from "@/lib/capabilities/capability-context";
+import { Can } from "@/lib/auth/use-permission";
 
 interface EngineCardDef {
   type: EngineType;
@@ -47,8 +48,11 @@ const ENGINE_CARDS: EngineCardDef[] = [
 export default function FleetOverviewPage() {
   const { engines, isLoading, refreshCapabilities } = useCapabilities();
 
-  const totalInstances = Object.values(engines).reduce((acc, curr) => acc + curr.instanceCount, 0);
+  const totalInstances = Object.values(engines).reduce((acc, curr) => acc + (curr.instanceCount ?? 0), 0);
   const healthyCount = Object.values(engines).filter((e) => e.status === "healthy").length;
+  const connectedTypes = Object.values(engines).filter(
+    (e) => e.status === "healthy" || e.status === "degraded" || (e.instanceCount ?? 0) > 0,
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -60,16 +64,18 @@ export default function FleetOverviewPage() {
         arn="arn:autorix:argus:prod:default:fleet/control-plane"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={refreshCapabilities} disabled={isLoading} className="h-8 gap-1.5 text-xs">
-              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+            <Button type="button" variant="outline" size="sm" onClick={refreshCapabilities} disabled={isLoading} className="h-8 gap-1.5 text-xs">
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} aria-hidden="true" />
               Refresh
             </Button>
-            <Link href="/fleet/enroll">
-              <Button size="sm" className="h-8 gap-1.5 text-xs">
-                <Plus className="h-3.5 w-3.5" />
-                Enroll Engine
+            <Can perform="fleet:manage">
+              <Button asChild size="sm" className="h-8 gap-1.5 text-xs">
+                <Link href="/fleet/enroll">
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  Enroll Engine
+                </Link>
               </Button>
-            </Link>
+            </Can>
           </div>
         }
       />
@@ -78,14 +84,14 @@ export default function FleetOverviewPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="border-border/80 bg-card/60 backdrop-blur-xs">
           <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-xs">Active Engine Types</CardDescription>
+            <CardDescription className="text-xs">Connected Engine Types</CardDescription>
             <CardTitle className="text-2xl font-bold font-mono text-foreground flex items-center justify-between">
-              <span>{Object.keys(engines).length} / 7</span>
-              <Cpu className="h-5 w-5 text-primary opacity-60" />
+              <span>{connectedTypes} / 7</span>
+              <Cpu className="h-5 w-5 text-primary opacity-60" aria-hidden="true" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0 text-[11px] text-muted-foreground">
-            All primary IAM engines accounted for
+            Registered IAM engine categories
           </CardContent>
         </Card>
 
@@ -94,7 +100,7 @@ export default function FleetOverviewPage() {
             <CardDescription className="text-xs">Registered Instances</CardDescription>
             <CardTitle className="text-2xl font-bold font-mono text-foreground flex items-center justify-between">
               <span>{totalInstances}</span>
-              <Server className="h-5 w-5 text-emerald-400 opacity-60" />
+              <Server className="h-5 w-5 text-emerald-400 opacity-60" aria-hidden="true" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0 text-[11px] text-muted-foreground">
@@ -105,9 +111,9 @@ export default function FleetOverviewPage() {
         <Card className="border-border/80 bg-card/60 backdrop-blur-xs">
           <CardHeader className="p-4 pb-2">
             <CardDescription className="text-xs">Cluster Health</CardDescription>
-            <CardTitle className="text-2xl font-bold font-mono text-emerald-400 flex items-center justify-between">
+            <CardTitle className={`text-2xl font-bold font-mono flex items-center justify-between ${healthyCount === 7 ? "text-emerald-400" : healthyCount > 0 ? "text-amber-400" : "text-muted-foreground"}`}>
               <span>{Math.round((healthyCount / 7) * 100)}%</span>
-              <Activity className="h-5 w-5 text-emerald-400 opacity-60" />
+              <Activity className="h-5 w-5 opacity-60" aria-hidden="true" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0 text-[11px] text-muted-foreground">
@@ -120,10 +126,10 @@ export default function FleetOverviewPage() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground font-mono">
-            Engine Fleet Status (P5-S1-T2)
+            Engine Fleet Status
           </h2>
           <Link href="/fleet/instances" className="text-xs text-primary hover:underline flex items-center gap-1">
-            View all instances <ArrowRight className="h-3 w-3" />
+            View all instances <ArrowRight className="h-3 w-3" aria-hidden="true" />
           </Link>
         </div>
 
@@ -131,8 +137,10 @@ export default function FleetOverviewPage() {
           {ENGINE_CARDS.map((card) => {
             const Icon = card.icon;
             const engineState = engines[card.type];
-            const isHealthy = engineState?.status === "healthy";
-            const isDegraded = engineState?.status === "degraded";
+            const status = engineState?.status ?? "unconnected";
+            const isHealthy = status === "healthy";
+            const isDegraded = status === "degraded";
+            const count = engineState?.instanceCount ?? 0;
 
             return (
               <Card key={card.type} className="border-border/80 bg-card hover:border-primary/40 transition-colors">
@@ -155,20 +163,20 @@ export default function FleetOverviewPage() {
                       }`}
                     >
                       {isHealthy ? (
-                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        <CheckCircle2 className="h-3 w-3 mr-1" aria-hidden="true" />
                       ) : isDegraded ? (
-                        <AlertTriangle className="h-3 w-3 mr-1 text-amber-400" />
+                        <AlertTriangle className="h-3 w-3 mr-1 text-amber-400" aria-hidden="true" />
                       ) : (
-                        <XCircle className="h-3 w-3 mr-1" />
+                        <XCircle className="h-3 w-3 mr-1" aria-hidden="true" />
                       )}
-                      {engineState?.status || "HEALTHY"}
+                      {status}
                     </Badge>
                   </div>
                   <CardDescription className="text-xs mt-2 line-clamp-2">{card.desc}</CardDescription>
                 </CardHeader>
-                <CardContent className="p-4 pt-0 border-t border-border/50 mt-3 pt-3 flex items-center justify-between text-xs text-muted-foreground">
+                <CardContent className="p-4 pt-3 border-t border-border/50 mt-3 flex items-center justify-between text-xs text-muted-foreground">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-foreground font-semibold">{engineState?.instanceCount || 1}</span>
+                    <span className="font-mono text-foreground font-semibold">{count}</span>
                     <span>instance(s)</span>
                   </div>
                   <Link

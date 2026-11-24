@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
 import { getServiceUrl } from "@/lib/api-config";
+import { requireOperator } from "@/lib/auth/session";
 import { alertRuleListSchema } from "@/lib/api/schemas/observability";
 
+const PROMETHEUS_TIMEOUT_MS = 8_000;
+
 export async function GET() {
+  const auth = await requireOperator("observability:read");
+  if (!auth.ok) return auth.response;
+
   try {
-    const response = await fetch(`${getServiceUrl("prometheus")}/api/v1/rules`, { cache: "no-store" });
+    const response = await fetch(`${getServiceUrl("prometheus")}/api/v1/rules`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(PROMETHEUS_TIMEOUT_MS),
+    });
     if (!response.ok) throw new Error(`Prometheus returned ${response.status}`);
     const body = await response.json();
     if (body.status !== "success" || !Array.isArray(body.data?.groups))
@@ -48,6 +57,9 @@ export async function GET() {
   }
 }
 export async function POST() {
+  const auth = await requireOperator("observability:read");
+  if (!auth.ok) return auth.response;
+
   return NextResponse.json(
     { error: "Alert rules are managed by Prometheus configuration" },
     { status: 405, headers: { Allow: "GET" } },

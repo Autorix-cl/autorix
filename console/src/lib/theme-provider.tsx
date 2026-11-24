@@ -24,6 +24,26 @@ const initialState: ThemeProviderState = {
 
 const ThemeProviderContext = React.createContext<ThemeProviderState>(initialState);
 
+function safeGetTheme(storageKey: string): Theme | null {
+  try {
+    const saved = localStorage.getItem(storageKey);
+    if (saved === "dark" || saved === "light" || saved === "system") {
+      return saved;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function safeSetTheme(storageKey: string, value: Theme): void {
+  try {
+    localStorage.setItem(storageKey, value);
+  } catch {
+    // Ignore storage access errors in restricted browsing modes
+  }
+}
+
 export function ThemeProvider({
   children,
   defaultTheme = "dark",
@@ -34,7 +54,7 @@ export function ThemeProvider({
   const [resolvedTheme, setResolvedTheme] = React.useState<"dark" | "light">("dark");
 
   React.useEffect(() => {
-    const savedTheme = localStorage.getItem(storageKey) as Theme | null;
+    const savedTheme = safeGetTheme(storageKey);
     if (savedTheme) {
       setThemeState(savedTheme);
     }
@@ -42,26 +62,45 @@ export function ThemeProvider({
 
   React.useEffect(() => {
     const root = window.document.documentElement;
-    root.classList.remove("light", "dark");
+
+    const applyResolvedTheme = (resolved: "dark" | "light") => {
+      root.classList.remove("light", "dark");
+      root.classList.add(resolved);
+      root.style.colorScheme = resolved;
+      setResolvedTheme(resolved);
+    };
 
     if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-      root.classList.add(systemTheme);
-      setResolvedTheme(systemTheme);
-      return;
+      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      applyResolvedTheme(mediaQuery.matches ? "dark" : "light");
+
+      const handleChange = (event: MediaQueryListEvent) => {
+        applyResolvedTheme(event.matches ? "dark" : "light");
+      };
+      mediaQuery.addEventListener("change", handleChange);
+      return () => {
+        mediaQuery.removeEventListener("change", handleChange);
+      };
     }
 
-    root.classList.add(theme);
-    setResolvedTheme(theme);
+    applyResolvedTheme(theme);
   }, [theme]);
 
-  const setTheme = (newTheme: Theme) => {
-    localStorage.setItem(storageKey, newTheme);
-    setThemeState(newTheme);
-  };
+  const setTheme = React.useCallback(
+    (newTheme: Theme) => {
+      safeSetTheme(storageKey, newTheme);
+      setThemeState(newTheme);
+    },
+    [storageKey],
+  );
+
+  const value = React.useMemo(
+    () => ({ theme, setTheme, resolvedTheme }),
+    [theme, setTheme, resolvedTheme],
+  );
 
   return (
-    <ThemeProviderContext.Provider {...props} value={{ theme, setTheme, resolvedTheme }}>
+    <ThemeProviderContext.Provider {...props} value={value}>
       {children}
     </ThemeProviderContext.Provider>
   );

@@ -32,6 +32,8 @@ function DecisionNodeView({ node, depth = 0 }: { node: DecisionNode; depth?: num
         {hasChildren ? (
           <button
             type="button"
+            aria-expanded={expanded}
+            aria-label={expanded ? "Collapse decision node" : "Expand decision node"}
             onClick={() => setExpanded(!expanded)}
             className="p-0.5 hover:bg-muted rounded"
           >
@@ -94,20 +96,26 @@ export function CheckSimulator({ onCheck }: CheckSimulatorProps) {
   
   const [isChecking, setIsChecking] = React.useState(false);
   const [result, setResult] = React.useState<CheckResult | null>(null);
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsChecking(true);
     setResult(null);
+    setErrorMsg(null);
     try {
       let parsedContext: Record<string, unknown> | undefined;
       if (contextJson.trim()) {
-        parsedContext = JSON.parse(contextJson);
+        try {
+          parsedContext = JSON.parse(contextJson) as Record<string, unknown>;
+        } catch {
+          throw new Error("Request context must be valid JSON.");
+        }
       }
       const res = await onCheck({ subject, relation, object, context: parsedContext });
       setResult(res);
     } catch (err) {
-      console.error(err);
+      setErrorMsg(err instanceof Error ? err.message : "Failed to run access check.");
     } finally {
       setIsChecking(false);
     }
@@ -117,28 +125,27 @@ export function CheckSimulator({ onCheck }: CheckSimulatorProps) {
     <div className="flex flex-col h-full bg-card rounded-md border text-card-foreground shadow-sm">
       <div className="p-4 border-b flex items-center justify-between">
         <h3 className="font-semibold text-sm flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-primary" />
+          <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
           Check Simulator (Playground)
         </h3>
       </div>
 
-      
       <div className="p-4 flex flex-col gap-4">
         <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="flex items-end gap-3">
-            <div className="space-y-1 flex-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-end gap-3">
+            <div className="space-y-1">
               <label htmlFor="check-subject" className="text-xs font-medium text-muted-foreground">Subject</label>
               <Input id="check-subject" value={subject} onChange={e => setSubject(e.target.value)} placeholder="user:alice" required className="h-8 text-sm font-mono" />
             </div>
-            <div className="space-y-1 flex-1">
+            <div className="space-y-1">
               <label htmlFor="check-relation" className="text-xs font-medium text-muted-foreground">Relation / Permission</label>
               <Input id="check-relation" value={relation} onChange={e => setRelation(e.target.value)} placeholder="edit" required className="h-8 text-sm font-mono border-dashed" />
             </div>
-            <div className="space-y-1 flex-1">
+            <div className="space-y-1">
               <label htmlFor="check-object" className="text-xs font-medium text-muted-foreground">Object</label>
               <Input id="check-object" value={object} onChange={e => setObject(e.target.value)} placeholder="document:1" required className="h-8 text-sm font-mono" />
             </div>
-            <Button type="submit" disabled={isChecking} size="sm" className="h-8">
+            <Button type="submit" disabled={isChecking} size="sm" className="h-8 w-full">
               {isChecking ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
               Check Access
             </Button>
@@ -147,6 +154,7 @@ export function CheckSimulator({ onCheck }: CheckSimulatorProps) {
           <div>
             <button
               type="button"
+              aria-expanded={showContext}
               onClick={() => setShowContext(!showContext)}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
             >
@@ -155,6 +163,7 @@ export function CheckSimulator({ onCheck }: CheckSimulatorProps) {
             {showContext && (
               <div className="mt-2">
                 <textarea
+                  aria-label="ABAC request context JSON"
                   value={contextJson}
                   onChange={(e) => setContextJson(e.target.value)}
                   placeholder='{"current_hour": 14, "ip_address": "10.0.0.1"}'
@@ -164,6 +173,15 @@ export function CheckSimulator({ onCheck }: CheckSimulatorProps) {
               </div>
             )}
           </div>
+
+          {errorMsg && (
+            <div
+              role="alert"
+              className="p-2.5 rounded-md border border-destructive/30 bg-destructive/10 text-destructive text-xs"
+            >
+              {errorMsg}
+            </div>
+          )}
         </form>
 
         {/* Results Area */}

@@ -7,14 +7,14 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  return proxyRequest("ego", `/admin/identities/${id}`, identitySchema);
+  return proxyRequest("ego", `/admin/identities/${encodeURIComponent(id)}`, identitySchema);
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params;
   try {
     const body = await req.json();
-    return proxyRequest("ego", `/admin/identities/${id}`, identitySchema, {
+    return proxyRequest("ego", `/admin/identities/${encodeURIComponent(id)}`, identitySchema, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -27,7 +27,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  return proxyRequest("ego", `/admin/identities/${id}`, z.any(), {
+  return proxyRequest("ego", `/admin/identities/${encodeURIComponent(id)}`, z.any(), {
     method: "DELETE",
   });
 }

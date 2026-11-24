@@ -47,17 +47,37 @@ export default function LoginPage() {
   );
 }
 
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  sso_failed: "Enterprise OIDC sign-in could not be completed. Verify Janus SSO configuration or use local break-glass credentials.",
+  saml_failed: "Enterprise SAML sign-in failed assertion verification. Verify your Hermes SAML provider configuration.",
+  invalid_state: "Sign-in session state expired or did not match. Please try signing in again.",
+  missing_code: "The identity provider did not return an authorization code.",
+  session_expired: "Your session has expired. Please sign in again.",
+};
+
+function sanitizeRedirectTarget(raw: string | null): string {
+  if (!raw) return "/";
+  // Allow only same-origin relative paths starting with single "/" and no backslashes or control chars
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\") || /[\x00-\x1f]/.test(raw)) {
+    return "/";
+  }
+  return raw;
+}
+
 function LoginForm() {
   const searchParams = useSearchParams();
-  const rawFrom = searchParams.get("from") || "/";
-  const from = rawFrom.startsWith("/") && !rawFrom.startsWith("//") ? rawFrom : "/";
+  const from = sanitizeRedirectTarget(searchParams.get("from"));
+  const urlErrorCode = searchParams.get("error");
+  const initialError = urlErrorCode
+    ? AUTH_ERROR_MESSAGES[urlErrorCode] || "Authentication could not be completed. Please try again."
+    : null;
 
   const [activeTab, setActiveTab] = useState<"local" | "sso">("local");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError);
 
   const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,8 +171,11 @@ function LoginForm() {
           </div>
 
           {error && (
-            <div className="mb-6 p-3.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-sm flex items-start gap-2.5">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-400" />
+            <div
+              role="alert"
+              className="mb-6 p-3.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-sm flex items-start gap-2.5"
+            >
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-400" aria-hidden="true" />
               <span>{error}</span>
             </div>
           )}
@@ -160,9 +183,17 @@ function LoginForm() {
           {activeTab === "local" ? (
             <form onSubmit={handleLocalLogin} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">Operator Email</label>
+                <label htmlFor="login-email" className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Operator Email
+                </label>
                 <input
+                  id="login-email"
+                  name="email"
                   type="email"
+                  autoComplete="username"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   required
                   autoFocus
                   value={email}
@@ -174,11 +205,16 @@ function LoginForm() {
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-medium text-slate-300">Master Password</label>
+                  <label htmlFor="login-password" className="text-xs font-medium text-slate-300">
+                    Master Password
+                  </label>
                 </div>
                 <div className="relative">
                   <input
+                    id="login-password"
+                    name="password"
                     type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -187,10 +223,12 @@ function LoginForm() {
                   />
                   <button
                     type="button"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-pressed={showPassword}
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded"
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {showPassword ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
                   </button>
                 </div>
               </div>
