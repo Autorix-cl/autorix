@@ -1,6 +1,7 @@
 package http
 
 import (
+	"sort"
 	"time"
 
 	"github.com/autorix/argus/internal/core"
@@ -46,6 +47,8 @@ func toAPIInstance(inst core.Instance, envSlug string) apiInstance {
 }
 
 type apiEvent struct {
+	ID         int64                  `json:"id,omitempty"`
+	InstanceID string                 `json:"instance_id,omitempty"`
 	Type       string                 `json:"type"`
 	Detail     map[string]interface{} `json:"detail,omitempty"`
 	OccurredAt time.Time              `json:"occurred_at"`
@@ -54,9 +57,54 @@ type apiEvent struct {
 func toAPIEvents(events []core.InstanceEvent) []apiEvent {
 	out := make([]apiEvent, 0, len(events))
 	for _, ev := range events {
-		out = append(out, apiEvent{Type: string(ev.Type), Detail: ev.Detail, OccurredAt: ev.OccurredAt})
+		item := apiEvent{
+			ID:         ev.ID,
+			Type:       string(ev.Type),
+			Detail:     ev.Detail,
+			OccurredAt: ev.OccurredAt,
+		}
+		if ev.InstanceID != uuid.Nil {
+			item.InstanceID = ev.InstanceID.String()
+		}
+		out = append(out, item)
 	}
 	return out
+}
+
+type apiLogicalEngine struct {
+	EngineType    string        `json:"engine_type"`
+	Environment   string        `json:"environment"`
+	EnvironmentID string        `json:"environment_id"`
+	Status        string        `json:"status"`
+	InstanceCount int           `json:"instance_count"`
+	Version       string        `json:"version,omitempty"`
+	Capabilities  []string      `json:"capabilities"`
+	Instances     []apiInstance `json:"instances"`
+}
+
+func toAPILogicalEngine(le core.LogicalEngine, envSlug string) apiLogicalEngine {
+	unionCaps, _ := core.AggregateCapabilities(le.Instances)
+	sort.Strings(unionCaps)
+
+	instances := make([]apiInstance, 0, len(le.Instances))
+	version := ""
+	for _, inst := range le.Instances {
+		if version == "" && inst.Version != "" {
+			version = inst.Version
+		}
+		instances = append(instances, toAPIInstance(inst, envSlug))
+	}
+
+	return apiLogicalEngine{
+		EngineType:    le.EngineType,
+		Environment:   envSlug,
+		EnvironmentID: le.EnvironmentID.String(),
+		Status:        string(le.Status),
+		InstanceCount: le.InstanceCount,
+		Version:       version,
+		Capabilities:  unionCaps,
+		Instances:     instances,
+	}
 }
 
 type apiDependency struct {
@@ -72,16 +120,16 @@ type apiDependency struct {
 // response (list) leaves it empty, since only the hash is ever persisted
 // and the plaintext is shown exactly once (P2-S3-T1).
 type apiEnrollmentToken struct {
-	ID            string     `json:"id"`
-	Token         string     `json:"token,omitempty"`
-	EngineType    string     `json:"engine_type"`
-	Environment   string     `json:"environment,omitempty"`
-	UsesAllowed   int        `json:"uses_allowed"`
-	UsesConsumed  int        `json:"uses_consumed"`
-	ExpiresAt     time.Time  `json:"expires_at"`
-	CreatedBy     string     `json:"created_by"`
-	CreatedAt     time.Time  `json:"created_at"`
-	RevokedAt     *time.Time `json:"revoked_at,omitempty"`
+	ID           string     `json:"id"`
+	Token        string     `json:"token,omitempty"`
+	EngineType   string     `json:"engine_type"`
+	Environment  string     `json:"environment,omitempty"`
+	UsesAllowed  int        `json:"uses_allowed"`
+	UsesConsumed int        `json:"uses_consumed"`
+	ExpiresAt    time.Time  `json:"expires_at"`
+	CreatedBy    string     `json:"created_by"`
+	CreatedAt    time.Time  `json:"created_at"`
+	RevokedAt    *time.Time `json:"revoked_at,omitempty"`
 }
 
 func toAPIEnrollmentToken(t core.EnrollmentToken, envSlug string, rawToken string) apiEnrollmentToken {

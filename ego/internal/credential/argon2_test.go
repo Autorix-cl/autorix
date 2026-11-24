@@ -127,3 +127,21 @@ func TestGenerateBackupCodes(t *testing.T) {
 	}
 }
 
+func TestArgon2DecodeHash_RejectsInvalidAndExtremeParams(t *testing.T) {
+	hasher := NewHasher(nil)
+	badHashes := []string{
+		"$argon2id$v=19$m=65536,t=0,p=4$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g",
+		"$argon2id$v=19$m=65536,t=3,p=0$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g",
+		"$argon2id$v=19$m=0,t=3,p=4$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g",
+		"$argon2id$v=19$m=999999999,t=3,p=4$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g",
+		"$argon2id$v=19$m=65536,t=999,p=4$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g",
+		"$argon2id$v=19$m=65536,t=3,p=4$c2hvcnQ$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g",
+	}
+
+	for _, h := range badHashes {
+		ok, err := hasher.ComparePasswordAndHash("password", h)
+		if ok || err == nil {
+			t.Errorf("expected malformed/out-of-range hash %q to be rejected, got ok=%v err=%v", h, ok, err)
+		}
+	}
+}

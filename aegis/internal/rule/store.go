@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -293,9 +294,40 @@ func (s *FileStore) applyLocked(rules []core.Rule) error {
 	}
 	// 0600: rules can encode upstream URLs and authenticator/authorizer
 	// config; only the aegis process needs to read or write this file.
-	if err := os.WriteFile(s.path, data, 0o600); err != nil {
-		return fmt.Errorf("failed to persist rules file: %w", err)
+	// Write atomically via temp file + sync + rename so a crash never leaves
+	// a half-written or truncated rules file on disk.
+	dir := filepath.Dir(s.path)
+	tmp, err := os.CreateTemp(dir, ".aegis-rules-*.tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary rules file: %w", err)
 	}
+	tmpPath := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("failed to set permissions on temporary rules file: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("failed to write temporary rules file: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("failed to sync temporary rules file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("failed to close temporary rules file: %w", err)
+	}
+	if err := os.Rename(tmpPath, s.path); err != nil {
+		return fmt.Errorf("failed to atomically replace rules file: %w", err)
+	}
+	cleanup = false
 
 	s.rules = rules
 	s.matcher = matcher

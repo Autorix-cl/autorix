@@ -249,60 +249,46 @@ func TestHTTP_WebAuthn_Endpoints(t *testing.T) {
 	server := NewServer(nil, nil, nil, newTestHealthHandler(false), true)
 	router := server.Routes()
 
-	// 1. WebAuthn Registration Start
-	regStartReq := httptest.NewRequest("POST", "/self-service/webauthn/registration/start", nil)
-	regStartRec := httptest.NewRecorder()
-	router.ServeHTTP(regStartRec, regStartReq)
-
-	if regStartRec.Code != http.StatusOK {
-		t.Fatalf("expected 200 from webauthn reg start, got %d: %s", regStartRec.Code, regStartRec.Body.String())
-	}
-	var regStartBody map[string]interface{}
-	if err := json.Unmarshal(regStartRec.Body.Bytes(), &regStartBody); err != nil {
-		t.Fatalf("invalid json: %v", err)
-	}
-	sessionID, ok := regStartBody["session_id"].(string)
-	if !ok || sessionID == "" {
-		t.Fatal("expected session_id in registration start response")
+	endpoints := []string{
+		"/self-service/webauthn/registration/start",
+		"/self-service/webauthn/registration/finish",
+		"/self-service/webauthn/login/start",
+		"/self-service/webauthn/login/finish",
 	}
 
-	// 2. WebAuthn Registration Finish
-	regFinishReq := httptest.NewRequest("POST", "/self-service/webauthn/registration/finish", strings.NewReader(`{"session_id":"`+sessionID+`"}`))
-	regFinishRec := httptest.NewRecorder()
-	router.ServeHTTP(regFinishRec, regFinishReq)
+	for _, ep := range endpoints {
+		req := httptest.NewRequest("POST", ep, strings.NewReader(`{}`))
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
 
-	if regFinishRec.Code != http.StatusOK {
-		t.Fatalf("expected 200 from webauthn reg finish, got %d", regFinishRec.Code)
-	}
-
-	// 3. WebAuthn Login Start
-	loginStartReq := httptest.NewRequest("POST", "/self-service/webauthn/login/start", nil)
-	loginStartRec := httptest.NewRecorder()
-	router.ServeHTTP(loginStartRec, loginStartReq)
-
-	if loginStartRec.Code != http.StatusOK {
-		t.Fatalf("expected 200 from webauthn login start, got %d: %s", loginStartRec.Code, loginStartRec.Body.String())
-	}
-	var loginStartBody map[string]interface{}
-	if err := json.Unmarshal(loginStartRec.Body.Bytes(), &loginStartBody); err != nil {
-		t.Fatalf("invalid json: %v", err)
-	}
-	loginSessionID, ok := loginStartBody["session_id"].(string)
-	if !ok || loginSessionID == "" {
-		t.Fatal("expected session_id in login start response")
-	}
-
-	// 4. WebAuthn Login Finish
-	loginFinishReq := httptest.NewRequest("POST", "/self-service/webauthn/login/finish", strings.NewReader(`{"session_id":"`+loginSessionID+`"}`))
-	loginFinishRec := httptest.NewRecorder()
-	router.ServeHTTP(loginFinishRec, loginFinishReq)
-
-	if loginFinishRec.Code != http.StatusOK {
-		t.Fatalf("expected 200 from webauthn login finish, got %d", loginFinishRec.Code)
+		if rec.Code != http.StatusNotImplemented {
+			t.Fatalf("POST %s: expected 501 Not Implemented, got %d: %s", ep, rec.Code, rec.Body.String())
+		}
+		var body map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("POST %s: invalid json: %v", ep, err)
+		}
+		if body["error"] != "webauthn is not yet configured" {
+			t.Fatalf("POST %s: unexpected error body %q", ep, body["error"])
+		}
 	}
 }
 
+func TestHTTP_Registration_RejectsEmptyAndShortPassword(t *testing.T) {
+	server := NewServer(nil, nil, nil, newTestHealthHandler(false), true)
+	router := server.Routes()
 
+	for _, payload := range []string{
+		`{"traits":{"email":"a@example.com"},"password":""}`,
+		`{"traits":{"email":"a@example.com"}}`,
+		`{"traits":{"email":"a@example.com"},"password":"short"}`,
+	} {
+		req := httptest.NewRequest("POST", "/self-service/registration", strings.NewReader(payload))
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
 
-
-
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("payload %s: expected 400 Bad Request, got %d (%s)", payload, rec.Code, rec.Body.String())
+		}
+	}
+}

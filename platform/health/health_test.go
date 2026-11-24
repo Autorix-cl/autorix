@@ -148,6 +148,9 @@ func TestHandler_Ready_503WhenACheckFails(t *testing.T) {
 	if body.Status != "not_ready" {
 		t.Fatalf(`expected status="not_ready", got %q`, body.Status)
 	}
+	if body.Checks["postgres"] != "unhealthy" {
+		t.Fatalf(`expected sanitized check result "unhealthy", got %q`, body.Checks["postgres"])
+	}
 }
 
 func TestHandler_Info_ReportsProvidedFields(t *testing.T) {

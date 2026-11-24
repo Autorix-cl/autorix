@@ -313,6 +313,10 @@ func (s *PostgresStore) Get(id string) (core.Rule, error) {
 
 // Create persists a new rule to Postgres, takes a version snapshot, and hot-reloads the in-memory matcher.
 func (s *PostgresStore) Create(r core.Rule) (core.Rule, error) {
+	if err := rule.ValidateRule(r); err != nil {
+		return core.Rule{}, fmt.Errorf("invalid rule: %w", err)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -390,11 +394,15 @@ func (s *PostgresStore) Create(r core.Rule) (core.Rule, error) {
 
 // Update modifies an existing rule in Postgres, saves a version snapshot, and hot-reloads the cache.
 func (s *PostgresStore) Update(id string, r core.Rule) (core.Rule, error) {
+	r.ID = id
+	if err := rule.ValidateRule(r); err != nil {
+		return core.Rule{}, fmt.Errorf("invalid rule: %w", err)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	ctx := context.Background()
-	r.ID = id
 
 	matchJSON, err := json.Marshal(r.Match)
 	if err != nil {
@@ -558,13 +566,28 @@ func (s *PostgresStore) Rollback(version int) error {
 		if order == 0 {
 			order = idx
 		}
-		matchJSON, _ := json.Marshal(r.Match)
-		authsJSON, _ := json.Marshal(r.Authenticators)
-		authzJSON, _ := json.Marshal(r.Authorizer)
-		mutsJSON, _ := json.Marshal(r.Mutators)
-		upstreamJSON, _ := json.Marshal(r.Upstream)
+		matchJSON, err := json.Marshal(r.Match)
+		if err != nil {
+			return fmt.Errorf("marshal match on rollback: %w", err)
+		}
+		authsJSON, err := json.Marshal(r.Authenticators)
+		if err != nil {
+			return fmt.Errorf("marshal authenticators on rollback: %w", err)
+		}
+		authzJSON, err := json.Marshal(r.Authorizer)
+		if err != nil {
+			return fmt.Errorf("marshal authorizer on rollback: %w", err)
+		}
+		mutsJSON, err := json.Marshal(r.Mutators)
+		if err != nil {
+			return fmt.Errorf("marshal mutators on rollback: %w", err)
+		}
+		upstreamJSON, err := json.Marshal(r.Upstream)
+		if err != nil {
+			return fmt.Errorf("marshal upstream on rollback: %w", err)
+		}
 
-		_, err := tx.Exec(ctx, `
+		_, err = tx.Exec(ctx, `
 			INSERT INTO rules (id, description, order_idx, match, authenticators, authorizer, mutators, upstream, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
 		`, r.ID, r.Description, order, matchJSON, authsJSON, authzJSON, mutsJSON, upstreamJSON)
@@ -604,9 +627,14 @@ func (s *PostgresStore) GetVersions() ([]core.RuleVersion, error) {
 			return nil, fmt.Errorf("scan rule_version: %w", err)
 		}
 		if len(snapshotJSON) > 0 {
-			_ = json.Unmarshal(snapshotJSON, &v.Rules)
+			if err := json.Unmarshal(snapshotJSON, &v.Rules); err != nil {
+				return nil, fmt.Errorf("unmarshal rule_version %d snapshot: %w", v.Version, err)
+			}
 		}
 		versions = append(versions, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rule_versions: %w", err)
 	}
 
 	return versions, nil
@@ -614,6 +642,10 @@ func (s *PostgresStore) GetVersions() ([]core.RuleVersion, error) {
 
 // Import replaces all rules with the provided list in Postgres.
 func (s *PostgresStore) Import(rules []core.Rule) error {
+	if err := rule.ValidateRules(rules); err != nil {
+		return fmt.Errorf("invalid rules in import: %w", err)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -630,18 +662,33 @@ func (s *PostgresStore) Import(rules []core.Rule) error {
 	}
 
 	for idx, r := range rules {
-		matchJSON, _ := json.Marshal(r.Match)
-		authsJSON, _ := json.Marshal(r.Authenticators)
-		authzJSON, _ := json.Marshal(r.Authorizer)
-		mutsJSON, _ := json.Marshal(r.Mutators)
-		upstreamJSON, _ := json.Marshal(r.Upstream)
+		matchJSON, err := json.Marshal(r.Match)
+		if err != nil {
+			return fmt.Errorf("marshal match during import: %w", err)
+		}
+		authsJSON, err := json.Marshal(r.Authenticators)
+		if err != nil {
+			return fmt.Errorf("marshal authenticators during import: %w", err)
+		}
+		authzJSON, err := json.Marshal(r.Authorizer)
+		if err != nil {
+			return fmt.Errorf("marshal authorizer during import: %w", err)
+		}
+		mutsJSON, err := json.Marshal(r.Mutators)
+		if err != nil {
+			return fmt.Errorf("marshal mutators during import: %w", err)
+		}
+		upstreamJSON, err := json.Marshal(r.Upstream)
+		if err != nil {
+			return fmt.Errorf("marshal upstream during import: %w", err)
+		}
 
 		order := r.OrderIdx
 		if order == 0 {
 			order = idx
 		}
 
-		_, err := tx.Exec(ctx, `
+		_, err = tx.Exec(ctx, `
 			INSERT INTO rules (id, description, order_idx, match, authenticators, authorizer, mutators, upstream, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
 		`, r.ID, r.Description, order, matchJSON, authsJSON, authzJSON, mutsJSON, upstreamJSON)
@@ -696,22 +743,35 @@ func (s *PostgresStore) reloadLocked(ctx context.Context) error {
 		}
 
 		if len(matchJSON) > 0 {
-			_ = json.Unmarshal(matchJSON, &r.Match)
+			if err := json.Unmarshal(matchJSON, &r.Match); err != nil {
+				return fmt.Errorf("unmarshal match for rule %s: %w", r.ID, err)
+			}
 		}
 		if len(authsJSON) > 0 {
-			_ = json.Unmarshal(authsJSON, &r.Authenticators)
+			if err := json.Unmarshal(authsJSON, &r.Authenticators); err != nil {
+				return fmt.Errorf("unmarshal authenticators for rule %s: %w", r.ID, err)
+			}
 		}
 		if len(authzJSON) > 0 {
-			_ = json.Unmarshal(authzJSON, &r.Authorizer)
+			if err := json.Unmarshal(authzJSON, &r.Authorizer); err != nil {
+				return fmt.Errorf("unmarshal authorizer for rule %s: %w", r.ID, err)
+			}
 		}
 		if len(mutsJSON) > 0 {
-			_ = json.Unmarshal(mutsJSON, &r.Mutators)
+			if err := json.Unmarshal(mutsJSON, &r.Mutators); err != nil {
+				return fmt.Errorf("unmarshal mutators for rule %s: %w", r.ID, err)
+			}
 		}
 		if len(upstreamJSON) > 0 {
-			_ = json.Unmarshal(upstreamJSON, &r.Upstream)
+			if err := json.Unmarshal(upstreamJSON, &r.Upstream); err != nil {
+				return fmt.Errorf("unmarshal upstream for rule %s: %w", r.ID, err)
+			}
 		}
 
 		rules = append(rules, r)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate rules: %w", err)
 	}
 
 	matcher, err := rule.NewMatcher(rules)
@@ -753,12 +813,35 @@ func recordVersionSnapshotTx(ctx context.Context, tx pgx.Tx, description string)
 		if err := rows.Scan(&r.ID, &r.Description, &r.OrderIdx, &matchJSON, &authsJSON, &authzJSON, &mutsJSON, &upstreamJSON); err != nil {
 			return fmt.Errorf("scan rule for snapshot: %w", err)
 		}
-		_ = json.Unmarshal(matchJSON, &r.Match)
-		_ = json.Unmarshal(authsJSON, &r.Authenticators)
-		_ = json.Unmarshal(authzJSON, &r.Authorizer)
-		_ = json.Unmarshal(mutsJSON, &r.Mutators)
-		_ = json.Unmarshal(upstreamJSON, &r.Upstream)
+		if len(matchJSON) > 0 {
+			if err := json.Unmarshal(matchJSON, &r.Match); err != nil {
+				return fmt.Errorf("unmarshal match for snapshot rule %s: %w", r.ID, err)
+			}
+		}
+		if len(authsJSON) > 0 {
+			if err := json.Unmarshal(authsJSON, &r.Authenticators); err != nil {
+				return fmt.Errorf("unmarshal authenticators for snapshot rule %s: %w", r.ID, err)
+			}
+		}
+		if len(authzJSON) > 0 {
+			if err := json.Unmarshal(authzJSON, &r.Authorizer); err != nil {
+				return fmt.Errorf("unmarshal authorizer for snapshot rule %s: %w", r.ID, err)
+			}
+		}
+		if len(mutsJSON) > 0 {
+			if err := json.Unmarshal(mutsJSON, &r.Mutators); err != nil {
+				return fmt.Errorf("unmarshal mutators for snapshot rule %s: %w", r.ID, err)
+			}
+		}
+		if len(upstreamJSON) > 0 {
+			if err := json.Unmarshal(upstreamJSON, &r.Upstream); err != nil {
+				return fmt.Errorf("unmarshal upstream for snapshot rule %s: %w", r.ID, err)
+			}
+		}
 		rules = append(rules, r)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate rules for snapshot: %w", err)
 	}
 
 	snapshotJSON, err := json.Marshal(rules)

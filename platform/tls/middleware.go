@@ -45,8 +45,11 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		ctx := r.Context()
 		if cert := PeerCertificate(r); cert != nil {
 			ctx = context.WithValue(ctx, PeerIdentityKey, cert.Subject.CommonName)
-			if len(cert.URIs) > 0 {
-				ctx = context.WithValue(ctx, PeerSpiffeIDKey, cert.URIs[0].String())
+			for _, u := range cert.URIs {
+				if u != nil && strings.EqualFold(u.Scheme, "spiffe") {
+					ctx = context.WithValue(ctx, PeerSpiffeIDKey, u.String())
+					break
+				}
 			}
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -68,6 +71,8 @@ func ExtractServiceFromSPIFFE(spiffeURI string) (string, bool) {
 
 // RequirePeerIdentity returns a middleware that rejects requests unless the client presented
 // a valid mTLS certificate with a verified SPIFFE SAN or CommonName matching one of the allowed services.
+// When any SPIFFE URI SAN is present on the certificate, authorization is evaluated strictly against
+// the certificate's SPIFFE URIs without falling back to CommonName.
 func RequirePeerIdentity(allowedServices ...string) func(http.Handler) http.Handler {
 	allowed := make(map[string]bool, len(allowedServices))
 	for _, s := range allowedServices {
@@ -82,25 +87,42 @@ func RequirePeerIdentity(allowedServices ...string) func(http.Handler) http.Hand
 				return
 			}
 
-			// Validate SPIFFE SAN identity
-			var spiffeService string
-			var spiffeID string
-			if len(cert.URIs) > 0 {
-				spiffeID = cert.URIs[0].String()
-				if svc, ok := ExtractServiceFromSPIFFE(spiffeID); ok {
-					spiffeService = svc
+			// Inspect all URI SANs for SPIFFE identities.
+			hasSpiffeURI := false
+			var matchedSpiffeID string
+			var firstSpiffeID string
+			authorized := false
+
+			for _, u := range cert.URIs {
+				if u == nil {
+					continue
+				}
+				uriStr := u.String()
+				if strings.EqualFold(u.Scheme, "spiffe") {
+					hasSpiffeURI = true
+					if firstSpiffeID == "" {
+						firstSpiffeID = uriStr
+					}
+					if svc, ok := ExtractServiceFromSPIFFE(uriStr); ok {
+						if len(allowed) == 0 || allowed[svc] {
+							authorized = true
+							matchedSpiffeID = uriStr
+							break
+						}
+					}
 				}
 			}
 
-			// Peer must match allowed services via SPIFFE SAN or CommonName
 			peerName := strings.ToLower(cert.Subject.CommonName)
-			authorized := false
-			if spiffeService != "" && allowed[spiffeService] {
-				authorized = true
-			} else if len(allowed) > 0 && allowed[peerName] {
-				authorized = true
-			} else if len(allowed) == 0 {
-				authorized = true
+			if !hasSpiffeURI {
+				if len(allowed) == 0 || allowed[peerName] {
+					authorized = true
+				}
+			}
+
+			spiffeID := matchedSpiffeID
+			if spiffeID == "" {
+				spiffeID = firstSpiffeID
 			}
 
 			if !authorized {

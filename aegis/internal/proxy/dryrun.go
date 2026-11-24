@@ -249,6 +249,7 @@ func (p *PipelineProxy) DryRun(r *http.Request) (*core.PipelineTrace, error) {
 
 	// Step 4: Mutators
 	mutatedReq := r.Clone(r.Context())
+	stripUntrustedIdentityHeaders(mutatedReq.Header)
 	for _, mutConfig := range matchedRule.Mutators {
 		mutator, exists := p.mutators[mutConfig.Handler]
 		if !exists {

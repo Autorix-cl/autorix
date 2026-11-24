@@ -10,7 +10,9 @@ package health
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -35,6 +37,7 @@ type InfoProvider func() Info
 
 // Checker owns the set of named readiness checks for one engine.
 type Checker struct {
+	mu     sync.RWMutex
 	checks map[string]CheckFunc
 }
 
@@ -47,15 +50,24 @@ func NewChecker() *Checker {
 // Register adds a named readiness check. Registering the same name twice
 // overwrites the previous check.
 func (c *Checker) Register(name string, fn CheckFunc) {
+	c.mu.Lock()
 	c.checks[name] = fn
+	c.mu.Unlock()
 }
 
 // Ready runs every registered check against ctx and reports whether all of
 // them passed, alongside a per-check result: "ok" or "error: <cause>".
 func (c *Checker) Ready(ctx context.Context) (bool, map[string]string) {
-	results := make(map[string]string, len(c.checks))
-	ok := true
+	c.mu.RLock()
+	snapshot := make(map[string]CheckFunc, len(c.checks))
 	for name, fn := range c.checks {
+		snapshot[name] = fn
+	}
+	c.mu.RUnlock()
+
+	results := make(map[string]string, len(snapshot))
+	ok := true
+	for name, fn := range snapshot {
 		if err := fn(ctx); err != nil {
 			results[name] = "error: " + err.Error()
 			ok = false
@@ -92,9 +104,21 @@ func (h *Handler) Alive(w http.ResponseWriter, r *http.Request) {
 }
 
 // Ready runs the registered checks and reports 200 "ready" only when every
-// one of them passes; otherwise 503 "not_ready" with the per-check causes.
+// one of them passes; otherwise 503 "not_ready". Internal error details are
+// logged server-side and replaced with "unhealthy" in the HTTP payload so
+// unauthenticated callers do not observe internal infrastructure errors.
 func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
 	ok, results := h.checker.Ready(r.Context())
+
+	sanitized := make(map[string]string, len(results))
+	for name, res := range results {
+		if res == "ok" {
+			sanitized[name] = "ok"
+			continue
+		}
+		slog.Default().Warn("readiness check failed", "check", name, "detail", res)
+		sanitized[name] = "unhealthy"
+	}
 
 	status := "ready"
 	code := http.StatusOK
@@ -105,7 +129,7 @@ func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, code, map[string]interface{}{
 		"status": status,
-		"checks": results,
+		"checks": sanitized,
 	})
 }
 

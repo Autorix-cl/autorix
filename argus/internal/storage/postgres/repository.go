@@ -194,11 +194,15 @@ func scanEngineType(row rowScanner) (core.EngineType, error) {
 // ---------------------------------------------------------------------
 
 func (r *Repository) CreateEnrollmentToken(ctx context.Context, t core.EnrollmentToken) (core.EnrollmentToken, error) {
+	usesAllowed := t.UsesAllowed
+	if usesAllowed < 0 {
+		usesAllowed = 0
+	}
 	err := r.pool.QueryRow(ctx, `
 		INSERT INTO enrollment_tokens (token_hash, engine_type, environment_id, uses_allowed, expires_at, created_by)
-		VALUES ($1, $2, $3, NULLIF($4, 0), $5, $6)
+		VALUES ($1, $2, $3, COALESCE(NULLIF($4, 0), 1), $5, $6)
 		RETURNING id, token_hash, engine_type, environment_id, uses_allowed, uses_consumed, expires_at, created_by, created_at, revoked_at
-	`, t.TokenHash, t.EngineType, t.EnvironmentID, t.UsesAllowed, t.ExpiresAt, t.CreatedBy).Scan(
+	`, t.TokenHash, t.EngineType, t.EnvironmentID, usesAllowed, t.ExpiresAt, t.CreatedBy).Scan(
 		&t.ID, &t.TokenHash, &t.EngineType, &t.EnvironmentID, &t.UsesAllowed, &t.UsesConsumed,
 		&t.ExpiresAt, &t.CreatedBy, &t.CreatedAt, &t.RevokedAt,
 	)
@@ -1047,6 +1051,36 @@ func (r *Repository) UpdateOperatorFailedAttempts(ctx context.Context, id uuid.U
 	return nil
 }
 
+func (r *Repository) RecordOperatorFailedLogin(ctx context.Context, id uuid.UUID, maxAttempts int, lockDuration time.Duration) (int, *time.Time, error) {
+	if maxAttempts <= 0 {
+		maxAttempts = 5
+	}
+	lockSecs := int64(lockDuration / time.Second)
+	if lockSecs <= 0 {
+		lockSecs = int64((15 * time.Minute) / time.Second)
+	}
+	var failedAttempts int
+	var lockedUntil *time.Time
+	err := r.pool.QueryRow(ctx, `
+		UPDATE operator_credentials
+		SET failed_attempts = failed_attempts + 1,
+		    locked_until = CASE
+		        WHEN failed_attempts + 1 >= $2 THEN now() + ($3 * interval '1 second')
+		        ELSE locked_until
+		    END,
+		    updated_at = now()
+		WHERE operator_id = $1
+		RETURNING failed_attempts, locked_until
+	`, id, maxAttempts, lockSecs).Scan(&failedAttempts, &lockedUntil)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, nil, core.ErrNotFound
+		}
+		return 0, nil, fmt.Errorf("recording operator failed login: %w", err)
+	}
+	return failedAttempts, lockedUntil, nil
+}
+
 func (r *Repository) ResetOperatorFailedAttempts(ctx context.Context, id uuid.UUID) error {
 	_, err := r.pool.Exec(ctx, `
 		UPDATE operator_credentials
@@ -1142,11 +1176,18 @@ func (r *Repository) GetSessionByTokenHash(ctx context.Context, tokenHash string
 }
 
 func (r *Repository) TouchSession(ctx context.Context, sessionID uuid.UUID, lastActiveAt time.Time, extendExpiry time.Time) error {
+	idleSecs := int64(core.DefaultSessionIdleTTL / time.Second)
+	absSecs := int64(core.DefaultSessionAbsoluteTTL / time.Second)
 	_, err := r.pool.Exec(ctx, `
 		UPDATE operator_sessions
-		SET last_active_at = $2, expires_at = $3
-		WHERE id = $1
-	`, sessionID, lastActiveAt, extendExpiry)
+		SET last_active_at = $2,
+		    expires_at = LEAST(
+		        $3,
+		        now() + ($4 * interval '1 second'),
+		        created_at + ($5 * interval '1 second')
+		    )
+		WHERE id = $1 AND expires_at > now()
+	`, sessionID, lastActiveAt, extendExpiry, idleSecs, absSecs)
 	if err != nil {
 		return fmt.Errorf("touching session: %w", err)
 	}
@@ -1376,5 +1417,3 @@ func (r *Repository) DeleteServiceAccount(ctx context.Context, id uuid.UUID) err
 	}
 	return nil
 }
-
-

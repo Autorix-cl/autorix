@@ -7,7 +7,10 @@ package registry
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -188,14 +191,14 @@ func New(cfg Config) *Client {
 	}
 
 	c := &Client{
-		cfg:                  cfg,
-		enabled:              cfg.ArgusURL != "" && cfg.EnrollmentToken != "",
-		logger:               logger,
-		heartbeatInterval:    interval,
-		newTicker:            newRealTicker,
-		registerTimeout:      8 * time.Second,
-		registerBackoffBase:  200 * time.Millisecond,
-		registerMaxAttempts:  4,
+		cfg:                    cfg,
+		enabled:                cfg.ArgusURL != "" && cfg.EnrollmentToken != "",
+		logger:                 logger,
+		heartbeatInterval:      interval,
+		newTicker:              newRealTicker,
+		registerTimeout:        8 * time.Second,
+		registerBackoffBase:    200 * time.Millisecond,
+		registerMaxAttempts:    4,
 		heartbeatTimeout:       5 * time.Second,
 		heartbeatBackoffBase:   200 * time.Millisecond,
 		heartbeatMaxAttempts:   3,
@@ -320,8 +323,10 @@ func (c *Client) Start(ctx context.Context) {
 		c.logger.Warn("argus registry client: failed to build grpc client; continuing standalone", "error", err)
 		return
 	}
+	c.mu.Lock()
 	c.conn = conn
 	c.rpc = argusv1.NewArgusServiceClient(conn)
+	c.mu.Unlock()
 
 	if pc, loadErr := c.loadPersistedCredential(); loadErr == nil {
 		c.mu.Lock()
@@ -329,9 +334,10 @@ func (c *Client) Start(ctx context.Context) {
 		c.instanceUUID = pc.InstanceUUID
 		c.credential = pc.Credential
 		c.registeredAt = pc.RegisteredAt
+		instanceUUID := c.instanceUUID
 		c.mu.Unlock()
 		c.logger.Info("reusing persisted argus registry credential; skipping registration",
-			"instance_uuid", c.instanceUUID, "engine_type", c.cfg.EngineType)
+			"instance_uuid", instanceUUID, "engine_type", c.cfg.EngineType)
 	} else {
 		regCtx, cancel := context.WithTimeout(ctx, c.registerTimeout)
 		defer cancel()
@@ -341,22 +347,41 @@ func (c *Client) Start(ctx context.Context) {
 		})
 		if err != nil {
 			c.logger.Warn("argus registry client: registration failed after retries; continuing standalone (degraded)", "error", err)
+			c.mu.Lock()
+			oldConn := c.conn
+			c.conn = nil
+			c.rpc = nil
+			c.mu.Unlock()
+			if oldConn != nil {
+				_ = oldConn.Close()
+			}
 			return
 		}
 
-		c.logger.Info("registered with argus", "instance_uuid", c.instanceUUID, "engine_type", c.cfg.EngineType)
+		c.mu.Lock()
+		instanceUUID := c.instanceUUID
+		c.mu.Unlock()
+		c.logger.Info("registered with argus", "instance_uuid", instanceUUID, "engine_type", c.cfg.EngineType)
 		c.persistCredential()
 	}
 
-	c.doneCh = make(chan struct{})
+	doneCh := make(chan struct{})
 	c.mu.Lock()
+	c.doneCh = doneCh
 	c.heartbeatStarted = true
 	c.mu.Unlock()
-	go c.heartbeatLoop()
+	go c.heartbeatLoop(doneCh)
 }
 
 func (c *Client) register(ctx context.Context) error {
-	resp, err := c.rpc.Register(ctx, &argusv1.RegisterRequest{
+	c.mu.Lock()
+	rpc := c.rpc
+	c.mu.Unlock()
+	if rpc == nil {
+		return fmt.Errorf("argus registry client is not connected")
+	}
+
+	resp, err := rpc.Register(ctx, &argusv1.RegisterRequest{
 		EnrollmentToken: c.cfg.EnrollmentToken,
 		EngineType:      c.cfg.EngineType,
 		InstanceId:      c.cfg.InstanceID,
@@ -460,8 +485,16 @@ func (c *Client) persistCredential() {
 	}
 }
 
-func (c *Client) heartbeatLoop() {
-	defer close(c.doneCh)
+// heartbeatSignature computes the canonical HMAC-SHA256 signature matching
+// Argus's credential.HeartbeatSignature.
+func heartbeatSignature(secret, instanceUUID string, timestampUnix int64, nonce string, live, ready bool) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	fmt.Fprintf(mac, "%s|%d|%s|%t|%t", instanceUUID, timestampUnix, nonce, live, ready)
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func (c *Client) heartbeatLoop(doneCh chan struct{}) {
+	defer close(doneCh)
 
 	t := c.newTicker(c.heartbeatInterval)
 	defer t.Stop()
@@ -492,20 +525,27 @@ func (c *Client) sendHeartbeat() {
 		c.mu.Lock()
 		uuidStr := c.instanceUUID
 		cred := c.credential
+		rpc := c.rpc
 		c.mu.Unlock()
 
-		_, err := c.rpc.Heartbeat(ctx, &argusv1.HeartbeatRequest{
+		if rpc == nil {
+			return fmt.Errorf("argus registry client is not connected")
+		}
+
+		ts := time.Now().Unix()
+		nonce := uuid.NewString()
+		live := true
+		ready := true
+		sig := heartbeatSignature(cred, uuidStr, ts, nonce, live, ready)
+
+		_, err := rpc.Heartbeat(ctx, &argusv1.HeartbeatRequest{
 			InstanceUuid:  uuidStr,
-			Live:          true,
-			Ready:         true,
+			Live:          live,
+			Ready:         ready,
 			Dependencies:  deps,
-			TimestampUnix: time.Now().Unix(),
-			Nonce:         uuid.NewString(),
-			// The current Argus server checks this field directly against
-			// the instance's stored credential hash; it is not yet a
-			// message-bound HMAC signature (see argus/internal/transport
-			// /grpc/server.go Heartbeat).
-			Signature: cred,
+			TimestampUnix: ts,
+			Nonce:         nonce,
+			Signature:     sig,
 		})
 		return err
 	})
@@ -619,19 +659,22 @@ func (c *Client) Stop(ctx context.Context) error {
 	heartbeatStarted := c.heartbeatStarted
 	registered := c.registered
 	uuidStr := c.instanceUUID
+	doneCh := c.doneCh
+	rpc := c.rpc
+	conn := c.conn
 	c.mu.Unlock()
 
-	if heartbeatStarted {
+	if heartbeatStarted && doneCh != nil {
 		select {
-		case <-c.doneCh:
+		case <-doneCh:
 		case <-ctx.Done():
 		case <-time.After(2 * time.Second):
 		}
 	}
 
-	if registered && c.rpc != nil {
+	if registered && rpc != nil {
 		deregCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		_, err := c.rpc.Deregister(deregCtx, &argusv1.DeregisterRequest{
+		_, err := rpc.Deregister(deregCtx, &argusv1.DeregisterRequest{
 			InstanceUuid: uuidStr,
 			Reason:       "sigterm",
 		})
@@ -641,8 +684,14 @@ func (c *Client) Stop(ctx context.Context) error {
 		}
 	}
 
-	if c.conn != nil {
-		_ = c.conn.Close()
+	c.mu.Lock()
+	if c.conn == conn {
+		c.conn = nil
+		c.rpc = nil
+	}
+	c.mu.Unlock()
+	if conn != nil {
+		_ = conn.Close()
 	}
 	return nil
 }

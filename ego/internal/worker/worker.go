@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,10 +13,10 @@ import (
 )
 
 const (
-	StatusPending    = "pending"
-	StatusProcessing = "processing"
-	StatusDelivered  = "delivered"
-	StatusDeadLetter = "dead_letter"
+	StatusPending     = "pending"
+	StatusProcessing  = "processing"
+	StatusDelivered   = "delivered"
+	StatusDeadLetter  = "dead_letter"
 	DefaultMaxRetries = 5
 )
 
@@ -54,6 +55,7 @@ type Worker struct {
 	logger       *slog.Logger
 	pollInterval time.Duration
 	batchSize    int
+	stopOnce     sync.Once
 	stopChan     chan struct{}
 	wg           sync.WaitGroup
 }
@@ -113,8 +115,11 @@ func (w *Worker) Start(ctx context.Context) {
 }
 
 // Stop signals the worker to stop and waits for in-flight jobs to drain.
+// Safe to call multiple times.
 func (w *Worker) Stop() {
-	close(w.stopChan)
+	w.stopOnce.Do(func() {
+		close(w.stopChan)
+	})
 	w.wg.Wait()
 }
 
@@ -162,22 +167,34 @@ func (w *Worker) ProcessBatch(ctx context.Context) error {
 	return nil
 }
 
-// ComputeBackoff calculates exponential backoff with jitter: base * 2^attempt + jitter.
+// ComputeBackoff calculates exponential backoff with jitter: base * 2^(attempt-1) + jitter.
 func ComputeBackoff(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+
 	base := 1 * time.Second
 	maxBackoff := 5 * time.Minute
 
-	backoff := base * (1 << uint(attempt-1))
+	shift := attempt - 1
+	if shift > 16 {
+		shift = 16
+	}
+	backoff := base * (1 << uint(shift))
 	if backoff > maxBackoff || backoff <= 0 {
 		backoff = maxBackoff
 	}
 
-	// Add 10-25% jitter to prevent thundering herd
-	jitter := time.Duration(rand.Int63n(int64(backoff / 4)))
+	// Add up to 25% jitter to prevent thundering herd
+	jitterBound := int64(backoff / 4)
+	if jitterBound <= 0 {
+		return backoff
+	}
+	jitter := time.Duration(rand.Int63n(jitterBound))
 	return backoff + jitter
 }
 
-// LoggingSender is a reference sender that logs emails/SMS.
+// LoggingSender is a reference sender that logs emails/SMS with sensitive fields redacted.
 type LoggingSender struct {
 	logger *slog.Logger
 }
@@ -189,11 +206,33 @@ func NewLoggingSender(logger *slog.Logger) *LoggingSender {
 	return &LoggingSender{logger: logger}
 }
 
+func redactNotificationPayload(payload map[string]interface{}) map[string]interface{} {
+	if payload == nil {
+		return nil
+	}
+	sanitized := make(map[string]interface{}, len(payload))
+	for k, v := range payload {
+		lower := strings.ToLower(k)
+		if strings.Contains(lower, "token") ||
+			strings.Contains(lower, "secret") ||
+			strings.Contains(lower, "password") ||
+			strings.Contains(lower, "recovery_link") ||
+			strings.Contains(lower, "link") ||
+			strings.Contains(lower, "url") ||
+			strings.Contains(lower, "code") {
+			sanitized[k] = "[REDACTED]"
+			continue
+		}
+		sanitized[k] = v
+	}
+	return sanitized
+}
+
 func (s *LoggingSender) Send(ctx context.Context, n Notification) error {
 	s.logger.Info("DISPATCH TRANSACTIONAL NOTIFICATION",
 		"recipient", n.Recipient,
 		"template", n.Template,
-		"payload", n.Payload,
+		"payload", redactNotificationPayload(n.Payload),
 	)
 	return nil
 }

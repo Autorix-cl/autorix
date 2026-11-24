@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/url"
 	"strings"
 	"time"
@@ -108,9 +109,21 @@ func (h *Hasher) ComparePasswordAndHash(password, encodedHash string) (bool, err
 	return false, nil
 }
 
+const (
+	minArgon2Memory      uint32 = 1024       // 1 MiB
+	maxArgon2Memory      uint32 = 512 * 1024 // 512 MiB
+	minArgon2Iterations  uint32 = 1
+	maxArgon2Iterations  uint32 = 32
+	minArgon2Parallelism uint8  = 1
+	maxArgon2Parallelism uint8  = 32
+	minArgon2SaltLen            = 8
+	minArgon2KeyLen             = 16
+	maxArgon2Component          = 1024
+)
+
 func decodeHash(encodedHash string) (*Argon2Params, []byte, []byte, error) {
 	vals := strings.Split(encodedHash, "$")
-	if len(vals) != 6 {
+	if len(vals) != 6 || vals[0] != "" {
 		return nil, nil, nil, ErrInvalidHash
 	}
 
@@ -119,14 +132,19 @@ func decodeHash(encodedHash string) (*Argon2Params, []byte, []byte, error) {
 	}
 
 	var version int
-	_, err := fmt.Sscanf(vals[2], "v=%d", &version)
-	if err != nil || version != argon2.Version {
+	n, err := fmt.Sscanf(vals[2], "v=%d", &version)
+	if err != nil || n != 1 || version != argon2.Version {
 		return nil, nil, nil, ErrIncompatibleVersion
 	}
 
 	params := &Argon2Params{}
-	_, err = fmt.Sscanf(vals[3], "m=%d,t=%d,p=%d", &params.Memory, &params.Iterations, &params.Parallelism)
-	if err != nil {
+	n, err = fmt.Sscanf(vals[3], "m=%d,t=%d,p=%d", &params.Memory, &params.Iterations, &params.Parallelism)
+	if err != nil || n != 3 {
+		return nil, nil, nil, ErrInvalidHash
+	}
+	if params.Memory < minArgon2Memory || params.Memory > maxArgon2Memory ||
+		params.Iterations < minArgon2Iterations || params.Iterations > maxArgon2Iterations ||
+		params.Parallelism < minArgon2Parallelism || params.Parallelism > maxArgon2Parallelism {
 		return nil, nil, nil, ErrInvalidHash
 	}
 
@@ -134,23 +152,19 @@ func decodeHash(encodedHash string) (*Argon2Params, []byte, []byte, error) {
 	if err != nil {
 		return nil, nil, nil, ErrInvalidHash
 	}
-	// A real Argon2id salt/hash is a few dozen bytes; anything above this
-	// bound is a corrupted or hostile stored value, not a legitimate hash —
-	// reject it outright rather than let the uint32 conversion below wrap.
-	const maxComponentLen = 1024
-	if len(salt) > maxComponentLen {
+	if len(salt) < minArgon2SaltLen || len(salt) > maxArgon2Component {
 		return nil, nil, nil, ErrInvalidHash
 	}
-	params.SaltLength = uint32(len(salt)) // #nosec G115 -- bounded to maxComponentLen above
+	params.SaltLength = uint32(len(salt)) // #nosec G115 -- bounded to maxArgon2Component above
 
 	hash, err := base64.RawStdEncoding.DecodeString(vals[5])
 	if err != nil {
 		return nil, nil, nil, ErrInvalidHash
 	}
-	if len(hash) > maxComponentLen {
+	if len(hash) < minArgon2KeyLen || len(hash) > maxArgon2Component {
 		return nil, nil, nil, ErrInvalidHash
 	}
-	params.KeyLength = uint32(len(hash)) // #nosec G115 -- bounded to maxComponentLen above
+	params.KeyLength = uint32(len(hash)) // #nosec G115 -- bounded to maxArgon2Component above
 
 	return params, salt, hash, nil
 }
@@ -158,15 +172,21 @@ func decodeHash(encodedHash string) (*Argon2Params, []byte, []byte, error) {
 const alphaNumericChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 // GenerateSecureRandomString generates a cryptographically secure random alphanumeric string
+// without modulo bias.
 func GenerateSecureRandomString(length int) (string, error) {
-	bytes := make([]byte, length)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	if length <= 0 {
+		return "", nil
 	}
+	maxIdx := big.NewInt(int64(len(alphaNumericChars)))
+	out := make([]byte, length)
 	for i := 0; i < length; i++ {
-		bytes[i] = alphaNumericChars[int(bytes[i])%len(alphaNumericChars)]
+		n, err := rand.Int(rand.Reader, maxIdx)
+		if err != nil {
+			return "", fmt.Errorf("failed to generate random character: %w", err)
+		}
+		out[i] = alphaNumericChars[n.Int64()]
 	}
-	return string(bytes), nil
+	return string(out), nil
 }
 
 // GenerateRecoveryToken generates a 32-byte hex token and its SHA256 hash
@@ -266,4 +286,3 @@ func GenerateBackupCodes(count int) ([]string, []string, error) {
 	}
 	return plainCodes, hashedCodes, nil
 }
-

@@ -18,11 +18,15 @@ import (
 	"github.com/autorix/argus/internal/core"
 	"github.com/autorix/argus/internal/credential"
 	"github.com/autorix/platform/health"
+	"github.com/autorix/platform/httpx"
 	"github.com/autorix/platform/metrics"
 	"github.com/autorix/platform/paging"
 	"github.com/autorix/platform/tracing"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+const maxRequestBodyBytes int64 = 1 << 20 // 1 MiB
 
 // enrollmentTokenPrefix marks a minted enrollment token as recognizably
 // Argus's, the same way vulcan's API keys carry "aet_" — a reviewer
@@ -51,10 +55,16 @@ func (s *Server) Routes() http.Handler {
 		s.health.Register(mux)
 	}
 	if s.repo != nil {
+		mux.HandleFunc("GET /v1/engines", s.handleListEngines)
+		mux.HandleFunc("GET /admin/engines", s.handleListEngines)
+		mux.HandleFunc("GET /v1/events", s.handleListEvents)
+		mux.HandleFunc("GET /admin/events", s.handleListEvents)
 		mux.HandleFunc("GET /v1/instances", s.handleListInstances)
 		mux.HandleFunc("GET /admin/instances", s.handleListInstances)
 		mux.HandleFunc("GET /v1/instances/{id}", s.handleGetInstance)
 		mux.HandleFunc("GET /admin/instances/{id}", s.handleGetInstance)
+		mux.HandleFunc("DELETE /v1/instances/{id}", s.handleForceRemove)
+		mux.HandleFunc("DELETE /admin/instances/{id}", s.handleForceRemove)
 		mux.HandleFunc("POST /v1/instances/manual", s.handleManualRegister)
 		mux.HandleFunc("POST /admin/instances/manual", s.handleManualRegister)
 		mux.HandleFunc("POST /v1/instances/{id}/force-remove", s.handleForceRemove)
@@ -72,6 +82,7 @@ func (s *Server) Routes() http.Handler {
 		mux.HandleFunc("GET /v1/metrics/summary", s.handleGetMetricsSummary)
 		mux.HandleFunc("GET /admin/metrics/summary", s.handleGetMetricsSummary)
 		mux.HandleFunc("GET /v1/stream", s.handleStream)
+		mux.HandleFunc("GET /admin/stream", s.handleStream)
 
 		// Console Identity & Auth (P3-S1, P3-S2)
 		mux.HandleFunc("GET /v1/auth/status", s.handleAuthStatus)
@@ -95,14 +106,30 @@ func (s *Server) Routes() http.Handler {
 		mux.HandleFunc("GET /admin/audit/export", s.handleExportAudit)
 		mux.HandleFunc("GET /v1/compliance/evidence", s.handleGetComplianceEvidence)
 		mux.HandleFunc("GET /admin/compliance/evidence", s.handleGetComplianceEvidence)
+		mux.HandleFunc("POST /v1/compliance/evidence", s.handleGenerateComplianceEvidence)
+		mux.HandleFunc("POST /admin/compliance/evidence", s.handleGenerateComplianceEvidence)
 		mux.HandleFunc("GET /v1/environments", s.handleListEnvironments)
 		mux.HandleFunc("GET /admin/environments", s.handleListEnvironments)
+		mux.HandleFunc("POST /v1/environments", s.handleCreateEnvironment)
+		mux.HandleFunc("POST /admin/environments", s.handleCreateEnvironment)
 		mux.HandleFunc("GET /v1/governance/orgs", s.handleListOrganisations)
 		mux.HandleFunc("GET /admin/governance/orgs", s.handleListOrganisations)
+		mux.HandleFunc("POST /v1/governance/orgs", s.handleCreateOrganisation)
+		mux.HandleFunc("POST /admin/governance/orgs", s.handleCreateOrganisation)
+		mux.HandleFunc("GET /v1/organisations", s.handleListOrganisations)
+		mux.HandleFunc("GET /admin/organisations", s.handleListOrganisations)
+		mux.HandleFunc("POST /v1/organisations", s.handleCreateOrganisation)
+		mux.HandleFunc("POST /admin/organisations", s.handleCreateOrganisation)
 		mux.HandleFunc("GET /v1/governance/projects", s.handleListProjects)
 		mux.HandleFunc("GET /admin/governance/projects", s.handleListProjects)
+		mux.HandleFunc("POST /v1/governance/projects", s.handleCreateProject)
+		mux.HandleFunc("POST /admin/governance/projects", s.handleCreateProject)
+		mux.HandleFunc("GET /v1/projects", s.handleListProjects)
+		mux.HandleFunc("GET /admin/projects", s.handleListProjects)
+		mux.HandleFunc("POST /v1/projects", s.handleCreateProject)
+		mux.HandleFunc("POST /admin/projects", s.handleCreateProject)
 	}
-	return metrics.HTTPMiddleware("argus")(tracing.HTTPMiddleware()(mux))
+	return httpx.MaxBodyBytes(maxRequestBodyBytes)(metrics.HTTPMiddleware("argus")(tracing.HTTPMiddleware()(mux)))
 }
 
 // actorAndOrigin resolves the caller identity and network origin recorded
@@ -245,11 +272,11 @@ func (s *Server) handleGetInstance(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------
 
 type mintEnrollmentTokenRequest struct {
-	EngineType        string `json:"engine_type"`
-	Environment       string `json:"environment"`
-	UsesAllowed       int    `json:"uses_allowed"`
-	ExpiresInSeconds  int    `json:"expires_in_seconds"`
-	CreatedBy         string `json:"created_by"`
+	EngineType       string `json:"engine_type"`
+	Environment      string `json:"environment"`
+	UsesAllowed      int    `json:"uses_allowed"`
+	ExpiresInSeconds int    `json:"expires_in_seconds"`
+	CreatedBy        string `json:"created_by"`
 }
 
 // handleMintEnrollmentToken mints a fresh, high-entropy enrollment token
@@ -581,8 +608,6 @@ func (s *Server) handleGetMetricsSummary(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, summary)
 }
 
-
-
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -600,7 +625,19 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		data, err := json.Marshal(instances)
+		envs, err := s.repo.ListEnvironments(r.Context())
+		if err != nil {
+			return err
+		}
+		envSlugByID := make(map[uuid.UUID]string, len(envs))
+		for _, e := range envs {
+			envSlugByID[e.ID] = e.Slug
+		}
+		out := make([]apiInstance, 0, len(instances))
+		for _, inst := range instances {
+			out = append(out, toAPIInstance(inst, envSlugByID[inst.EnvironmentID]))
+		}
+		data, err := json.Marshal(out)
 		if err != nil {
 			return err
 		}
@@ -765,13 +802,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	valid, err := credential.VerifyPassword(req.Password, op.PasswordHash)
 	if err != nil || !valid {
-		failed := op.FailedAttempts + 1
-		var lockUntil *time.Time
-		if failed >= 5 {
-			t := now.Add(15 * time.Minute)
-			lockUntil = &t
-		}
-		_ = s.repo.UpdateOperatorFailedAttempts(r.Context(), op.ID, failed, lockUntil)
+		_, _, _ = s.repo.RecordOperatorFailedLogin(r.Context(), op.ID, 5, 15*time.Minute)
 		writeError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
@@ -1059,7 +1090,105 @@ func (s *Server) handleExportAudit(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
+func (s *Server) handleListEngines(w http.ResponseWriter, r *http.Request) {
+	filter := core.InstanceFilter{Limit: 1000}
+
+	envParam := strings.TrimSpace(r.URL.Query().Get("environment"))
+	if envParam == "" {
+		envParam = strings.TrimSpace(r.URL.Query().Get("filter.environment"))
+	}
+	if envParam != "" {
+		env, err := s.repo.GetEnvironmentBySlug(r.Context(), envParam)
+		if err != nil && errors.Is(err, core.ErrNotFound) {
+			if parsedID, parseErr := uuid.Parse(envParam); parseErr == nil {
+				env, err = s.repo.GetEnvironmentByID(r.Context(), parsedID)
+			}
+		}
+		if err != nil {
+			if errors.Is(err, core.ErrNotFound) {
+				writeError(w, http.StatusBadRequest, "unknown environment "+envParam)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "looking up environment")
+			return
+		}
+		filter.EnvironmentID = env.ID
+	}
+
+	instances, _, _, err := s.repo.ListInstances(r.Context(), filter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "listing instances for engine rollup")
+		return
+	}
+
+	envs, err := s.repo.ListEnvironments(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "listing environments")
+		return
+	}
+	envSlugByID := make(map[uuid.UUID]string, len(envs))
+	for _, e := range envs {
+		envSlugByID[e.ID] = e.Slug
+	}
+
+	rolledUp := core.RollupInstances(instances)
+	out := make([]apiLogicalEngine, 0, len(rolledUp))
+	for _, le := range rolledUp {
+		out = append(out, toAPILogicalEngine(le, envSlugByID[le.EnvironmentID]))
+	}
+
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
+	var instanceID *uuid.UUID
+	instParam := strings.TrimSpace(r.URL.Query().Get("instance_id"))
+	if instParam == "" {
+		instParam = strings.TrimSpace(r.URL.Query().Get("filter.instance_id"))
+	}
+	if instParam != "" {
+		parsed, err := uuid.Parse(instParam)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "instance_id is not a valid uuid")
+			return
+		}
+		instanceID = &parsed
+	}
+
+	limit := 100
+	if l := strings.TrimSpace(r.URL.Query().Get("limit")); l != "" {
+		parsed, err := strconv.Atoi(l)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		if parsed > 500 {
+			parsed = 500
+		}
+		limit = parsed
+	}
+
+	events, err := s.repo.ListEvents(r.Context(), instanceID, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "listing fleet events")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"data": toAPIEvents(events),
+	})
+}
+
 func (s *Server) handleGetComplianceEvidence(w http.ResponseWriter, r *http.Request) {
+	report, err := s.repo.GetComplianceEvidence(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
+}
+
+func (s *Server) handleGenerateComplianceEvidence(w http.ResponseWriter, r *http.Request) {
 	report, err := s.repo.GetComplianceEvidence(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -1074,7 +1203,47 @@ func (s *Server) handleListEnvironments(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if envs == nil {
+		envs = []core.Environment{}
+	}
 	writeJSON(w, http.StatusOK, envs)
+}
+
+type createEnvironmentRequest struct {
+	Name         string `json:"name"`
+	Slug         string `json:"slug"`
+	Description  string `json:"description"`
+	Type         string `json:"type"`
+	IsProduction bool   `json:"is_production"`
+}
+
+func (s *Server) handleCreateEnvironment(w http.ResponseWriter, r *http.Request) {
+	var req createEnvironmentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	slug := normalizeSlug(req.Slug)
+	if slug == "" {
+		slug = normalizeSlug(name)
+	}
+	if name == "" || slug == "" {
+		writeError(w, http.StatusBadRequest, "name and slug are required")
+		return
+	}
+	isProduction := req.IsProduction || strings.EqualFold(strings.TrimSpace(req.Type), "production")
+
+	env, err := s.repo.CreateEnvironment(r.Context(), name, slug, strings.TrimSpace(req.Description), isProduction)
+	if err != nil {
+		if isPGUniqueViolation(err) {
+			writeError(w, http.StatusConflict, "environment with that slug already exists")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "creating environment")
+		return
+	}
+	writeJSON(w, http.StatusCreated, env)
 }
 
 func (s *Server) handleListOrganisations(w http.ResponseWriter, r *http.Request) {
@@ -1083,22 +1252,151 @@ func (s *Server) handleListOrganisations(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if orgs == nil {
+		orgs = []core.Organisation{}
+	}
 	writeJSON(w, http.StatusOK, orgs)
+}
+
+type createOrganisationRequest struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+func (s *Server) handleCreateOrganisation(w http.ResponseWriter, r *http.Request) {
+	var req createOrganisationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	slug := normalizeSlug(req.Slug)
+	if slug == "" {
+		slug = normalizeSlug(name)
+	}
+	if name == "" || slug == "" {
+		writeError(w, http.StatusBadRequest, "name and slug are required")
+		return
+	}
+
+	org, err := s.repo.CreateOrganisation(r.Context(), core.Organisation{
+		Name: name,
+		Slug: slug,
+	})
+	if err != nil {
+		if isPGUniqueViolation(err) {
+			writeError(w, http.StatusConflict, "organisation with that slug already exists")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "creating organisation")
+		return
+	}
+	writeJSON(w, http.StatusCreated, org)
 }
 
 func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	var orgID *uuid.UUID
-	if o := r.URL.Query().Get("org_id"); o != "" {
-		if parsed, err := uuid.Parse(o); err == nil {
-			orgID = &parsed
+	if o := strings.TrimSpace(r.URL.Query().Get("org_id")); o != "" {
+		parsed, err := uuid.Parse(o)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "org_id is not a valid uuid")
+			return
 		}
+		orgID = &parsed
 	}
 	projects, err := s.repo.ListProjects(r.Context(), orgID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if projects == nil {
+		projects = []core.Project{}
+	}
 	writeJSON(w, http.StatusOK, projects)
+}
+
+type createProjectRequest struct {
+	OrgID          string `json:"org_id"`
+	OrganisationID string `json:"organisation_id"`
+	Name           string `json:"name"`
+	Slug           string `json:"slug"`
+}
+
+func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
+	var req createProjectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	rawOrgID := strings.TrimSpace(req.OrgID)
+	if rawOrgID == "" {
+		rawOrgID = strings.TrimSpace(req.OrganisationID)
+	}
+	orgID, err := uuid.Parse(rawOrgID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "org_id must be a valid uuid")
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	slug := normalizeSlug(req.Slug)
+	if slug == "" {
+		slug = normalizeSlug(name)
+	}
+	if name == "" || slug == "" {
+		writeError(w, http.StatusBadRequest, "name and slug are required")
+		return
+	}
+
+	proj, err := s.repo.CreateProject(r.Context(), core.Project{
+		OrgID: orgID,
+		Name:  name,
+		Slug:  slug,
+	})
+	if err != nil {
+		if isPGUniqueViolation(err) {
+			writeError(w, http.StatusConflict, "project with that slug already exists in organisation")
+			return
+		}
+		if isPGForeignKeyViolation(err) {
+			writeError(w, http.StatusBadRequest, "referenced organisation does not exist")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "creating project")
+		return
+	}
+	writeJSON(w, http.StatusCreated, proj)
+}
+
+func normalizeSlug(raw string) string {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	if raw == "" {
+		return ""
+	}
+	var b strings.Builder
+	prevDash := false
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') {
+			b.WriteByte(c)
+			prevDash = false
+		} else if c == '-' || c == '_' || c == ' ' {
+			if !prevDash && b.Len() > 0 {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+func isPGUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+func isPGForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {

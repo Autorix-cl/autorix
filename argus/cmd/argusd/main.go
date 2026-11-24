@@ -120,7 +120,7 @@ func main() {
 		httpx.RequestID,
 		httpx.Recover(logger),
 		httpx.AccessLog(logger),
-		httpx.Timeout(c.RequestTimeout),
+		timeoutExceptStream(c.RequestTimeout),
 		httpx.CORS(httpx.CORSConfig{AllowedOrigins: []string{c.CORSOrigins}}),
 	)
 
@@ -196,6 +196,24 @@ func main() {
 	}
 
 	logger.Info("autorix argus stopped")
+}
+
+// timeoutExceptStream applies httpx.Timeout to standard request/response
+// routes while bypassing it for long-lived Server-Sent Events streams so
+// http.Flusher remains available and connections are not killed after
+// RequestTimeout.
+func timeoutExceptStream(d time.Duration) httpx.Middleware {
+	withTimeout := httpx.Timeout(d)
+	return func(next http.Handler) http.Handler {
+		timed := withTimeout(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v1/stream" || r.URL.Path == "/admin/stream" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			timed.ServeHTTP(w, r)
+		})
+	}
 }
 
 // errInvalidEncKeyLength is returned when ARGUS_CREDENTIAL_ENC_KEY is set

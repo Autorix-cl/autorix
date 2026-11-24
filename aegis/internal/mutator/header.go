@@ -27,7 +27,11 @@ func (m *HeaderMutator) Mutate(r *http.Request, session *core.Session, config ma
 		r.Header.Set("X-User-ID", session.Subject)
 		if len(session.Scopes) > 0 {
 			r.Header.Set("X-User-Scopes", strings.Join(session.Scopes, " "))
+		} else {
+			r.Header.Del("X-User-Scopes")
 		}
+		// Zero Trust: strip raw bearer tokens
+		r.Header.Del("Authorization")
 		return nil
 	}
 

@@ -1,11 +1,11 @@
 package http
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/autorix/ego/internal/core"
@@ -13,11 +13,11 @@ import (
 	"github.com/autorix/ego/internal/session"
 	"github.com/autorix/ego/internal/storage/postgres"
 	"github.com/autorix/platform/health"
+	"github.com/autorix/platform/httpx"
 	"github.com/autorix/platform/metrics"
 	"github.com/autorix/platform/paging"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/go-webauthn/webauthn/webauthn"
 )
 
 var (
@@ -48,7 +48,10 @@ func init() {
 	}
 }
 
-const SessionCookieName = "autorix_session_token"
+const (
+	SessionCookieName   = "autorix_session_token"
+	maxRequestBodyBytes = int64(1 << 20) // 1 MiB
+)
 
 type Server struct {
 	repo           *postgres.Repository
@@ -59,25 +62,16 @@ type Server struct {
 	// true whenever the engine is reachable over TLS (the default) — false
 	// is only for plain-HTTP local development, and must be set explicitly
 	// by the caller, never silently assumed.
-	secureCookies     bool
-	webAuthn          *webauthn.WebAuthn
-	webAuthnSessions  sync.Map
+	secureCookies bool
 }
 
 func NewServer(repo *postgres.Repository, hasher *credential.Hasher, sm *session.Manager, healthHandler *health.Handler, secureCookies bool) *Server {
-	wConfig := &webauthn.Config{
-		RPDisplayName: "Autorix",
-		RPID:          "localhost",
-		RPOrigins:     []string{"http://localhost:3000"},
-	}
-	wa, _ := webauthn.New(wConfig)
 	return &Server{
 		repo:           repo,
 		hasher:         hasher,
 		sessionManager: sm,
 		healthHandler:  healthHandler,
 		secureCookies:  secureCookies,
-		webAuthn:       wa,
 	}
 }
 
@@ -124,7 +118,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /admin/schemas/{id}", s.handleUpdateSchema)
 	mux.HandleFunc("DELETE /admin/schemas/{id}", s.handleDeleteSchema)
 
-	return mux
+	return httpx.MaxBodyBytes(maxRequestBodyBytes)(mux)
 }
 
 func (s *Server) handleListIdentities(w http.ResponseWriter, r *http.Request) {
@@ -220,6 +214,10 @@ func (s *Server) handleUpdateIdentity(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "Identity not found")
 			return
 		}
+		if errors.Is(err, postgres.ErrAlreadyExists) {
+			writeError(w, http.StatusConflict, "Email address is already associated with another identity")
+			return
+		}
 		if strings.Contains(err.Error(), "invalid identity state") {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -259,28 +257,39 @@ func (s *Server) handleRegistration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	flowIDStr := r.URL.Query().Get("flow")
-	if flowIDStr != "" {
-		id, err := uuid.Parse(flowIDStr)
-		if err == nil {
-			flow, err := s.repo.GetFlow(r.Context(), id)
-			if err == nil {
-				if flow.CSRFToken != payload.CSRFToken {
-					writeError(w, http.StatusForbidden, "Invalid CSRF token")
-					return
-				}
-				if time.Now().After(flow.ExpiresAt) {
-					writeError(w, http.StatusBadRequest, "Flow expired")
-					return
-				}
-				_ = s.repo.UpdateFlowState(r.Context(), id, "success")
-			}
-		}
-	}
-
-	if len(payload.Password) > 0 && len(payload.Password) < 8 {
+	if len(payload.Password) < 8 {
 		writeError(w, http.StatusBadRequest, "Password must be at least 8 characters long")
 		return
+	}
+
+	flowIDStr := r.URL.Query().Get("flow")
+	var flowID uuid.UUID
+	hasFlow := false
+	if flowIDStr != "" {
+		id, err := uuid.Parse(flowIDStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid flow ID")
+			return
+		}
+		flow, err := s.repo.GetFlow(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid or unknown registration flow")
+			return
+		}
+		if flow.State == "success" {
+			writeError(w, http.StatusConflict, "Registration flow has already been completed")
+			return
+		}
+		if flow.CSRFToken == "" || subtle.ConstantTimeCompare([]byte(flow.CSRFToken), []byte(payload.CSRFToken)) != 1 {
+			writeError(w, http.StatusForbidden, "Invalid CSRF token")
+			return
+		}
+		if time.Now().After(flow.ExpiresAt) {
+			writeError(w, http.StatusBadRequest, "Flow expired")
+			return
+		}
+		flowID = id
+		hasFlow = true
 	}
 
 	hash, err := s.hasher.GenerateHash(payload.Password)
@@ -293,6 +302,13 @@ func (s *Server) handleRegistration(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
+	}
+
+	if hasFlow {
+		if err := s.repo.UpdateFlowState(r.Context(), flowID, "success"); err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to finalize registration flow")
+			return
+		}
 	}
 
 	sess, err := s.sessionManager.GenerateSession(identity.ID)
@@ -838,9 +854,6 @@ func (s *Server) handleDeleteSchema(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-
-
-
 func (s *Server) handleInitRegistrationFlow(w http.ResponseWriter, r *http.Request) {
 	flow := &core.IdentityFlow{
 		ID:        uuid.New(),
@@ -879,95 +892,17 @@ func (s *Server) handleFetchRegistrationFlow(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) handleWebAuthnRegistrationStart(w http.ResponseWriter, r *http.Request) {
-	sessionID := uuid.New().String()
-	user := dummyWebAuthnUser{id: []byte(uuid.New().String()), name: "user@example.com"}
-	options, sessionData, err := s.webAuthn.BeginRegistration(user)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to begin webauthn registration")
-		return
-	}
-	s.webAuthnSessions.Store(sessionID, sessionData)
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"options":    options,
-		"session_id": sessionID,
-	})
+	writeError(w, http.StatusNotImplemented, "webauthn is not yet configured")
 }
 
 func (s *Server) handleWebAuthnRegistrationFinish(w http.ResponseWriter, r *http.Request) {
-	var payload struct {
-		SessionID string `json:"session_id"`
-	}
-	if r.Body != nil {
-		_ = json.NewDecoder(r.Body).Decode(&payload)
-	}
-
-	sessionID := payload.SessionID
-	if sessionID == "" {
-		sessionID = r.URL.Query().Get("session_id")
-	}
-
-	if sessionID != "" {
-		s.webAuthnSessions.Delete(sessionID)
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{
-		"status":     "webauthn_registered",
-		"session_id": sessionID,
-	})
+	writeError(w, http.StatusNotImplemented, "webauthn is not yet configured")
 }
 
 func (s *Server) handleWebAuthnLoginStart(w http.ResponseWriter, r *http.Request) {
-	sessionID := uuid.New().String()
-	user := dummyWebAuthnUser{id: []byte(uuid.New().String()), name: "user@example.com"}
-	options, sessionData, err := s.webAuthn.BeginLogin(user)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to begin webauthn login")
-		return
-	}
-	s.webAuthnSessions.Store(sessionID, sessionData)
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"options":    options,
-		"session_id": sessionID,
-	})
+	writeError(w, http.StatusNotImplemented, "webauthn is not yet configured")
 }
 
 func (s *Server) handleWebAuthnLoginFinish(w http.ResponseWriter, r *http.Request) {
-	var payload struct {
-		SessionID string `json:"session_id"`
-	}
-	if r.Body != nil {
-		_ = json.NewDecoder(r.Body).Decode(&payload)
-	}
-
-	sessionID := payload.SessionID
-	if sessionID == "" {
-		sessionID = r.URL.Query().Get("session_id")
-	}
-
-	if sessionID != "" {
-		s.webAuthnSessions.Delete(sessionID)
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{
-		"status":     "webauthn_authenticated",
-		"session_id": sessionID,
-	})
-}
-
-type dummyWebAuthnUser struct {
-	id   []byte
-	name string
-}
-
-func (u dummyWebAuthnUser) WebAuthnID() []byte                  { return u.id }
-func (u dummyWebAuthnUser) WebAuthnName() string                { return u.name }
-func (u dummyWebAuthnUser) WebAuthnDisplayName() string         { return u.name }
-func (u dummyWebAuthnUser) WebAuthnIcon() string                { return "" }
-func (u dummyWebAuthnUser) WebAuthnCredentials() []webauthn.Credential {
-	return []webauthn.Credential{
-		{
-			ID:        []byte("mock-cred-id-12345"),
-			PublicKey: []byte("mock-pub-key"),
-		},
-	}
+	writeError(w, http.StatusNotImplemented, "webauthn is not yet configured")
 }

@@ -2,10 +2,13 @@ package postgres_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/autorix/argus/internal/core"
+	"github.com/autorix/argus/internal/storage/postgres"
+	"github.com/google/uuid"
 )
 
 func TestAuditLogAndHashChaining(t *testing.T) {
@@ -223,13 +226,38 @@ func TestChangeRequestsAndMaintenanceWindows(t *testing.T) {
 		t.Fatalf("expected pending status, got %s", cr.Status)
 	}
 
-	// 2. Approve Change Request
+	// 2. Self-approval must be rejected
+	if _, err := repo.ApproveChangeRequest(ctx, cr.ID, "op-dev"); err == nil {
+		t.Fatal("expected self-approval of change request to be rejected")
+	}
+
+	// 2b. Expired change request approval must be rejected
+	past := time.Now().UTC().Add(-1 * time.Minute)
+	expiredCR, err := repo.CreateChangeRequest(ctx, core.ChangeRequest{
+		RequesterID:    "op-dev",
+		Action:         "schema.migrate",
+		TargetResource: "db-cluster-2",
+		ExpiresAt:      &past,
+	})
+	if err != nil {
+		t.Fatalf("CreateChangeRequest expired: %v", err)
+	}
+	if _, err := repo.ApproveChangeRequest(ctx, expiredCR.ID, "op-lead"); err == nil {
+		t.Fatal("expected expired change request approval to be rejected")
+	}
+
+	// 2c. Approve Change Request by another operator
 	approved, err := repo.ApproveChangeRequest(ctx, cr.ID, "op-lead")
 	if err != nil {
 		t.Fatalf("ApproveChangeRequest: %v", err)
 	}
 	if approved.Status != core.ChangeRequestStatusApproved || *approved.ApproverID != "op-lead" {
 		t.Fatalf("unexpected approved state: %+v", approved)
+	}
+
+	// Double-approve must fail
+	if _, err := repo.ApproveChangeRequest(ctx, cr.ID, "op-other"); err == nil {
+		t.Fatal("expected approving an already approved change request to fail")
 	}
 
 	// 3. Create Maintenance Window
@@ -271,5 +299,105 @@ func TestChangeRequestsAndMaintenanceWindows(t *testing.T) {
 	}
 	if report.Summary.TotalControls == 0 {
 		t.Fatal("expected total controls > 0")
+	}
+}
+
+func TestSanitizeCSVCell_NeutralizesFormulaInjection(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"=CMD|' /C calc'!A0", "'=CMD|' /C calc'!A0"},
+		{"+1+1", "'+1+1"},
+		{"-2+3", "'-2+3"},
+		{"@SUM(1+1)", "'@SUM(1+1)"},
+		{"\t=1+1", "'\t=1+1"},
+		{"\r=1+1", "'\r=1+1"},
+		{"  =HYPERLINK(\"http://evil\")", "'  =HYPERLINK(\"http://evil\")"},
+		{"normal-actor@autorix.io", "normal-actor@autorix.io"},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := postgres.SanitizeCSVCell(tc.in); got != tc.want {
+			t.Errorf("SanitizeCSVCell(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestFormatAuditRecordsCSV_SanitizesFormulas(t *testing.T) {
+	rec := core.AuditRecord{
+		ID:           uuid.MustParse("22222222-2222-2222-2222-222222222222"),
+		ActorID:      "=HYPERLINK(\"http://attacker\")",
+		ActorType:    "operator",
+		Action:       "+policy.update",
+		ResourceType: "policy",
+		ResourceID:   "-pol-1",
+		Environment:  "@prod",
+		Outcome:      "success",
+		CreatedAt:    time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC),
+	}
+	raw, err := postgres.FormatAuditRecordsCSV([]core.AuditRecord{rec})
+	if err != nil {
+		t.Fatalf("FormatAuditRecordsCSV: %v", err)
+	}
+	out := string(raw)
+	for _, want := range []string{"'=HYPERLINK", "'+policy.update", "'-pol-1", "'@prod"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected sanitized token %q in CSV output:\n%s", want, out)
+		}
+	}
+}
+
+func TestEvaluateComplianceEvidence_HonestScoring(t *testing.T) {
+	now := time.Now().UTC()
+
+	// All failing / empty state must NOT report compliant.
+	emptyReport := postgres.EvaluateComplianceEvidence(postgres.ComplianceMetrics{
+		AuditVerification: core.AuditVerificationResult{Verified: true, ChainLength: 0},
+	}, now)
+	if emptyReport.Summary.CompliantControls != 0 {
+		t.Fatalf("expected 0 compliant controls on empty system, got %d (%+v)", emptyReport.Summary.CompliantControls, emptyReport.Data)
+	}
+	if emptyReport.Data[0].Status != core.ComplianceStatusNeedsReview {
+		t.Fatalf("expected CTRL-AUD-001 needs_review with empty chain, got %s", emptyReport.Data[0].Status)
+	}
+	if emptyReport.Data[1].Status != core.ComplianceStatusNonCompliant {
+		t.Fatalf("expected CTRL-IAM-001 non_compliant with 0 active operators, got %s", emptyReport.Data[1].Status)
+	}
+	if emptyReport.Data[2].Status != core.ComplianceStatusNeedsReview {
+		t.Fatalf("expected CTRL-OPS-001 needs_review with 0 instances, got %s", emptyReport.Data[2].Status)
+	}
+
+	// Broken audit chain, operators lacking MFA, and unreachable/evicted instances.
+	unhealthyReport := postgres.EvaluateComplianceEvidence(postgres.ComplianceMetrics{
+		AuditVerification:    core.AuditVerificationResult{Verified: false, ChainLength: 5},
+		TotalOperators:       2,
+		ActiveOperators:      2,
+		MFAEnabledOperators:  1,
+		TotalInstances:       3,
+		HealthyInstances:     2,
+		UnreachableInstances: 1,
+	}, now)
+	if unhealthyReport.Data[0].Status != core.ComplianceStatusNonCompliant {
+		t.Fatalf("expected CTRL-AUD-001 non_compliant for broken chain, got %s", unhealthyReport.Data[0].Status)
+	}
+	if unhealthyReport.Data[1].Status != core.ComplianceStatusNeedsReview {
+		t.Fatalf("expected CTRL-IAM-001 needs_review when MFA < active operators, got %s", unhealthyReport.Data[1].Status)
+	}
+	if unhealthyReport.Data[2].Status != core.ComplianceStatusNonCompliant {
+		t.Fatalf("expected CTRL-OPS-001 non_compliant when unreachable > 0, got %s", unhealthyReport.Data[2].Status)
+	}
+
+	// Fully healthy system with verified audit records, 100% MFA, and healthy instances.
+	healthyReport := postgres.EvaluateComplianceEvidence(postgres.ComplianceMetrics{
+		AuditVerification:   core.AuditVerificationResult{Verified: true, ChainLength: 10, HeadHash: "abc"},
+		TotalOperators:      2,
+		ActiveOperators:     2,
+		MFAEnabledOperators: 2,
+		TotalInstances:      3,
+		HealthyInstances:    3,
+	}, now)
+	if healthyReport.Summary.CompliantControls != 3 || healthyReport.Summary.ScorePercent != 100.0 {
+		t.Fatalf("expected 3/3 compliant (100%%), got %+v", healthyReport.Summary)
 	}
 }

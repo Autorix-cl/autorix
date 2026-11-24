@@ -28,9 +28,10 @@ type Queryer interface {
 // yet. It exists so an engine can adopt migration-version readiness the
 // moment it adopts migration tracking, without inventing the plumbing again.
 func SchemaVersionCheck(db Queryer, table string, expected int) health.CheckFunc {
+	sanitizedTable := pgx.Identifier{table}.Sanitize()
 	return func(ctx context.Context) error {
 		var count int
-		sql := fmt.Sprintf("SELECT COUNT(*) FROM %s", table) // #nosec G201 -- table is a caller-supplied constant, never user input
+		sql := fmt.Sprintf("SELECT COUNT(*) FROM %s", sanitizedTable)
 		if err := db.QueryRow(ctx, sql).Scan(&count); err != nil {
 			return fmt.Errorf("checking %s: %w", table, err)
 		}

@@ -94,8 +94,8 @@ func TestHTTP_ListInstances_FiltersAndPaginates(t *testing.T) {
 
 	var body struct {
 		Data       []map[string]interface{} `json:"data"`
-		NextCursor string                    `json:"next_cursor"`
-		HasMore    bool                      `json:"has_more"`
+		NextCursor string                   `json:"next_cursor"`
+		HasMore    bool                     `json:"has_more"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decoding response: %v", err)
@@ -472,6 +472,3 @@ func TestHTTP_Operator_DeactivateAndLifecycle(t *testing.T) {
 		}
 	}
 }
-
-
-

@@ -2,6 +2,7 @@ package oauth2
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -37,14 +38,17 @@ func NewEngine(issuer string, km *jwks.KeyManager) *Engine {
 
 // VerifyPKCE validates the code_verifier against the stored code_challenge using SHA-256 (RFC 7636)
 func VerifyPKCE(verifier, challenge, method string) bool {
+	if verifier == "" || challenge == "" {
+		return false
+	}
 	if method == "plain" {
-		return verifier == challenge
+		return subtle.ConstantTimeCompare([]byte(verifier), []byte(challenge)) == 1
 	}
 
 	// Default & recommended: S256
 	h := sha256.Sum256([]byte(verifier))
 	calculated := base64.RawURLEncoding.EncodeToString(h[:])
-	return calculated == challenge
+	return subtle.ConstantTimeCompare([]byte(calculated), []byte(challenge)) == 1
 }
 
 // IssueClientCredentialsToken issues an Access Token JWT for Machine-to-Machine clients

@@ -38,6 +38,25 @@ func TestTOTP_GenerateAndVerify(t *testing.T) {
 	if VerifyTOTPCode(secret, "000000") && codeStr != "000000" {
 		t.Error("expected invalid TOTP code to fail")
 	}
+
+	// Strictly require 6 ASCII digits (no leading +/- signs or letters).
+	invalidCodes := []string{
+		"",
+		"12345",
+		"1234567",
+		"+" + codeStr[1:],
+		"-" + codeStr[1:],
+		"12345a",
+		"12 456",
+	}
+	for _, bad := range invalidCodes {
+		if VerifyTOTPCode(secret, bad) {
+			t.Errorf("expected non-6-digit code %q to be rejected", bad)
+		}
+	}
+	if VerifyTOTPCode("", codeStr) {
+		t.Error("expected empty secret to be rejected")
+	}
 }
 
 func TestRecoveryCodes(t *testing.T) {

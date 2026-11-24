@@ -38,3 +38,29 @@ func TestHeaderMutator(t *testing.T) {
 		t.Errorf("expected Authorization header to be deleted")
 	}
 }
+
+func TestHeaderMutator_DefaultBranchStripsAuthAndEmptyScopes(t *testing.T) {
+	mut := NewHeaderMutator()
+	req := httptest.NewRequest("GET", "/api/data", nil)
+	req.Header.Set("Authorization", "Bearer top-secret")
+	req.Header.Set("X-User-Scopes", "spoofed:admin")
+
+	session := &core.Session{
+		Subject: "user-99",
+		Scopes:  nil,
+	}
+
+	if err := mut.Mutate(req, session, map[string]interface{}{}); err != nil {
+		t.Fatalf("Mutate failed: %v", err)
+	}
+
+	if got := req.Header.Get("X-User-ID"); got != "user-99" {
+		t.Fatalf("expected X-User-ID 'user-99', got %q", got)
+	}
+	if got := req.Header.Get("X-User-Scopes"); got != "" {
+		t.Fatalf("expected stale/spoofed X-User-Scopes to be deleted when empty, got %q", got)
+	}
+	if got := req.Header.Get("Authorization"); got != "" {
+		t.Fatalf("expected Authorization header to be stripped in default branch, got %q", got)
+	}
+}

@@ -1,8 +1,12 @@
 package rule
 
 import (
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
+
+	"github.com/autorix/aegis/internal/core"
 )
 
 func TestMatcher(t *testing.T) {
@@ -47,5 +51,65 @@ func TestMatcher(t *testing.T) {
 	}
 	if r2.ID != "rule-2" {
 		t.Errorf("expected rule-2, got %s", r2.ID)
+	}
+}
+
+func TestMatcher_RejectsPathTraversalAndEncodedBypasses(t *testing.T) {
+	yamlRules := `
+- id: "public"
+  match:
+    url: "/public/<.*>"
+    methods: ["*"]
+`
+	matcher, err := NewMatcherFromYAML([]byte(yamlRules))
+	if err != nil {
+		t.Fatalf("failed to create matcher: %v", err)
+	}
+
+	malicious := []*http.Request{
+		{Method: "GET", URL: &url.URL{Path: "/public/../admin"}},
+		{Method: "GET", URL: &url.URL{Path: "/public/foo\x00bar"}},
+		{Method: "GET", URL: &url.URL{Path: "/public/foo", RawPath: "/public%2fadmin"}},
+		{Method: "GET", URL: &url.URL{Path: "/public/foo", RawPath: "/public%2Fadmin"}},
+		{Method: "GET", URL: &url.URL{Path: "/public/foo", RawPath: "/public%5cadmin"}},
+		{Method: "GET", URL: &url.URL{Path: "/public/foo", RawPath: "/public/%2e%2e/admin"}},
+		{Method: "GET", URL: &url.URL{Path: "/public/foo", RawPath: "/public/%2E/admin"}},
+		{Method: "GET", URL: &url.URL{Path: "/public\\admin"}},
+	}
+
+	for i, req := range malicious {
+		if _, err := matcher.Match(req); err == nil {
+			t.Errorf("case %d: expected traversal/bypass path %+v to be rejected", i, req.URL)
+		}
+	}
+
+	// Clean canonicalization of benign double slashes
+	reqClean := httptest.NewRequest("GET", "/public//images/logo.png", nil)
+	r, err := matcher.Match(reqClean)
+	if err != nil || r.ID != "public" {
+		t.Fatalf("expected canonicalized path to match public, got rule=%v err=%v", r, err)
+	}
+}
+
+func TestValidateRule(t *testing.T) {
+	valid := core.Rule{
+		ID:       "r1",
+		Match:    core.MatchConfig{URL: "/api/<.*>", Methods: []string{"GET"}},
+		Upstream: core.UpstreamConfig{URL: "https://backend.internal:8443"},
+	}
+	if err := ValidateRule(valid); err != nil {
+		t.Fatalf("expected valid rule to pass, got %v", err)
+	}
+
+	badScheme := valid
+	badScheme.Upstream.URL = "file:///etc/passwd"
+	if err := ValidateRule(badScheme); err == nil {
+		t.Fatal("expected non-http(s) upstream scheme to be rejected")
+	}
+
+	badRegex := valid
+	badRegex.Match.URL = "/api/[unclosed"
+	if err := ValidateRule(badRegex); err == nil {
+		t.Fatal("expected invalid regex to be rejected")
 	}
 }

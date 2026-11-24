@@ -1,8 +1,11 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -169,11 +172,56 @@ func TestWorker_RetryAndDeadLetterQueue(t *testing.T) {
 }
 
 func TestComputeBackoff(t *testing.T) {
+	b0 := ComputeBackoff(0)
+	bNeg := ComputeBackoff(-5)
 	b1 := ComputeBackoff(1)
 	b2 := ComputeBackoff(2)
 	b3 := ComputeBackoff(3)
 
+	if b0 < time.Second || b0 >= 2*time.Second {
+		t.Errorf("expected attempt=0 to clamp to 1s..1.25s, got %v", b0)
+	}
+	if bNeg < time.Second || bNeg >= 2*time.Second {
+		t.Errorf("expected attempt=-5 to clamp to 1s..1.25s, got %v", bNeg)
+	}
 	if b1 <= 0 || b2 <= b1 || b3 <= b2 {
 		t.Errorf("backoffs not strictly monotonic: b1=%v, b2=%v, b3=%v", b1, b2, b3)
+	}
+}
+
+func TestWorker_StopIsIdempotent(t *testing.T) {
+	w := New(newMockOutboxRepo(), &mockSender{}, nil, Config{PollInterval: 50 * time.Millisecond})
+	w.Start(context.Background())
+	w.Stop()
+	w.Stop() // must not panic on repeated close
+}
+
+func TestLoggingSender_RedactsSensitiveRecoveryFields(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	sender := NewLoggingSender(logger)
+
+	err := sender.Send(context.Background(), Notification{
+		Recipient: "alice@example.com",
+		Template:  "recovery",
+		Payload: map[string]interface{}{
+			"token":         "raw-secret-recovery-token-999",
+			"recovery_link": "/self-service/recovery?token=raw-secret-recovery-token-999",
+			"expires_at":    "2026-01-01T00:00:00Z",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Send failed: %v", err)
+	}
+
+	logged := buf.String()
+	if strings.Contains(logged, "raw-secret-recovery-token-999") {
+		t.Fatalf("expected raw recovery token/link to be redacted from logs, got: %s", logged)
+	}
+	if !strings.Contains(logged, "[REDACTED]") {
+		t.Fatalf("expected [REDACTED] placeholder in logs, got: %s", logged)
+	}
+	if !strings.Contains(logged, "2026-01-01T00:00:00Z") {
+		t.Fatalf("expected non-sensitive expires_at field to remain logged, got: %s", logged)
 	}
 }

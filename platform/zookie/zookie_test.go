@@ -105,6 +105,8 @@ func TestZookie_ParseInvalid(t *testing.T) {
 		"zk_v1_not_base64!!!",
 		"zk_v1_bm90X2FuX2ludA", // "not_an_int" base64
 		"zk_v2_not_hex!!!",
+		"zk_v3_MTIzNDU",
+		"zk_unknown_MTIzNDU",
 	}
 
 	for _, raw := range invalidTokens {
@@ -112,5 +114,36 @@ func TestZookie_ParseInvalid(t *testing.T) {
 		if err == nil {
 			t.Errorf("expected error parsing invalid token %q, got nil", raw)
 		}
+	}
+}
+
+func TestZookie_IsAtLeastFresh_IncomparableFailsClosed(t *testing.T) {
+	v2Parsed, err := Parse(NewWithLSN(200).String())
+	if err != nil {
+		t.Fatalf("failed to parse v2 token: %v", err)
+	}
+	v1Token := New(time.Now().UTC().Add(time.Hour))
+	v2InMem := NewWithLSN(200)
+
+	if v2Parsed.IsAtLeastFresh(v1Token) {
+		t.Errorf("expected parsed v2 token vs v1 token to fail closed")
+	}
+	if v1Token.IsAtLeastFresh(v2Parsed) {
+		t.Errorf("expected v1 token vs parsed v2 token to fail closed")
+	}
+	if v2InMem.IsAtLeastFresh(v1Token) {
+		t.Errorf("expected in-memory v2 token vs v1 token to fail closed")
+	}
+	if (Token{}).IsAtLeastFresh(Token{}) {
+		t.Errorf("expected zero tokens to fail closed")
+	}
+
+	earlier := New(time.Now().UTC())
+	later := New(earlier.Timestamp.Add(time.Second))
+	if !earlier.IsAtLeastFresh(later) {
+		t.Errorf("expected later v1 token to be fresh relative to earlier v1 token")
+	}
+	if later.IsAtLeastFresh(earlier) {
+		t.Errorf("expected earlier v1 token to be stale relative to later v1 token")
 	}
 }

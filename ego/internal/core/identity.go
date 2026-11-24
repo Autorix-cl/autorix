@@ -126,15 +126,13 @@ type UpdateSchemaPayload struct {
 	Schema map[string]interface{} `json:"schema,omitempty"`
 }
 
-
-
 // FlowUINode represents a single UI element (input field, text, etc)
 type FlowUINode struct {
 	Type       string                 `json:"type"`  // "input", "text", "script"
 	Group      string                 `json:"group"` // "default", "password", "webauthn"
 	Attributes map[string]interface{} `json:"attributes"`
 	Messages   []interface{}          `json:"messages,omitempty"`
-	Meta       map[string]interface{}  `json:"meta,omitempty"`
+	Meta       map[string]interface{} `json:"meta,omitempty"`
 }
 
 // IdentityFlow represents a state-machine flow (e.g. registration, login, settings)

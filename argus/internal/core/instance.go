@@ -198,4 +198,3 @@ type TopologyGraph struct {
 	Nodes []TopologyNode `json:"nodes"`
 	Edges []TopologyEdge `json:"edges"`
 }
-

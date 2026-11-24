@@ -30,6 +30,11 @@ func TestVerifyPKCE(t *testing.T) {
 	if !VerifyPKCE("my-plain-secret", "my-plain-secret", "plain") {
 		t.Errorf("expected plain PKCE to pass")
 	}
+
+	// 4. Empty values must fail closed
+	if VerifyPKCE("", "", "plain") || VerifyPKCE("", challenge, "S256") || VerifyPKCE(verifier, "", "S256") {
+		t.Errorf("expected empty verifier or challenge to fail")
+	}
 }
 
 func TestEngine_IssueClientCredentialsToken(t *testing.T) {

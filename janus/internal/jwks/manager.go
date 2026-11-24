@@ -167,16 +167,12 @@ func (km *KeyManager) VerifyJWT(tokenString string) (jwt.MapClaims, error) {
 		km.mu.RLock()
 		defer km.mu.RUnlock()
 
-		if kid, ok := t.Header["kid"].(string); ok && kid != "" {
-			if pubKey, found := km.publicKeys[kid]; found {
-				return pubKey, nil
-			}
-			return nil, errors.New("key not found for token verification")
+		kid, ok := t.Header["kid"].(string)
+		if !ok || kid == "" {
+			return nil, errors.New("missing kid header in token")
 		}
-
-		// If kid is missing or not found, try current key
-		if currentPub, found := km.publicKeys[km.currentKid]; found {
-			return currentPub, nil
+		if pubKey, found := km.publicKeys[kid]; found {
+			return pubKey, nil
 		}
 
 		return nil, errors.New("key not found for token verification")

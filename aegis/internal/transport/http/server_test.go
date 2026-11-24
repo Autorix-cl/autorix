@@ -37,8 +37,8 @@ func (stubRuleStore) Rollback(version int) error {
 	return nil
 }
 func (s stubRuleStore) GetVersions() ([]core.RuleVersion, error) { return s.versions, nil }
-func (stubRuleStore) Import(rules []core.Rule) error            { return nil }
-func (s stubRuleStore) Export() []core.Rule                     { return s.rules }
+func (stubRuleStore) Import(rules []core.Rule) error             { return nil }
+func (s stubRuleStore) Export() []core.Rule                      { return s.rules }
 
 type stubDryRunner struct{}
 
@@ -377,3 +377,21 @@ func TestMetricsEndpoint(t *testing.T) {
 	}
 }
 
+func TestHandleCreateRule_RejectsInvalidSchemeAndRegex(t *testing.T) {
+	srv := newTestServer(health.NewChecker())
+	router := srv.Routes()
+
+	badSchemeBody := `{"id":"bad-scheme","match":{"url":"/api","methods":["GET"]},"upstream":{"url":"file:///etc/passwd"}}`
+	rec1 := httptest.NewRecorder()
+	router.ServeHTTP(rec1, httptest.NewRequest(http.MethodPost, "/admin/rules", strings.NewReader(badSchemeBody)))
+	if rec1.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non-http(s) upstream scheme, got %d (%s)", rec1.Code, rec1.Body.String())
+	}
+
+	badRegexBody := `{"id":"bad-regex","match":{"url":"/api/[invalid","methods":["GET"]},"upstream":{"url":"http://backend.internal"}}`
+	rec2 := httptest.NewRecorder()
+	router.ServeHTTP(rec2, httptest.NewRequest(http.MethodPost, "/admin/rules", strings.NewReader(badRegexBody)))
+	if rec2.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid regex, got %d (%s)", rec2.Code, rec2.Body.String())
+	}
+}

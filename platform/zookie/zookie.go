@@ -103,6 +103,10 @@ func Parse(raw string) (Token, error) {
 	ver := parts[1]
 	encoded := parts[2]
 
+	if ver != v1Ver && ver != v2Ver {
+		return Token{}, fmt.Errorf("%w: unsupported version %q", ErrInvalidToken, ver)
+	}
+
 	decoded, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil {
 		return Token{}, fmt.Errorf("%w: base64 decode error", ErrInvalidToken)
@@ -132,17 +136,22 @@ func Parse(raw string) (Token, error) {
 
 // IsAtLeastFresh checks whether candidate (a database snapshot or cached token) is at least as fresh as requested token t.
 func (t Token) IsAtLeastFresh(candidate Token) bool {
-	// If the requested token has a database LSN, evaluate strictly by LSN sequence
-	if t.LSN > 0 && candidate.LSN > 0 {
-		return candidate.LSN >= t.LSN
+	// If either token carries a database LSN (or v2 version), evaluate strictly by LSN sequence
+	// and fail closed if the peer token does not carry an LSN.
+	if t.LSN > 0 || candidate.LSN > 0 || t.Version == v2Ver || candidate.Version == v2Ver {
+		if t.LSN > 0 && candidate.LSN > 0 {
+			return candidate.LSN >= t.LSN
+		}
+		return false
 	}
 
-	// Fallback to timestamp comparison if LSN is not present
+	// Fallback to timestamp comparison when both tokens carry non-zero timestamps.
 	if !t.Timestamp.IsZero() && !candidate.Timestamp.IsZero() {
 		return !candidate.Timestamp.UTC().Before(t.Timestamp)
 	}
 
-	return true
+	// Fail closed when tokens are incomparable.
+	return false
 }
 
 // IsAtLeastFreshTime checks whether a target snapshot timestamp is at least as fresh as this token (v1 compatibility).

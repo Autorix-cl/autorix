@@ -328,7 +328,7 @@ func (r *Repository) ConsumeGrant(ctx context.Context, codeHash, clientID, redir
 		SET consumed = true
 		WHERE code_hash = $1 AND client_id = $2 AND redirect_uri = $3
 		  AND consumed = false AND expires_at > CURRENT_TIMESTAMP
-		RETURNING client_id, subject, scopes, redirect_uri, resource, code_challenge, code_challenge_method, expires_at, consumed, created_at
+		RETURNING client_id, subject, scopes, redirect_uri, COALESCE(resource, ''), code_challenge, code_challenge_method, expires_at, consumed, created_at
 	`
 
 	var g core.Grant
@@ -393,6 +393,9 @@ func (r *Repository) ListClients(ctx context.Context, limit int, cursor string) 
 		}
 		c.PreviousSecretExpiresAt = prevExpiresAt
 		clients = append(clients, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("failed to iterate clients: %w", err)
 	}
 
 	hasMore := len(clients) > limit
@@ -463,6 +466,9 @@ func (r *Repository) ListGrants(ctx context.Context, clientID, subject string, a
 		}
 		grants = append(grants, g)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("failed to iterate grants: %w", err)
+	}
 
 	hasMore := len(grants) > limit
 	if hasMore {
@@ -518,7 +524,7 @@ func (r *Repository) IsTokenRevoked(ctx context.Context, tokenHash string) (bool
 // GetTokenRecord retrieves an issued token record by its hash
 func (r *Repository) GetTokenRecord(ctx context.Context, tokenHash string) (*core.TokenRecord, error) {
 	query := `
-		SELECT token_hash, client_id, subject, token_type, scopes, resource, family_id, expires_at, revoked, rotated_at, created_at
+		SELECT token_hash, client_id, subject, token_type, scopes, COALESCE(resource, ''), family_id, expires_at, revoked, rotated_at, created_at
 		FROM oauth2_tokens
 		WHERE token_hash = $1
 	`
@@ -585,7 +591,7 @@ func (r *Repository) RotateRefreshToken(ctx context.Context, presentedHash, clie
 		SET revoked = true, rotated_at = $3
 		WHERE token_hash = $1 AND client_id = $2 AND token_type = 'refresh_token'
 		  AND revoked = false AND expires_at > $3
-		RETURNING token_hash, client_id, subject, token_type, scopes, resource, family_id, expires_at, revoked, rotated_at, created_at`,
+		RETURNING token_hash, client_id, subject, token_type, scopes, COALESCE(resource, ''), family_id, expires_at, revoked, rotated_at, created_at`,
 		presentedHash, clientID, now).Scan(
 		&previous.TokenHash, &previous.ClientID, &previous.Subject, &previous.TokenType, &previous.Scopes,
 		&previous.Resource, &previous.FamilyID, &previous.ExpiresAt, &previous.Revoked, &previous.RotatedAt, &previous.CreatedAt)
@@ -683,6 +689,9 @@ func (r *Repository) ListScopes(ctx context.Context) ([]core.OAuth2Scope, error)
 		}
 		scopes = append(scopes, s)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate scopes: %w", err)
+	}
 	return scopes, nil
 }
 
@@ -741,7 +750,7 @@ func (r *Repository) CreateLoginChallenge(ctx context.Context, challenge *core.L
 // GetLoginChallenge retrieves a login challenge
 func (r *Repository) GetLoginChallenge(ctx context.Context, challenge string) (*core.LoginChallenge, error) {
 	query := `
-		SELECT challenge, client_id, redirect_uri, response_type, scopes, resource, state, nonce,
+		SELECT challenge, client_id, redirect_uri, response_type, scopes, COALESCE(resource, ''), state, nonce,
 		       code_challenge, code_challenge_method, subject, login_verifier, handled_at, created_at
 		FROM oauth2_login_challenges
 		WHERE challenge = $1
@@ -772,7 +781,7 @@ func (r *Repository) UpdateLoginChallenge(ctx context.Context, c *core.LoginChal
 	query := `
 		UPDATE oauth2_login_challenges
 		SET subject = $2, login_verifier = $3, handled_at = $4
-		WHERE challenge = $1
+		WHERE challenge = $1 AND handled_at IS NULL
 	`
 	tag, err := r.pool.Exec(ctx, query, c.Challenge, c.Subject, c.LoginVerifier, c.HandledAt)
 	if err != nil {
@@ -806,7 +815,7 @@ func (r *Repository) CreateConsentChallenge(ctx context.Context, challenge *core
 // GetConsentChallenge retrieves a consent challenge
 func (r *Repository) GetConsentChallenge(ctx context.Context, challenge string) (*core.ConsentChallenge, error) {
 	query := `
-		SELECT challenge, login_challenge, client_id, subject, requested_scopes, resource, granted_scopes,
+		SELECT challenge, login_challenge, client_id, subject, requested_scopes, COALESCE(resource, ''), granted_scopes,
 		       consent_verifier, handled_at, created_at
 		FROM oauth2_consent_challenges
 		WHERE challenge = $1
@@ -834,7 +843,7 @@ func (r *Repository) UpdateConsentChallenge(ctx context.Context, c *core.Consent
 	query := `
 		UPDATE oauth2_consent_challenges
 		SET granted_scopes = $2, consent_verifier = $3, handled_at = $4
-		WHERE challenge = $1
+		WHERE challenge = $1 AND handled_at IS NULL
 	`
 	tag, err := r.pool.Exec(ctx, query, c.Challenge, c.GrantedScopes, c.ConsentVerifier, c.HandledAt)
 	if err != nil {

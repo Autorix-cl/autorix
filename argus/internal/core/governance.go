@@ -3,7 +3,9 @@ package core
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,12 +42,46 @@ type AuditRecordFilter struct {
 	Cursor       string
 }
 
-// CalculateAuditRecordHash computes SHA-256(prev_hash + id + action + resource_type + resource_id + outcome + created_at)
-func CalculateAuditRecordHash(prevHash string, id uuid.UUID, action, resourceType, resourceID, outcome string, createdAt time.Time) string {
-	ts := createdAt.UTC().Truncate(time.Microsecond).Format(time.RFC3339Nano)
-	raw := fmt.Sprintf("%s%s%s%s%s%s%s", prevHash, id.String(), action, resourceType, resourceID, outcome, ts)
-	sum := sha256.Sum256([]byte(raw))
-	return hex.EncodeToString(sum[:])
+// CalculateAuditRecordHash computes a collision-resistant SHA-256 digest over
+// the full security-relevant audit payload using length-prefixed fields so
+// delimiter collisions across adjacent values are impossible.
+func CalculateAuditRecordHash(rec AuditRecord) string {
+	ts := rec.CreatedAt.UTC().Truncate(time.Microsecond).Format(time.RFC3339Nano)
+	fields := []string{
+		rec.PrevHash,
+		rec.ID.String(),
+		rec.ActorID,
+		rec.ActorType,
+		rec.Action,
+		rec.ResourceType,
+		rec.ResourceID,
+		rec.Environment,
+		rec.SourceIP,
+		canonicalAuditStateJSON(rec.BeforeState),
+		canonicalAuditStateJSON(rec.AfterState),
+		rec.Outcome,
+		ts,
+	}
+
+	h := sha256.New()
+	for _, f := range fields {
+		_, _ = h.Write([]byte(strconv.Itoa(len(f))))
+		_, _ = h.Write([]byte{':'})
+		_, _ = h.Write([]byte(f))
+		_, _ = h.Write([]byte{'|'})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func canonicalAuditStateJSON(state map[string]interface{}) string {
+	if state == nil {
+		return ""
+	}
+	b, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Sprintf("marshal-error:%v", err)
+	}
+	return string(b)
 }
 
 type AuditVerificationResult struct {

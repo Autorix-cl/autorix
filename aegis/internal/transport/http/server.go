@@ -15,10 +15,13 @@ import (
 	"github.com/autorix/aegis/internal/core"
 	"github.com/autorix/aegis/internal/rule"
 	"github.com/autorix/platform/health"
+	"github.com/autorix/platform/httpx"
 	"github.com/autorix/platform/metrics"
 	"github.com/autorix/platform/paging"
 	"gopkg.in/yaml.v3"
 )
+
+const maxAdminBodyBytes int64 = 1 << 20 // 1 MiB
 
 // RuleStore is the interface needed by the admin API for security rule operations.
 type RuleStore interface {
@@ -95,7 +98,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /admin/handlers", s.handleCatalogue)
 	mux.HandleFunc("POST /admin/rules/test-match", s.handleTestMatch)
 
-	return mux
+	return httpx.MaxBodyBytes(maxAdminBodyBytes)(mux)
 }
 
 func (s *Server) handleListRules(w http.ResponseWriter, r *http.Request) {
@@ -373,16 +376,7 @@ func (s *Server) handleTestMatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func validateRule(r core.Rule) error {
-	if r.Match.URL == "" {
-		return errors.New("match.url is required")
-	}
-	if len(r.Match.Methods) == 0 {
-		return errors.New("match.methods must have at least one entry")
-	}
-	if r.Upstream.URL == "" {
-		return errors.New("upstream.url is required")
-	}
-	return nil
+	return rule.ValidateRule(r)
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
@@ -394,4 +388,3 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
 }
-

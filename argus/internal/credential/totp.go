@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	totpDigits   = 6
-	totpPeriod   = 30
+	totpDigits    = 6
+	totpPeriod    = 30
 	totpSecretLen = 20
 )
 
@@ -50,6 +50,9 @@ func GenerateTOTPSecret(email string) (secret string, uri string, err error) {
 // allowing a +/- 1 step window (30 seconds) for clock drift.
 func VerifyTOTPCode(secret string, code string) bool {
 	cleanSecret := strings.ToUpper(strings.TrimSpace(secret))
+	if cleanSecret == "" {
+		return false
+	}
 	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(cleanSecret)
 	if err != nil {
 		// try with padding
@@ -58,10 +61,18 @@ func VerifyTOTPCode(secret string, code string) bool {
 			return false
 		}
 	}
+	if len(key) == 0 {
+		return false
+	}
 
 	cleanCode := strings.TrimSpace(code)
 	if len(cleanCode) != totpDigits {
 		return false
+	}
+	for i := 0; i < len(cleanCode); i++ {
+		if cleanCode[i] < '0' || cleanCode[i] > '9' {
+			return false
+		}
 	}
 	intCode, err := strconv.Atoi(cleanCode)
 	if err != nil {
@@ -74,6 +85,9 @@ func VerifyTOTPCode(secret string, code string) bool {
 	// Check steps: current - 1, current, current + 1
 	for stepOffset := int64(-1); stepOffset <= 1; stepOffset++ {
 		step := currentStep + stepOffset
+		if step < 0 {
+			continue
+		}
 		expectedCode := generateHOTP(key, uint64(step))
 		if subtle.ConstantTimeEq(int32(expectedCode), int32(intCode)) == 1 {
 			return true

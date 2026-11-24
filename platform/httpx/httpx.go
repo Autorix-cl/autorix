@@ -9,6 +9,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,8 +17,11 @@ import (
 
 type contextKey string
 
-const requestIDKey contextKey = "request_id"
-const requestIDHeader = "X-Request-Id"
+const (
+	requestIDKey    contextKey = "request_id"
+	requestIDHeader            = "X-Request-Id"
+	maxRequestIDLen            = 128
+)
 
 // Middleware wraps an http.Handler with additional behavior.
 type Middleware func(http.Handler) http.Handler
@@ -38,13 +42,29 @@ func RequestIDFromContext(ctx context.Context) string {
 	return id
 }
 
-// RequestID propagates an incoming X-Request-Id header, or generates one
-// when absent, into both the request context and the response header — so
+func isValidRequestID(id string) bool {
+	if len(id) == 0 || len(id) > maxRequestIDLen {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		isAlpha := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+		isDigit := c >= '0' && c <= '9'
+		isPunct := c == '.' || c == '_' || c == ':' || c == '-'
+		if !isAlpha && !isDigit && !isPunct {
+			return false
+		}
+	}
+	return true
+}
+
+// RequestID propagates a validated incoming X-Request-Id header, or generates one
+// when absent or invalid, into both the request context and the response header — so
 // a request can be traced end to end whether or not the caller supplied one.
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get(requestIDHeader)
-		if id == "" {
+		if !isValidRequestID(id) {
 			id = uuid.NewString()
 		}
 		w.Header().Set(requestIDHeader, id)
@@ -56,12 +76,16 @@ func RequestID(next http.Handler) http.Handler {
 // Recover catches a panic anywhere downstream, logs it with a stack trace,
 // and answers 500 instead of taking the whole process down.
 func Recover(logger *slog.Logger) Middleware {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if rec := recover(); rec != nil {
 					logger.Error("panic recovered",
 						"panic", rec,
+						"stack", string(debug.Stack()),
 						"request_id", RequestIDFromContext(r.Context()),
 						"path", r.URL.Path,
 					)
@@ -81,6 +105,16 @@ type statusRecorder struct {
 func (s *statusRecorder) WriteHeader(code int) {
 	s.status = code
 	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusRecorder) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (s *statusRecorder) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
 }
 
 // AccessLog logs one structured line per request: method, path, status,
@@ -120,7 +154,7 @@ func Timeout(d time.Duration) Middleware {
 	return func(next http.Handler) http.Handler {
 		// Use standard TimeoutHandler, but with a JSON body string
 		th := http.TimeoutHandler(next, d, `{"error":"request timed out"}`)
-		
+
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Wrap w to intercept WriteHeader(503) and force Content-Type to JSON
 			tw := &timeoutWriter{ResponseWriter: w}
@@ -138,13 +172,21 @@ type CORSConfig struct {
 	AllowedHeaders []string
 }
 
-func (c CORSConfig) allows(origin string) bool {
+func (c CORSConfig) matchOrigin(origin string) (allowHeader string, allowed bool) {
+	hasWildcard := false
 	for _, o := range c.AllowedOrigins {
-		if o == "*" || o == origin {
-			return true
+		if o == "*" {
+			hasWildcard = true
+			continue
+		}
+		if o == origin {
+			return origin, true
 		}
 	}
-	return false
+	if hasWildcard {
+		return "*", true
+	}
+	return "", false
 }
 
 // CORS answers preflight OPTIONS requests directly and attaches CORS
@@ -162,18 +204,41 @@ func CORS(cfg CORSConfig) Middleware {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Add("Vary", "Origin")
+
 			origin := r.Header.Get("Origin")
-			if origin != "" && cfg.allows(origin) {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
+			allowOrigin, allowed := "", false
+			if origin != "" {
+				allowOrigin, allowed = cfg.matchOrigin(origin)
+			}
+
+			if allowed {
+				w.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 				w.Header().Set("Access-Control-Allow-Methods", join(methods))
 				w.Header().Set("Access-Control-Allow-Headers", join(headers))
 			}
 
 			if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+				if !allowed {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
 
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// MaxBodyBytes bounds the size of incoming request bodies using http.MaxBytesReader.
+func MaxBodyBytes(limit int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if limit > 0 && r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, limit)
+			}
 			next.ServeHTTP(w, r)
 		})
 	}

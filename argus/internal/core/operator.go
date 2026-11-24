@@ -58,12 +58,12 @@ const (
 
 // RoleBinding binds an operator to a role within an environment and engine scope (P3-S4-T2).
 type RoleBinding struct {
-	ID            uuid.UUID     `json:"id"`
-	OperatorID    uuid.UUID     `json:"operator_id"`
-	Role          OperatorRole  `json:"role"`
-	EnvironmentID *uuid.UUID    `json:"environment_id,omitempty"`
-	EngineType    *string       `json:"engine_type,omitempty"`
-	CreatedAt     time.Time     `json:"created_at"`
+	ID            uuid.UUID    `json:"id"`
+	OperatorID    uuid.UUID    `json:"operator_id"`
+	Role          OperatorRole `json:"role"`
+	EnvironmentID *uuid.UUID   `json:"environment_id,omitempty"`
+	EngineType    *string      `json:"engine_type,omitempty"`
+	CreatedAt     time.Time    `json:"created_at"`
 }
 
 // PersonalAccessToken is a scoped programmatic credential for operators (P3-S6-T2).
@@ -88,4 +88,3 @@ type ServiceAccount struct {
 	IsActive    bool         `json:"is_active"`
 	CreatedAt   time.Time    `json:"created_at"`
 }
-

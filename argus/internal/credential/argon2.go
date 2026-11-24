@@ -90,9 +90,22 @@ func VerifyPassword(password, encodedHash string) (bool, error) {
 	return false, nil
 }
 
+const (
+	minArgon2Memory      uint32 = 1024       // 1 MiB
+	maxArgon2Memory      uint32 = 512 * 1024 // 512 MiB
+	minArgon2Iterations  uint32 = 1
+	maxArgon2Iterations  uint32 = 32
+	minArgon2Parallelism uint8  = 1
+	maxArgon2Parallelism uint8  = 32
+	minArgon2SaltLength         = 8
+	maxArgon2SaltLength         = 256
+	minArgon2KeyLength          = 16
+	maxArgon2KeyLength          = 256
+)
+
 func decodeArgon2Hash(encodedHash string) (*Argon2Params, []byte, []byte, error) {
 	vals := strings.Split(encodedHash, "$")
-	if len(vals) != 6 {
+	if len(vals) != 6 || vals[0] != "" {
 		return nil, nil, nil, ErrInvalidHash
 	}
 
@@ -100,14 +113,16 @@ func decodeArgon2Hash(encodedHash string) (*Argon2Params, []byte, []byte, error)
 		return nil, nil, nil, ErrIncompatibleVersion
 	}
 
-	var version int
-	_, err := fmt.Sscanf(vals[2], "v=%d", &version)
+	if !strings.HasPrefix(vals[2], "v=") {
+		return nil, nil, nil, ErrInvalidHash
+	}
+	version, err := strconv.Atoi(strings.TrimPrefix(vals[2], "v="))
 	if err != nil || version != argon2.Version {
 		return nil, nil, nil, ErrIncompatibleVersion
 	}
 
 	params := &Argon2Params{}
-	var memory, iterations, parallelism uint64
+	var seenM, seenT, seenP bool
 	for _, part := range strings.Split(vals[3], ",") {
 		kv := strings.Split(part, "=")
 		if len(kv) != 2 {
@@ -115,34 +130,56 @@ func decodeArgon2Hash(encodedHash string) (*Argon2Params, []byte, []byte, error)
 		}
 		switch kv[0] {
 		case "m":
-			memory, err = strconv.ParseUint(kv[1], 10, 32)
-			if err != nil {
+			if seenM {
+				return nil, nil, nil, ErrInvalidHash
+			}
+			memory, parseErr := strconv.ParseUint(kv[1], 10, 32)
+			if parseErr != nil {
 				return nil, nil, nil, ErrInvalidHash
 			}
 			params.Memory = uint32(memory)
+			seenM = true
 		case "t":
-			iterations, err = strconv.ParseUint(kv[1], 10, 32)
-			if err != nil {
+			if seenT {
+				return nil, nil, nil, ErrInvalidHash
+			}
+			iterations, parseErr := strconv.ParseUint(kv[1], 10, 32)
+			if parseErr != nil {
 				return nil, nil, nil, ErrInvalidHash
 			}
 			params.Iterations = uint32(iterations)
+			seenT = true
 		case "p":
-			parallelism, err = strconv.ParseUint(kv[1], 10, 8)
-			if err != nil {
+			if seenP {
+				return nil, nil, nil, ErrInvalidHash
+			}
+			parallelism, parseErr := strconv.ParseUint(kv[1], 10, 8)
+			if parseErr != nil {
 				return nil, nil, nil, ErrInvalidHash
 			}
 			params.Parallelism = uint8(parallelism)
+			seenP = true
+		default:
+			return nil, nil, nil, ErrInvalidHash
 		}
+	}
+	if !seenM || !seenT || !seenP {
+		return nil, nil, nil, ErrInvalidHash
+	}
+	if params.Memory < minArgon2Memory || params.Memory > maxArgon2Memory ||
+		params.Iterations < minArgon2Iterations || params.Iterations > maxArgon2Iterations ||
+		params.Parallelism < minArgon2Parallelism || params.Parallelism > maxArgon2Parallelism {
+		return nil, nil, nil, ErrInvalidHash
 	}
 
 	salt, err := base64.RawStdEncoding.Strict().DecodeString(vals[4])
-	if err != nil || len(salt) > 256 {
+	if err != nil || len(salt) < minArgon2SaltLength || len(salt) > maxArgon2SaltLength {
 		return nil, nil, nil, ErrInvalidHash
 	}
 	params.SaltLength = uint32(len(salt))
 
 	hash, err := base64.RawStdEncoding.Strict().DecodeString(vals[5])
-	if err != nil || len(hash) > 256 {
+	if err != nil || len(hash) < minArgon2KeyLength || len(hash) > maxArgon2KeyLength {
 		return nil, nil, nil, ErrInvalidHash
 	}
 	params.KeyLength = uint32(len(hash))

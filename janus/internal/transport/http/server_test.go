@@ -101,6 +101,14 @@ func TestDiscoveryAndJWKS(t *testing.T) {
 	if discovery["issuer"] != "http://localhost:4444" {
 		t.Errorf("expected issuer 'http://localhost:4444', got %v", discovery["issuer"])
 	}
+	respTypes, ok := discovery["response_types_supported"].([]interface{})
+	if !ok || len(respTypes) != 1 || respTypes[0] != "code" {
+		t.Errorf("expected response_types_supported=['code'], got %v", discovery["response_types_supported"])
+	}
+	pkceMethods, ok := discovery["code_challenge_methods_supported"].([]interface{})
+	if !ok || len(pkceMethods) != 1 || pkceMethods[0] != "S256" {
+		t.Errorf("expected code_challenge_methods_supported=['S256'], got %v", discovery["code_challenge_methods_supported"])
+	}
 
 	// 2. Test JWKS endpoint
 	reqJWKS := httptest.NewRequest("GET", "/.well-known/jwks.json", nil)
@@ -360,6 +368,9 @@ func TestTokenIntrospectionRevocationAndGrants(t *testing.T) {
 	}
 	if introResp["sub"] != "client-intro" {
 		t.Errorf("expected sub 'client-intro', got %v", introResp["sub"])
+	}
+	if introResp["client_id"] != "client-intro" {
+		t.Errorf("expected client_id 'client-intro', got %v", introResp["client_id"])
 	}
 
 	// A missing client authentication cannot inspect the token.
@@ -723,5 +734,21 @@ func TestRefreshTokenRotationAndReuseDetection(t *testing.T) {
 	latest, err := repo.GetTokenRecord(context.Background(), hashCode(second.RefreshToken))
 	if err != nil || !latest.Revoked {
 		t.Fatalf("latest token must be revoked after reuse: %#v, err=%v", latest, err)
+	}
+}
+
+func TestBuildRedirectURL_PreservesQueryAndEncodesParams(t *testing.T) {
+	got, err := buildRedirectURL("https://app.example/callback?tenant=one", map[string]string{
+		"code":  "abc-123",
+		"state": "x&injected=1",
+	})
+	if err != nil {
+		t.Fatalf("buildRedirectURL failed: %v", err)
+	}
+	if strings.Count(got, "?") != 1 {
+		t.Fatalf("expected exactly one '?' in redirect URL, got %q", got)
+	}
+	if !strings.Contains(got, "tenant=one") || !strings.Contains(got, "code=abc-123") || !strings.Contains(got, "state=x%26injected%3D1") {
+		t.Fatalf("unexpected encoded redirect URL: %q", got)
 	}
 }

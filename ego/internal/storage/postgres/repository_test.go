@@ -462,18 +462,14 @@ func TestUpdateIdentity(t *testing.T) {
 		t.Fatalf("CreateIdentityWithPassword: %v", err)
 	}
 
-	// 1. Update traits and state
+	// 1. Update traits while keeping identity active
 	newTraits := map[string]interface{}{
 		"email": "carol.new@example.com",
 		"name":  "Carol Danvers",
 	}
-	newState := core.StateInactive
-	updated, err := repo.UpdateIdentity(ctx, created.ID, newTraits, &newState, nil)
+	updated, err := repo.UpdateIdentity(ctx, created.ID, newTraits, nil, nil)
 	if err != nil {
 		t.Fatalf("UpdateIdentity: unexpected error: %v", err)
-	}
-	if updated.State != core.StateInactive {
-		t.Errorf("updated.State = %q, want %q", updated.State, core.StateInactive)
 	}
 	if updated.Traits["email"] != "carol.new@example.com" {
 		t.Errorf("updated.Traits[email] = %v, want carol.new@example.com", updated.Traits["email"])
@@ -492,6 +488,19 @@ func TestUpdateIdentity(t *testing.T) {
 	_, err = repo.FindIdentityByIdentifier(ctx, "carol@example.com")
 	if !errors.Is(err, postgres.ErrNotFound) {
 		t.Errorf("expected ErrNotFound for old email, got %v", err)
+	}
+
+	// 1b. Deactivating identity must block FindIdentityByIdentifier and revoke sessions
+	newState := core.StateInactive
+	updated, err = repo.UpdateIdentity(ctx, created.ID, nil, &newState, nil)
+	if err != nil {
+		t.Fatalf("UpdateIdentity(inactive): unexpected error: %v", err)
+	}
+	if updated.State != core.StateInactive {
+		t.Errorf("updated.State = %q, want %q", updated.State, core.StateInactive)
+	}
+	if _, err := repo.FindIdentityByIdentifier(ctx, "carol.new@example.com"); !errors.Is(err, postgres.ErrNotFound) {
+		t.Errorf("expected inactive identity to be excluded from FindIdentityByIdentifier, got %v", err)
 	}
 
 	// 2. Reject invalid state
@@ -997,8 +1006,3 @@ func TestSchemaCRUD(t *testing.T) {
 		t.Errorf("expected ErrNotFound when deleting nonexistent schema, got %v", err)
 	}
 }
-
-
-
-
-

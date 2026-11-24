@@ -88,6 +88,10 @@ func NewClientTLSConfig(cfg ClientConfig) (*tls.Config, error) {
 		tlsConfig.RootCAs = caPool
 	}
 
+	if (cfg.CertFile != "") != (cfg.KeyFile != "") {
+		return nil, fmt.Errorf("both CertFile and KeyFile must be provided together for client TLS")
+	}
+
 	if cfg.CertFile != "" && cfg.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 		if err != nil {

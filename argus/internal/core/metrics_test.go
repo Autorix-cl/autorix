@@ -10,19 +10,19 @@ import (
 func TestAggregateFleetMetrics(t *testing.T) {
 	instances := []core.Instance{
 		{
-			ID:          uuid.New(),
-			EngineType:  "nexus",
-			Status:      core.StatusHealthy,
+			ID:         uuid.New(),
+			EngineType: "nexus",
+			Status:     core.StatusHealthy,
 		},
 		{
-			ID:          uuid.New(),
-			EngineType:  "aegis",
-			Status:      core.StatusHealthy,
+			ID:         uuid.New(),
+			EngineType: "aegis",
+			Status:     core.StatusHealthy,
 		},
 		{
-			ID:          uuid.New(),
-			EngineType:  "ego",
-			Status:      core.StatusDegraded,
+			ID:         uuid.New(),
+			EngineType: "ego",
+			Status:     core.StatusDegraded,
 		},
 	}
 

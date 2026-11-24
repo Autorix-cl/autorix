@@ -35,13 +35,28 @@ func TestSchemaVersionCheck_FailsWhenQueryErrors(t *testing.T) {
 	}
 }
 
+func TestSchemaVersionCheck_SanitizesTableIdentifier(t *testing.T) {
+	q := &stubQueryer{count: 1}
+	check := postgres.SchemaVersionCheck(q, `schema_migrations"; DROP TABLE users; --`, 1)
+
+	if err := check(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `SELECT COUNT(*) FROM "schema_migrations""; DROP TABLE users; --"`
+	if q.lastSQL != want {
+		t.Fatalf("expected sanitized SQL %q, got %q", want, q.lastSQL)
+	}
+}
+
 // stubQueryer implements postgres.Queryer directly for these tests.
 type stubQueryer struct {
 	count    int
 	queryErr error
+	lastSQL  string
 }
 
 func (s *stubQueryer) QueryRow(ctx context.Context, sql string, args ...interface{}) postgres.Row {
+	s.lastSQL = sql
 	return stubRow{count: s.count, err: s.queryErr}
 }
 

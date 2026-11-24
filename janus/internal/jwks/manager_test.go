@@ -3,6 +3,8 @@ package jwks
 import (
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestKeyManager_SignAndVerify(t *testing.T) {
@@ -117,3 +119,24 @@ func TestKeyManager_RotateKey(t *testing.T) {
 	}
 }
 
+func TestKeyManager_VerifyJWT_RejectsMissingKid(t *testing.T) {
+	km, err := NewKeyManager()
+	if err != nil {
+		t.Fatalf("failed to create KeyManager: %v", err)
+	}
+
+	km.mu.RLock()
+	priv := km.privateKeys[km.currentKid]
+	km.mu.RUnlock()
+
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, GenerateClaims("https://auth.autorix.io", "user-1", "client-1", []string{"openid"}, time.Hour))
+	// Deliberately omit kid header
+	raw, err := tok.SignedString(priv)
+	if err != nil {
+		t.Fatalf("sign token without kid: %v", err)
+	}
+
+	if _, err := km.VerifyJWT(raw); err == nil {
+		t.Fatal("expected VerifyJWT to reject token missing kid header")
+	}
+}

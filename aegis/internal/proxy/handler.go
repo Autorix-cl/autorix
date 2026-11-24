@@ -1,18 +1,65 @@
 package proxy
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/autorix/aegis/internal/core"
+	"github.com/autorix/aegis/internal/rule"
 )
+
+var (
+	rewriteRegexMu    sync.RWMutex
+	rewriteRegexCache = make(map[string]*regexp.Regexp)
+)
+
+const maxRewriteRegexCacheEntries = 1024
+
+var untrustedIdentityHeaders = []string{
+	"X-User-ID",
+	"X-User-Email",
+	"X-User-Roles",
+	"X-User-Scopes",
+	"X-User-Subject",
+}
+
+func stripUntrustedIdentityHeaders(h http.Header) {
+	for _, hdr := range untrustedIdentityHeaders {
+		h.Del(hdr)
+	}
+}
+
+func getCompiledMatchRegex(matchURL string) (*regexp.Regexp, error) {
+	rewriteRegexMu.RLock()
+	reg, ok := rewriteRegexCache[matchURL]
+	rewriteRegexMu.RUnlock()
+	if ok {
+		return reg, nil
+	}
+
+	compiled, err := rule.CompileURLPattern(matchURL)
+	if err != nil {
+		return nil, err
+	}
+
+	rewriteRegexMu.Lock()
+	if len(rewriteRegexCache) >= maxRewriteRegexCacheEntries {
+		rewriteRegexCache = make(map[string]*regexp.Regexp)
+	}
+	rewriteRegexCache[matchURL] = compiled
+	rewriteRegexMu.Unlock()
+	return compiled, nil
+}
 
 // RuleMatcher is satisfied by both *rule.Matcher (static, YAML-only) and
 // *rule.Store (hot-reloadable, backs the admin API), so the proxy pipeline
@@ -59,12 +106,17 @@ func NewPipelineProxy(
 
 // BuildUpstreamURL calculates the target upstream URL applying strip_prefix and rewrite options.
 func BuildUpstreamURL(reqURL *url.URL, matchURL string, upstream core.UpstreamConfig) (*url.URL, error) {
+	canonicalPath, err := rule.ValidateAndCanonicalizePath(reqURL, "")
+	if err != nil {
+		return nil, err
+	}
+
 	targetURL, err := url.Parse(upstream.URL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid upstream URL %q: %w", upstream.URL, err)
 	}
 
-	path := reqURL.Path
+	path := canonicalPath
 	if upstream.StripPrefix != "" {
 		if strings.HasPrefix(path, upstream.StripPrefix) {
 			path = strings.TrimPrefix(path, upstream.StripPrefix)
@@ -75,20 +127,11 @@ func BuildUpstreamURL(reqURL *url.URL, matchURL string, upstream core.UpstreamCo
 	}
 
 	if upstream.Rewrite != "" {
-		pattern := matchURL
-		if !strings.HasPrefix(pattern, "^") {
-			pattern = "^" + pattern
+		reg, err := getCompiledMatchRegex(matchURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid rewrite match pattern %q: %w", matchURL, err)
 		}
-		if !strings.HasSuffix(pattern, "$") {
-			pattern = pattern + "$"
-		}
-		pattern = strings.ReplaceAll(pattern, "<", "(")
-		pattern = strings.ReplaceAll(pattern, ">", ")")
-
-		reg, err := regexp.Compile(pattern)
-		if err == nil {
-			path = reg.ReplaceAllString(reqURL.Path, upstream.Rewrite)
-		}
+		path = reg.ReplaceAllString(canonicalPath, upstream.Rewrite)
 	}
 
 	basePath := strings.TrimSuffix(targetURL.Path, "/")
@@ -101,11 +144,22 @@ func BuildUpstreamURL(reqURL *url.URL, matchURL string, upstream core.UpstreamCo
 
 	result := *targetURL
 	result.Path = path
+	result.RawPath = ""
 	result.RawQuery = reqURL.RawQuery
 	return &result, nil
 }
 
 func (p *PipelineProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// 0. Reject path traversal / normalization bypasses and canonicalize before matching/forwarding.
+	canonicalPath, err := rule.ValidateAndCanonicalizePath(r.URL, r.RequestURI)
+	if err != nil {
+		aegisRequestsTotal.WithLabelValues(strconv.Itoa(http.StatusBadRequest)).Inc()
+		writeError(w, http.StatusBadRequest, "Invalid request path")
+		return
+	}
+	r.URL.Path = canonicalPath
+	r.URL.RawPath = ""
+
 	// 1. Match Rule
 	startMatch := time.Now()
 	matchedRule, err := p.matcher.Match(r)
@@ -161,7 +215,8 @@ func (p *PipelineProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Execute Mutators
+	// 4. Strip untrusted client-supplied identity headers, then execute Mutators
+	stripUntrustedIdentityHeaders(r.Header)
 	startMutate := time.Now()
 	for _, mutConfig := range matchedRule.Mutators {
 		mutator, exists := p.mutators[mutConfig.Handler]
@@ -197,6 +252,7 @@ func (p *PipelineProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			req.URL.Scheme = targetURL.Scheme
 			req.URL.Host = targetURL.Host
 			req.URL.Path = targetURL.Path
+			req.URL.RawPath = ""
 			req.URL.RawQuery = targetURL.RawQuery
 		},
 	}
@@ -226,6 +282,23 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 		s.wroteHeader = true
 	}
 	return s.ResponseWriter.Write(b)
+}
+
+func (s *statusRecorder) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (s *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if h, ok := s.ResponseWriter.(http.Hijacker); ok {
+		return h.Hijack()
+	}
+	return nil, nil, http.ErrNotSupported
+}
+
+func (s *statusRecorder) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

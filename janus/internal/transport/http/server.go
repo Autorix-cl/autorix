@@ -3,12 +3,14 @@ package http
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -17,11 +19,14 @@ import (
 	"github.com/autorix/janus/internal/oauth2"
 	"github.com/autorix/janus/internal/storage/postgres"
 	"github.com/autorix/platform/health"
+	"github.com/autorix/platform/httpx"
 	"github.com/autorix/platform/metrics"
 	"github.com/autorix/platform/paging"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+const maxRequestBodyBytes int64 = 1 << 20 // 1 MiB
 
 var (
 	janusTokensIssuedTotal = prometheus.NewCounterVec(
@@ -115,7 +120,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /oauth2/introspect", s.handleIntrospect)
 	mux.HandleFunc("POST /oauth2/revoke", s.handleRevoke)
 
-	return mux
+	return httpx.MaxBodyBytes(maxRequestBodyBytes)(mux)
 }
 
 // AdminRoutes must be served on a private listener. These privileged endpoints
@@ -145,7 +150,7 @@ func (s *Server) AdminRoutes() http.Handler {
 	mux.HandleFunc("POST /admin/scopes", s.handleCreateScope)
 	mux.HandleFunc("DELETE /admin/scopes/{name}", s.handleDeleteScope)
 
-	return mux
+	return httpx.MaxBodyBytes(maxRequestBodyBytes)(mux)
 }
 
 func (s *Server) handleListClients(w http.ResponseWriter, r *http.Request) {
@@ -297,12 +302,12 @@ func (s *Server) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		"introspection_endpoint":                s.issuer + "/oauth2/introspect",
 		"revocation_endpoint":                   s.issuer + "/oauth2/revoke",
 		"jwks_uri":                              s.issuer + "/.well-known/jwks.json",
-		"response_types_supported":              []string{"code", "token", "id_token"},
+		"response_types_supported":              []string{"code"},
 		"subject_types_supported":               []string{"public"},
 		"id_token_signing_alg_values_supported": []string{"RS256"},
 		"scopes_supported":                      []string{"openid", "profile", "email", "offline_access"},
 		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post", "none"},
-		"code_challenge_methods_supported":      []string{"S256", "plain"},
+		"code_challenge_methods_supported":      []string{"S256"},
 	}
 
 	writeJSON(w, http.StatusOK, discovery)
@@ -512,14 +517,25 @@ func (s *Server) handleIntrospect(w http.ResponseWriter, r *http.Request) {
 	// 1. Try JWT verification
 	claims, err := s.keyManager.VerifyJWT(token)
 	if err == nil {
-		if tokenClientID(claims, s.issuer) != client.ID {
+		iss, _ := claims["iss"].(string)
+		tokenUse, _ := claims["token_use"].(string)
+		if iss != s.issuer || tokenUse != "access_token" {
+			writeJSON(w, http.StatusOK, map[string]interface{}{"active": false})
+			return
+		}
+		resolvedClientID := tokenClientID(claims, s.issuer)
+		if resolvedClientID != client.ID {
 			writeJSON(w, http.StatusOK, map[string]interface{}{"active": false})
 			return
 		}
 		tokenHash := hashCode(token)
 		if s.repo != nil {
 			revoked, checkErr := s.repo.IsTokenRevoked(r.Context(), tokenHash)
-			if checkErr == nil && revoked {
+			if checkErr != nil {
+				writeError(w, http.StatusInternalServerError, "server_error", "Failed to verify token revocation status")
+				return
+			}
+			if revoked {
 				writeJSON(w, http.StatusOK, map[string]interface{}{"active": false})
 				return
 			}
@@ -556,19 +572,12 @@ func (s *Server) handleIntrospect(w http.ResponseWriter, r *http.Request) {
 			scopeStr = sc
 		}
 
-		clientID, _ := claims["aud"].(string)
 		sub, _ := claims["sub"].(string)
-		iss, _ := claims["iss"].(string)
-
-		// For client_credentials tokens, sub is the client_id and aud is issuer
-		if clientID == s.issuer && sub != "" {
-			clientID = sub
-		}
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"active":     true,
 			"scope":      scopeStr,
-			"client_id":  clientID,
+			"client_id":  resolvedClientID,
 			"sub":        sub,
 			"exp":        exp,
 			"iat":        iat,
@@ -644,14 +653,17 @@ func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		_ = s.repo.RevokeToken(r.Context(), &core.TokenRecord{
+		if err := s.repo.RevokeToken(r.Context(), &core.TokenRecord{
 			TokenHash: tokenHash,
 			ClientID:  clientID,
 			Subject:   sub,
 			TokenType: tokenTypeHint,
 			Scopes:    scopes,
 			ExpiresAt: expiresAt,
-		})
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "server_error", "Failed to revoke token")
+			return
+		}
 	}
 
 	// RFC 7009: acknowledge revocation with 200 OK
@@ -839,6 +851,21 @@ func writeError(w http.ResponseWriter, status int, errCode, description string) 
 	})
 }
 
+func buildRedirectURL(base string, params map[string]string) (string, error) {
+	u, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	q := u.Query()
+	for k, v := range params {
+		if v != "" {
+			q.Set(k, v)
+		}
+	}
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
+
 func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "Failed to parse form")
@@ -860,7 +887,9 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		cc, err := s.repo.GetConsentChallenge(r.Context(), consentChallengeID)
-		if err != nil || cc.HandledAt == nil || cc.ConsentVerifier != consentVerifier {
+		if err != nil || cc.HandledAt == nil || cc.ConsentVerifier == "" ||
+			subtle.ConstantTimeCompare([]byte(cc.ConsentVerifier), []byte(consentVerifier)) != 1 ||
+			cc.LoginChallenge != lc.Challenge || cc.ClientID != lc.ClientID {
 			writeError(w, http.StatusBadRequest, "invalid_request", "Invalid consent challenge")
 			return
 		}
@@ -885,10 +914,14 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Redirect to client
-		redirectURI := lc.RedirectURI + "?code=" + code
-		if lc.State != "" {
-			redirectURI += "&state=" + lc.State
+		// Redirect to client safely using url.Parse + url.Values
+		redirectURI, err := buildRedirectURL(lc.RedirectURI, map[string]string{
+			"code":  code,
+			"state": lc.State,
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "server_error", "Invalid redirect URI")
+			return
 		}
 		http.Redirect(w, r, redirectURI, http.StatusFound)
 		return
@@ -898,7 +931,8 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		// Login is accepted, create consent challenge and redirect to consent UI
 		challengeID := r.FormValue("login_challenge")
 		lc, err := s.repo.GetLoginChallenge(r.Context(), challengeID)
-		if err != nil || lc.HandledAt == nil || lc.LoginVerifier != loginVerifier {
+		if err != nil || lc.HandledAt == nil || lc.LoginVerifier == "" ||
+			subtle.ConstantTimeCompare([]byte(lc.LoginVerifier), []byte(loginVerifier)) != 1 {
 			writeError(w, http.StatusBadRequest, "invalid_request", "Invalid login challenge")
 			return
 		}
@@ -917,8 +951,14 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Redirect to Consent UI
-		consentUIURL := "http://localhost:3000/consent" // default or from env
-		http.Redirect(w, r, consentUIURL+"?consent_challenge="+cc.Challenge, http.StatusFound)
+		consentUIURL, err := buildRedirectURL("http://localhost:3000/consent", map[string]string{
+			"consent_challenge": cc.Challenge,
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "server_error", "Failed to build consent redirect")
+			return
+		}
+		http.Redirect(w, r, consentUIURL, http.StatusFound)
 		return
 	}
 
@@ -986,8 +1026,14 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	loginUIURL := "http://localhost:3000/login" // default or from env
-	http.Redirect(w, r, loginUIURL+"?login_challenge="+lc.Challenge, http.StatusFound)
+	loginUIURL, err := buildRedirectURL("http://localhost:3000/login", map[string]string{
+		"login_challenge": lc.Challenge,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "server_error", "Failed to build login redirect")
+		return
+	}
+	http.Redirect(w, r, loginUIURL, http.StatusFound)
 }
 
 func (s *Server) handleAcceptLogin(w http.ResponseWriter, r *http.Request) {
@@ -1005,6 +1051,10 @@ func (s *Server) handleAcceptLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "Login challenge not found")
 		return
 	}
+	if lc.HandledAt != nil {
+		writeError(w, http.StatusConflict, "invalid_request", "Login challenge has already been handled")
+		return
+	}
 
 	now := time.Now()
 	lc.HandledAt = &now
@@ -1012,12 +1062,25 @@ func (s *Server) handleAcceptLogin(w http.ResponseWriter, r *http.Request) {
 	lc.LoginVerifier = uuid.NewString()
 
 	if err := s.repo.UpdateLoginChallenge(r.Context(), lc); err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			writeError(w, http.StatusConflict, "invalid_request", "Login challenge has already been handled")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "server_error", "Failed to update login challenge")
 		return
 	}
 
+	redirectTo, err := buildRedirectURL(s.issuer+"/oauth2/auth", map[string]string{
+		"login_challenge": lc.Challenge,
+		"login_verifier":  lc.LoginVerifier,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "server_error", "Failed to build redirect URL")
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"redirect_to": s.issuer + "/oauth2/auth?login_challenge=" + lc.Challenge + "&login_verifier=" + lc.LoginVerifier,
+		"redirect_to": redirectTo,
 	})
 }
 
@@ -1036,6 +1099,21 @@ func (s *Server) handleAcceptConsent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "Consent challenge not found")
 		return
 	}
+	if cc.HandledAt != nil {
+		writeError(w, http.StatusConflict, "invalid_request", "Consent challenge has already been handled")
+		return
+	}
+
+	requested := make(map[string]struct{}, len(cc.RequestedScopes))
+	for _, sc := range cc.RequestedScopes {
+		requested[sc] = struct{}{}
+	}
+	for _, granted := range req.GrantedScopes {
+		if _, ok := requested[granted]; !ok {
+			writeError(w, http.StatusBadRequest, "invalid_scope", "Granted scopes must be a subset of requested scopes")
+			return
+		}
+	}
 
 	now := time.Now()
 	cc.HandledAt = &now
@@ -1043,11 +1121,25 @@ func (s *Server) handleAcceptConsent(w http.ResponseWriter, r *http.Request) {
 	cc.ConsentVerifier = uuid.NewString()
 
 	if err := s.repo.UpdateConsentChallenge(r.Context(), cc); err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			writeError(w, http.StatusConflict, "invalid_request", "Consent challenge has already been handled")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "server_error", "Failed to update consent challenge")
 		return
 	}
 
+	redirectTo, err := buildRedirectURL(s.issuer+"/oauth2/auth", map[string]string{
+		"login_challenge":   cc.LoginChallenge,
+		"consent_challenge": cc.Challenge,
+		"consent_verifier":  cc.ConsentVerifier,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "server_error", "Failed to build redirect URL")
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"redirect_to": s.issuer + "/oauth2/auth?login_challenge=" + cc.LoginChallenge + "&consent_challenge=" + cc.Challenge + "&consent_verifier=" + cc.ConsentVerifier,
+		"redirect_to": redirectTo,
 	})
 }

@@ -37,6 +37,7 @@ type cfg struct {
 	JWTPublicKeyFile     string        `env:"JWT_PUBLIC_KEY_FILE"`
 	JWTIssuer            string        `env:"JWT_ISSUER"`
 	JWTAudience          string        `env:"JWT_AUDIENCE"`
+	NexusURL             string        `env:"NEXUS_URL"`
 	RulesPath            string        `env:"RULES_PATH"`
 	DatabaseURL          string        `env:"DATABASE_URL"`
 	AdminPort            string        `env:"ADMIN_PORT" envDefault:"4456"`
@@ -138,7 +139,7 @@ func main() {
 	authorizers := []core.Authorizer{
 		&authorizer.AllowAuthorizer{},
 		&authorizer.DenyAuthorizer{},
-		authorizer.NewNexusAuthorizer(),
+		authorizer.NewNexusAuthorizerWithEndpoint(c.NexusURL, nil),
 	}
 
 	mutators := []core.Mutator{
@@ -180,7 +181,10 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	proxyHandler := metrics.HTTPMiddleware("aegis")(pipelineProxy)
+	proxyHandler := httpx.Chain(pipelineProxy,
+		httpx.Recover(logger),
+		metrics.HTTPMiddleware("aegis"),
+	)
 
 	httpServer := &http.Server{
 		Addr:         ":" + c.Port,

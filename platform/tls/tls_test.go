@@ -3,10 +3,14 @@ package autortls
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -68,9 +72,9 @@ func TestServerAndClientMTLS(t *testing.T) {
 	os.WriteFile(clientKeyFile, clientKey, 0600)
 
 	serverTLS, err := NewServerTLSConfig(ServerConfig{
-		CertFile:   serverCertFile,
-		KeyFile:    serverKeyFile,
-		CAFile:     caFile,
+		CertFile:    serverCertFile,
+		KeyFile:     serverKeyFile,
+		CAFile:      caFile,
 		RequireMTLS: true,
 	})
 	if err != nil {
@@ -135,3 +139,75 @@ func TestExtractServiceFromSPIFFE(t *testing.T) {
 	}
 }
 
+func TestNewClientTLSConfig_RejectsPartialKeyPair(t *testing.T) {
+	if _, err := NewClientTLSConfig(ClientConfig{CertFile: "only-cert.pem"}); err == nil {
+		t.Fatal("expected error when only CertFile is provided")
+	}
+	if _, err := NewClientTLSConfig(ClientConfig{KeyFile: "only-key.pem"}); err == nil {
+		t.Fatal("expected error when only KeyFile is provided")
+	}
+}
+
+func TestRequirePeerIdentity_InspectsAllURIsAndNoCNFallbackWhenSpiffePresent(t *testing.T) {
+	mustURL := func(raw string) *url.URL {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatalf("parse url: %v", err)
+		}
+		return u
+	}
+
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// 1. Disallowed SPIFFE URI must NOT fall back to an allowed CommonName.
+	reqDisallowedSpiffe := httptest.NewRequest(http.MethodGet, "/", nil)
+	reqDisallowedSpiffe.TLS = &tls.ConnectionState{
+		VerifiedChains: [][]*x509.Certificate{{
+			{
+				Subject: pkix.Name{CommonName: "ego"},
+				URIs:    []*url.URL{mustURL("spiffe://autorix.internal/service/evil")},
+			},
+		}},
+	}
+	rec1 := httptest.NewRecorder()
+	RequirePeerIdentity("ego")(okHandler).ServeHTTP(rec1, reqDisallowedSpiffe)
+	if rec1.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when SPIFFE URI is disallowed even if CN matches, got %d", rec1.Code)
+	}
+
+	// 2. Allowed SPIFFE URI in second URI slot must be accepted.
+	reqSecondURI := httptest.NewRequest(http.MethodGet, "/", nil)
+	reqSecondURI.TLS = &tls.ConnectionState{
+		VerifiedChains: [][]*x509.Certificate{{
+			{
+				Subject: pkix.Name{CommonName: "other"},
+				URIs: []*url.URL{
+					mustURL("https://example.com/meta"),
+					mustURL("spiffe://autorix.internal/service/ego"),
+				},
+			},
+		}},
+	}
+	rec2 := httptest.NewRecorder()
+	RequirePeerIdentity("ego")(okHandler).ServeHTTP(rec2, reqSecondURI)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("expected 200 when allowed SPIFFE URI is in non-first URI slot, got %d", rec2.Code)
+	}
+
+	// 3. No SPIFFE URI present: falls back to CommonName cleanly.
+	reqCNOnly := httptest.NewRequest(http.MethodGet, "/", nil)
+	reqCNOnly.TLS = &tls.ConnectionState{
+		VerifiedChains: [][]*x509.Certificate{{
+			{
+				Subject: pkix.Name{CommonName: "ego"},
+			},
+		}},
+	}
+	rec3 := httptest.NewRecorder()
+	RequirePeerIdentity("ego")(okHandler).ServeHTTP(rec3, reqCNOnly)
+	if rec3.Code != http.StatusOK {
+		t.Fatalf("expected 200 when no SPIFFE URI is present and CN matches, got %d", rec3.Code)
+	}
+}

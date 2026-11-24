@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +14,8 @@ import (
 
 // ErrNotFound is returned when a requested key does not exist or has expired.
 var ErrNotFound = errors.New("cache: key not found")
+
+const defaultMemoryCacheMaxEntries = 10000
 
 // Cache defines the contract for key-value caching and distributed invalidation in Autorix engines.
 type Cache interface {
@@ -23,55 +27,114 @@ type Cache interface {
 	Close() error
 }
 
-// MemoryCache is a high-performance in-memory cache with per-key TTL.
+// MemoryCache is a bounded, thread-safe in-memory cache with per-key TTL.
 type MemoryCache struct {
-	mu    sync.RWMutex
-	items map[string]memItem
+	mu         sync.RWMutex
+	items      map[string]memItem
+	maxEntries int
+	seq        uint64
 }
 
 type memItem struct {
 	data      []byte
 	expiresAt time.Time
+	seq       uint64
 }
 
-// NewMemoryCache creates a new thread-safe memory cache.
+// NewMemoryCache creates a new thread-safe memory cache with the default maximum capacity.
 func NewMemoryCache() *MemoryCache {
+	return NewMemoryCacheWithLimit(defaultMemoryCacheMaxEntries)
+}
+
+// NewMemoryCacheWithLimit creates a new thread-safe memory cache bounded to maxEntries items.
+func NewMemoryCacheWithLimit(maxEntries int) *MemoryCache {
+	if maxEntries <= 0 {
+		maxEntries = defaultMemoryCacheMaxEntries
+	}
 	return &MemoryCache{
-		items: make(map[string]memItem),
+		items:      make(map[string]memItem),
+		maxEntries: maxEntries,
 	}
 }
 
 func (m *MemoryCache) Get(_ context.Context, key string) ([]byte, error) {
+	now := time.Now()
+
 	m.mu.RLock()
 	item, ok := m.items[key]
-	m.mu.RUnlock()
-
 	if !ok {
+		m.mu.RUnlock()
 		return nil, ErrNotFound
 	}
+	if item.expiresAt.IsZero() || !now.After(item.expiresAt) {
+		out := make([]byte, len(item.data))
+		copy(out, item.data)
+		m.mu.RUnlock()
+		return out, nil
+	}
+	m.mu.RUnlock()
 
-	if !item.expiresAt.IsZero() && time.Now().After(item.expiresAt) {
-		m.mu.Lock()
+	// Re-verify expiration under write lock before deleting to avoid racing with a concurrent Set.
+	m.mu.Lock()
+	current, exists := m.items[key]
+	if !exists {
+		m.mu.Unlock()
+		return nil, ErrNotFound
+	}
+	if !current.expiresAt.IsZero() && time.Now().After(current.expiresAt) {
 		delete(m.items, key)
 		m.mu.Unlock()
 		return nil, ErrNotFound
 	}
-
-	return item.data, nil
+	out := make([]byte, len(current.data))
+	copy(out, current.data)
+	m.mu.Unlock()
+	return out, nil
 }
 
 func (m *MemoryCache) Set(_ context.Context, key string, value []byte, ttl time.Duration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	now := time.Now()
 	var expiresAt time.Time
 	if ttl > 0 {
-		expiresAt = time.Now().Add(ttl)
+		expiresAt = now.Add(ttl)
 	}
 
+	if _, exists := m.items[key]; !exists && m.maxEntries > 0 && len(m.items) >= m.maxEntries {
+		// Evict expired entries first.
+		for k, it := range m.items {
+			if !it.expiresAt.IsZero() && now.After(it.expiresAt) {
+				delete(m.items, k)
+			}
+		}
+		// If still at capacity, evict the oldest entry.
+		if len(m.items) >= m.maxEntries {
+			var oldestKey string
+			var oldestSeq uint64
+			first := true
+			for k, it := range m.items {
+				if first || it.seq < oldestSeq {
+					oldestKey = k
+					oldestSeq = it.seq
+					first = false
+				}
+			}
+			if !first {
+				delete(m.items, oldestKey)
+			}
+		}
+	}
+
+	stored := make([]byte, len(value))
+	copy(stored, value)
+
+	m.seq++
 	m.items[key] = memItem{
-		data:      value,
+		data:      stored,
 		expiresAt: expiresAt,
+		seq:       m.seq,
 	}
 	return nil
 }
@@ -169,6 +232,27 @@ func (r *RedisCache) Close() error {
 	return r.client.Close()
 }
 
+func redactRedisURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "<redacted>"
+	}
+	if u.User != nil {
+		u.User = url.User("redacted")
+	}
+	if u.RawQuery != "" {
+		q := u.Query()
+		for k := range q {
+			lower := strings.ToLower(k)
+			if strings.Contains(lower, "pass") || strings.Contains(lower, "secret") || strings.Contains(lower, "token") || strings.Contains(lower, "auth") {
+				q.Set(k, "redacted")
+			}
+		}
+		u.RawQuery = q.Encode()
+	}
+	return u.String()
+}
+
 // New creates a Cache instance. If redisURL is empty, it returns an in-memory cache for standalone/test environments.
 // If redisURL is provided, it connects to Redis, hardens the connection pool topology, and validates connectivity.
 // If Redis is unreachable, it returns an explicit error to enforce fail-closed security and prevent split-brain clusters.
@@ -177,9 +261,15 @@ func New(ctx context.Context, redisURL string) (Cache, error) {
 		return NewMemoryCache(), nil
 	}
 
+	redactedURL := redactRedisURL(redisURL)
+
 	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
-		return nil, fmt.Errorf("cache: invalid redis URL %q: %w", redisURL, err)
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			return nil, fmt.Errorf("cache: invalid redis URL %q: %w", redactedURL, urlErr.Err)
+		}
+		return nil, fmt.Errorf("cache: invalid redis URL %q", redactedURL)
 	}
 
 	// Network Timeouts
@@ -201,7 +291,7 @@ func New(ctx context.Context, redisURL string) (Cache, error) {
 
 	if err := client.Ping(pingCtx).Err(); err != nil {
 		_ = client.Close()
-		return nil, fmt.Errorf("cache: failed to connect to configured redis at %s: %w", redisURL, err)
+		return nil, fmt.Errorf("cache: failed to connect to configured redis at %s: %w", redactedURL, err)
 	}
 
 	return NewRedisCache(client), nil

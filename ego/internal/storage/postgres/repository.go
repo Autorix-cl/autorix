@@ -14,6 +14,7 @@ import (
 	"github.com/autorix/platform/paging"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -102,13 +103,13 @@ func (r *Repository) CreateIdentityWithPassword(ctx context.Context, traits map[
 	}, nil
 }
 
-// FindIdentityByIdentifier locates an identity by its email address
+// FindIdentityByIdentifier locates an active identity by its email address
 func (r *Repository) FindIdentityByIdentifier(ctx context.Context, identifier string) (*core.Identity, error) {
 	query := `
 		SELECT i.id, i.schema_id, i.traits, i.state, i.created_at, i.updated_at, i.deleted_at
 		FROM identities i
 		JOIN identity_verifiable_addresses iva ON i.id = iva.identity_id
-		WHERE iva.value = $1 AND i.deleted_at IS NULL
+		WHERE iva.value = $1 AND i.deleted_at IS NULL AND i.state = 'active'
 	`
 
 	var i core.Identity
@@ -218,25 +219,41 @@ func (r *Repository) UpdateIdentity(ctx context.Context, id uuid.UUID, traits ma
 		return nil, fmt.Errorf("failed to update identity: %w", err)
 	}
 
-	// If traits has email, update or insert into identity_verifiable_addresses
+	// If traits has email and it changed, insert the new verifiable address without
+	// suppressing unique violations so duplicate emails fail cleanly without removing
+	// the identity's existing email address.
 	if traits != nil {
 		if newEmail, ok := targetTraits["email"].(string); ok && newEmail != "" {
-			_, err = tx.Exec(ctx, `
-				INSERT INTO identity_verifiable_addresses (id, identity_id, value, via, status, created_at)
-				VALUES ($1, $2, $3, 'email', 'completed', $4)
-				ON CONFLICT (value) DO NOTHING
-			`, uuid.New(), id, newEmail, now)
-			if err != nil {
-				return nil, fmt.Errorf("failed to upsert verifiable address: %w", err)
-			}
-			// Delete previous verifiable address if email changed
 			oldEmail, _ := existing.Traits["email"].(string)
-			if oldEmail != "" && oldEmail != newEmail {
-				_, _ = tx.Exec(ctx, `
-					DELETE FROM identity_verifiable_addresses
-					WHERE identity_id = $1 AND value = $2
-				`, id, oldEmail)
+			if newEmail != oldEmail {
+				_, err = tx.Exec(ctx, `
+					INSERT INTO identity_verifiable_addresses (id, identity_id, value, via, status, created_at)
+					VALUES ($1, $2, $3, 'email', 'completed', $4)
+				`, uuid.New(), id, newEmail, now)
+				if err != nil {
+					var pgErr *pgconn.PgError
+					if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+						return nil, fmt.Errorf("%w: %w", ErrAlreadyExists, err)
+					}
+					return nil, fmt.Errorf("failed to insert verifiable address: %w", err)
+				}
+				// Delete previous verifiable address only after the new one was inserted.
+				if oldEmail != "" {
+					if _, err = tx.Exec(ctx, `
+						DELETE FROM identity_verifiable_addresses
+						WHERE identity_id = $1 AND value = $2
+					`, id, oldEmail); err != nil {
+						return nil, fmt.Errorf("failed to remove previous verifiable address: %w", err)
+					}
+				}
 			}
+		}
+	}
+
+	// Revoke all active sessions whenever an identity is suspended or deactivated.
+	if targetState != core.StateActive {
+		if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE identity_id = $1`, id); err != nil {
+			return nil, fmt.Errorf("failed to revoke identity sessions: %w", err)
 		}
 	}
 
@@ -328,14 +345,14 @@ func (r *Repository) CreateSession(ctx context.Context, s *core.Session) error {
 	return nil
 }
 
-// GetSessionByTokenHash fetches a session and joins the associated identity
+// GetSessionByTokenHash fetches a session and joins the associated active identity
 func (r *Repository) GetSessionByTokenHash(ctx context.Context, tokenHash string) (*core.Session, error) {
 	query := `
 		SELECT s.id, s.identity_id, s.token_hash, s.expires_at, s.authenticated_at,
 		       i.schema_id, i.traits, i.state, i.created_at, i.updated_at, i.deleted_at
 		FROM sessions s
 		JOIN identities i ON s.identity_id = i.id
-		WHERE s.token_hash = $1 AND s.expires_at > CURRENT_TIMESTAMP AND i.deleted_at IS NULL
+		WHERE s.token_hash = $1 AND s.expires_at > CURRENT_TIMESTAMP AND i.deleted_at IS NULL AND i.state = 'active'
 	`
 
 	var s core.Session
@@ -419,8 +436,8 @@ func (r *Repository) ListIdentities(ctx context.Context, filter ListIdentitiesFi
 	}
 
 	if filter.Query != "" {
-		query += fmt.Sprintf(" AND traits::text ILIKE $%d", argIdx)
-		args = append(args, "%"+filter.Query+"%")
+		query += fmt.Sprintf(" AND traits::text ILIKE $%d ESCAPE '\\'", argIdx)
+		args = append(args, "%"+escapeLikePattern(filter.Query)+"%")
 		argIdx++
 	}
 
@@ -453,12 +470,19 @@ func (r *Repository) ListIdentities(ctx context.Context, filter ListIdentitiesFi
 		_ = json.Unmarshal(traitsJSON, &i.Traits)
 		identities = append(identities, i)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("failed to iterate identities: %w", err)
+	}
 
 	hasMore := len(identities) > filter.Limit
 	if hasMore {
 		identities = identities[:filter.Limit]
 	}
 	return identities, hasMore, nil
+}
+
+func escapeLikePattern(q string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q)
 }
 
 // decodeIdentityCursor reverses the "createdAt|id" cursor payload encoded by
@@ -497,7 +521,7 @@ func (r *Repository) ListActiveSessions(ctx context.Context, limit int, cursor s
 		       i.schema_id, i.traits, i.state, i.created_at, i.updated_at, i.deleted_at
 		FROM sessions s
 		JOIN identities i ON s.identity_id = i.id
-		WHERE s.expires_at > CURRENT_TIMESTAMP AND i.deleted_at IS NULL
+		WHERE s.expires_at > CURRENT_TIMESTAMP AND i.deleted_at IS NULL AND i.state = 'active'
 	`
 	var args []interface{}
 	argIdx := 1
@@ -537,6 +561,9 @@ func (r *Repository) ListActiveSessions(ctx context.Context, limit int, cursor s
 		s.Identity = &i
 		sessions = append(sessions, s)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("failed to iterate sessions: %w", err)
+	}
 
 	hasMore := len(sessions) > limit
 	if hasMore {
@@ -566,6 +593,9 @@ func (r *Repository) ListActiveSessionsByIdentity(ctx context.Context, identityI
 			return nil, err
 		}
 		sessions = append(sessions, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate identity sessions: %w", err)
 	}
 	return sessions, nil
 }
@@ -613,10 +643,17 @@ func decodeSessionCursor(cursor string) (time.Time, uuid.UUID, error) {
 	return authAt, id, nil
 }
 
-// SetPasswordCredential updates or creates the password credential for an active identity
+// SetPasswordCredential updates or creates the password credential for an identity
+// and atomically revokes all existing sessions for that identity.
 func (r *Repository) SetPasswordCredential(ctx context.Context, identityID uuid.UUID, passwordHash string, forceRotation bool) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
 	var exists bool
-	err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM identities WHERE id = $1 AND deleted_at IS NULL)`, identityID).Scan(&exists)
+	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM identities WHERE id = $1 AND deleted_at IS NULL)`, identityID).Scan(&exists)
 	if err != nil {
 		return fmt.Errorf("failed to check identity: %w", err)
 	}
@@ -633,7 +670,7 @@ func (r *Repository) SetPasswordCredential(ctx context.Context, identityID uuid.
 	}
 
 	now := time.Now()
-	_, err = r.pool.Exec(ctx, `
+	_, err = tx.Exec(ctx, `
 		INSERT INTO credentials (id, identity_id, credential_type, credential_data, created_at, updated_at)
 		VALUES ($1, $2, 'password', $3, $4, $4)
 		ON CONFLICT (identity_id, credential_type)
@@ -641,6 +678,14 @@ func (r *Repository) SetPasswordCredential(ctx context.Context, identityID uuid.
 	`, uuid.New(), identityID, credData, now)
 	if err != nil {
 		return fmt.Errorf("failed to set password credential: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE identity_id = $1`, identityID); err != nil {
+		return fmt.Errorf("failed to revoke identity sessions after password reset: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit password credential reset: %w", err)
 	}
 	return nil
 }
@@ -682,6 +727,9 @@ func (r *Repository) ListCredentialsByIdentity(ctx context.Context, identityID u
 			}
 		}
 		result = append(result, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate credentials: %w", err)
 	}
 	if result == nil {
 		result = []core.CredentialInspection{}
@@ -1076,6 +1124,9 @@ func (r *Repository) ListSchemas(ctx context.Context) ([]core.IdentitySchema, er
 		_ = json.Unmarshal(schemaJSON, &s.Schema)
 		schemas = append(schemas, s)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate schemas: %w", err)
+	}
 	if schemas == nil {
 		schemas = []core.IdentitySchema{}
 	}
@@ -1140,9 +1191,6 @@ func (r *Repository) DeleteSchema(ctx context.Context, id string) error {
 	return nil
 }
 
-
-
-
 // --- Flow State-Machine Methods ---
 
 func (r *Repository) CreateFlow(ctx context.Context, flow *core.IdentityFlow) error {
@@ -1190,12 +1238,17 @@ func (r *Repository) GetWebAuthnCredentials(ctx context.Context, identityID uuid
 	var creds []map[string]interface{}
 	for rows.Next() {
 		var dataJSON []byte
-		if err := rows.Scan(&dataJSON); err == nil {
-			var data map[string]interface{}
-			if err := json.Unmarshal(dataJSON, &data); err == nil {
-				creds = append(creds, data)
-			}
+		if err := rows.Scan(&dataJSON); err != nil {
+			return nil, fmt.Errorf("scan webauthn credential: %w", err)
 		}
+		var data map[string]interface{}
+		if err := json.Unmarshal(dataJSON, &data); err != nil {
+			return nil, fmt.Errorf("unmarshal webauthn credential: %w", err)
+		}
+		creds = append(creds, data)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate webauthn credentials: %w", err)
 	}
 	return creds, nil
 }
@@ -1277,6 +1330,9 @@ func (r *Repository) FetchPendingNotifications(ctx context.Context, limit int) (
 		_ = json.Unmarshal(payloadJSON, &n.Payload)
 		list = append(list, n)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate pending notifications: %w", err)
+	}
 	return list, nil
 }
 
@@ -1306,4 +1362,3 @@ func (r *Repository) MarkFailed(ctx context.Context, id uuid.UUID, lastError str
 	_, err := r.pool.Exec(ctx, query, id, lastError, nextAttempt, status)
 	return err
 }
-

@@ -251,3 +251,76 @@ func TestPipelineProxy_Catalogue(t *testing.T) {
 		t.Errorf("expected 2 mutators in catalogue, got %d", len(cat.Mutators))
 	}
 }
+
+func TestPipelineProxy_RejectsTraversalAndStripsUntrustedIdentityHeaders(t *testing.T) {
+	ruleYAML := `
+- id: "strip-rule"
+  match:
+    url: "/api/profile"
+    methods: ["GET"]
+  authenticators:
+    - handler: "anonymous"
+  authorizer:
+    handler: "allow"
+  mutators:
+    - handler: "noop"
+  upstream:
+    url: "http://backend.internal"
+`
+	matcher, err := rule.NewMatcherFromYAML([]byte(ruleYAML))
+	if err != nil {
+		t.Fatalf("failed to create matcher: %v", err)
+	}
+
+	proxyHandler := NewPipelineProxy(
+		matcher,
+		[]core.Authenticator{&authenticator.AnonymousAuthenticator{}},
+		[]core.Authorizer{&authorizer.AllowAuthorizer{}},
+		[]core.Mutator{&mutator.NoopMutator{}},
+	)
+
+	// 1. Encoded slash / traversal returns 400 Bad Request before matching.
+	badReq := httptest.NewRequest(http.MethodGet, "/api/%2e%2e/admin", nil)
+	badRec := httptest.NewRecorder()
+	proxyHandler.ServeHTTP(badRec, badReq)
+	if badRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for path traversal, got %d", badRec.Code)
+	}
+
+	// 2. Untrusted identity headers are stripped before mutators run.
+	spoofReq := httptest.NewRequest(http.MethodGet, "/api/profile", nil)
+	spoofReq.Header.Set("X-User-ID", "admin-spoof")
+	spoofReq.Header.Set("X-User-Email", "admin@evil.local")
+	spoofReq.Header.Set("X-User-Roles", "superadmin")
+	spoofReq.Header.Set("X-User-Scopes", "all")
+	spoofReq.Header.Set("X-User-Subject", "root")
+
+	trace, err := proxyHandler.DryRun(spoofReq)
+	if err != nil {
+		t.Fatalf("DryRun failed: %v", err)
+	}
+	if len(trace.Steps) < 4 {
+		t.Fatalf("expected mutator step in trace, got %+v", trace.Steps)
+	}
+	hdrs := trace.Steps[3].MutatedHeaders
+	for _, h := range []string{"X-User-ID", "X-User-Email", "X-User-Roles", "X-User-Scopes", "X-User-Subject"} {
+		if got := hdrs.Get(h); got != "" {
+			t.Fatalf("expected untrusted header %s to be stripped, got %q", h, got)
+		}
+	}
+}
+
+func TestProxyStatusRecorder_ImplementsFlusherHijackerUnwrap(t *testing.T) {
+	inner := httptest.NewRecorder()
+	rec := &statusRecorder{ResponseWriter: inner, status: http.StatusOK}
+	rec.Flush()
+	if !inner.Flushed {
+		t.Fatal("expected Flush to delegate to underlying ResponseWriter")
+	}
+	if rec.Unwrap() != inner {
+		t.Fatal("expected Unwrap to return underlying ResponseWriter")
+	}
+	if _, _, err := rec.Hijack(); err != http.ErrNotSupported {
+		t.Fatalf("expected ErrNotSupported when underlying writer is not Hijacker, got %v", err)
+	}
+}

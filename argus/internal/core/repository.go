@@ -99,6 +99,7 @@ type Repository interface {
 	GetOperatorByID(ctx context.Context, id uuid.UUID) (Operator, error)
 	ListOperators(ctx context.Context) ([]Operator, error)
 	UpdateOperatorFailedAttempts(ctx context.Context, id uuid.UUID, failedAttempts int, lockedUntil *time.Time) error
+	RecordOperatorFailedLogin(ctx context.Context, id uuid.UUID, maxAttempts int, lockDuration time.Duration) (int, *time.Time, error)
 	ResetOperatorFailedAttempts(ctx context.Context, id uuid.UUID) error
 	UpdateOperatorStatus(ctx context.Context, id uuid.UUID, isActive bool) error
 	DeleteOperator(ctx context.Context, id uuid.UUID) error

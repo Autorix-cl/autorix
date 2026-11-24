@@ -49,48 +49,86 @@ var (
 		[]string{"engine", "method"},
 	)
 
-	postgresPoolTotalConns = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "autorix_postgres_pool_total_conns",
-			Help: "Total number of connections in the Postgres pool.",
-		},
-		[]string{"engine"},
-	)
-	postgresPoolIdleConns = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "autorix_postgres_pool_idle_conns",
-			Help: "Number of idle connections in the Postgres pool.",
-		},
-		[]string{"engine"},
-	)
-	postgresPoolAcquiredConns = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "autorix_postgres_pool_acquired_conns",
-			Help: "Number of currently acquired connections in the Postgres pool.",
-		},
-		[]string{"engine"},
-	)
-	postgresPoolMaxConns = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "autorix_postgres_pool_max_conns",
-			Help: "Maximum number of connections allowed in the Postgres pool.",
-		},
-		[]string{"engine"},
-	)
+	postgresPoolCollectorInstance = &postgresPoolCollector{
+		totalDesc: prometheus.NewDesc(
+			"autorix_postgres_pool_total_conns",
+			"Total number of connections in the Postgres pool.",
+			[]string{"engine"},
+			nil,
+		),
+		idleDesc: prometheus.NewDesc(
+			"autorix_postgres_pool_idle_conns",
+			"Number of idle connections in the Postgres pool.",
+			[]string{"engine"},
+			nil,
+		),
+		acquiredDesc: prometheus.NewDesc(
+			"autorix_postgres_pool_acquired_conns",
+			"Number of currently acquired connections in the Postgres pool.",
+			[]string{"engine"},
+			nil,
+		),
+		maxDesc: prometheus.NewDesc(
+			"autorix_postgres_pool_max_conns",
+			"Maximum number of connections allowed in the Postgres pool.",
+			[]string{"engine"},
+			nil,
+		),
+	}
 
-	registeredPoolsMu sync.Mutex
-	registeredPools   = make(map[string]*pgxpool.Pool)
+	registeredPoolsMu sync.RWMutex
+	registeredPools   = make(map[string]poolStatProvider)
 )
+
+type poolStatSnapshot struct {
+	total    int32
+	idle     int32
+	acquired int32
+	max      int32
+}
+
+type poolStatProvider func() poolStatSnapshot
+
+type postgresPoolCollector struct {
+	totalDesc    *prometheus.Desc
+	idleDesc     *prometheus.Desc
+	acquiredDesc *prometheus.Desc
+	maxDesc      *prometheus.Desc
+}
+
+func (c *postgresPoolCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- c.totalDesc
+	ch <- c.idleDesc
+	ch <- c.acquiredDesc
+	ch <- c.maxDesc
+}
+
+func (c *postgresPoolCollector) Collect(ch chan<- prometheus.Metric) {
+	registeredPoolsMu.RLock()
+	snapshot := make(map[string]poolStatProvider, len(registeredPools))
+	for engine, provider := range registeredPools {
+		snapshot[engine] = provider
+	}
+	registeredPoolsMu.RUnlock()
+
+	for engine, provider := range snapshot {
+		if provider == nil {
+			continue
+		}
+		stat := provider()
+		ch <- prometheus.MustNewConstMetric(c.totalDesc, prometheus.GaugeValue, float64(stat.total), engine)
+		ch <- prometheus.MustNewConstMetric(c.idleDesc, prometheus.GaugeValue, float64(stat.idle), engine)
+		ch <- prometheus.MustNewConstMetric(c.acquiredDesc, prometheus.GaugeValue, float64(stat.acquired), engine)
+		ch <- prometheus.MustNewConstMetric(c.maxDesc, prometheus.GaugeValue, float64(stat.max), engine)
+	}
+}
 
 func init() {
 	registerCollector(httpRequestsTotal)
 	registerCollector(httpRequestDuration)
 	registerCollector(grpcRequestsTotal)
 	registerCollector(grpcRequestDuration)
-	registerCollector(postgresPoolTotalConns)
-	registerCollector(postgresPoolIdleConns)
-	registerCollector(postgresPoolAcquiredConns)
-	registerCollector(postgresPoolMaxConns)
+	registerCollector(postgresPoolCollectorInstance)
 }
 
 func registerCollector(c prometheus.Collector) {
@@ -134,7 +172,13 @@ func (s *statusRecorder) Flush() {
 	}
 }
 
+func (s *statusRecorder) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
+}
+
 // HTTPMiddleware returns a standard HTTP RED middleware measuring request counts and latencies.
+// It uses the matched route pattern (r.Pattern) instead of the raw URL path to prevent
+// unbounded Prometheus label cardinality attacks.
 func HTTPMiddleware(engine string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -143,7 +187,10 @@ func HTTPMiddleware(engine string) func(http.Handler) http.Handler {
 			next.ServeHTTP(rec, r)
 			duration := time.Since(start).Seconds()
 
-			path := r.URL.Path
+			path := r.Pattern
+			if path == "" {
+				path = "unmatched"
+			}
 			httpRequestsTotal.WithLabelValues(engine, r.Method, path, strconv.Itoa(rec.status)).Inc()
 			httpRequestDuration.WithLabelValues(engine, r.Method, path).Observe(duration)
 		})
@@ -180,18 +227,27 @@ func StreamServerInterceptor(engine string) grpc.StreamServerInterceptor {
 	}
 }
 
-// RegisterPostgresPool hooks a pgxpool.Pool's statistics to Prometheus gauges.
+// RegisterPostgresPool hooks a pgxpool.Pool's statistics to the live Prometheus collector.
 func RegisterPostgresPool(pool *pgxpool.Pool, engine string) {
 	if pool == nil {
 		return
 	}
 
-	registeredPoolsMu.Lock()
-	registeredPools[engine] = pool
-	registeredPoolsMu.Unlock()
+	registerPoolStatProvider(engine, func() poolStatSnapshot {
+		stat := pool.Stat()
+		return poolStatSnapshot{
+			total:    stat.TotalConns(),
+			idle:     stat.IdleConns(),
+			acquired: stat.AcquiredConns(),
+			max:      stat.MaxConns(),
+		}
+	})
+}
 
-	// Perform an initial sampling
-	UpdatePostgresPoolStats(engine)
+func registerPoolStatProvider(engine string, provider poolStatProvider) {
+	registeredPoolsMu.Lock()
+	registeredPools[engine] = provider
+	registeredPoolsMu.Unlock()
 }
 
 // RegisterPoolStats hooks a pgxpool.Pool's statistics to Prometheus gauges with (engine, pool) ordering.
@@ -199,19 +255,15 @@ func RegisterPoolStats(engine string, pool *pgxpool.Pool) {
 	RegisterPostgresPool(pool, engine)
 }
 
-// UpdatePostgresPoolStats refreshes gauges for a registered pool.
+// UpdatePostgresPoolStats is retained for backwards compatibility; pool statistics are
+// sampled live on every Prometheus scrape via postgresPoolCollector.
 func UpdatePostgresPoolStats(engine string) {
-	registeredPoolsMu.Lock()
-	pool, ok := registeredPools[engine]
-	registeredPoolsMu.Unlock()
+	registeredPoolsMu.RLock()
+	provider, ok := registeredPools[engine]
+	registeredPoolsMu.RUnlock()
 
-	if !ok || pool == nil {
+	if !ok || provider == nil {
 		return
 	}
-
-	stat := pool.Stat()
-	postgresPoolTotalConns.WithLabelValues(engine).Set(float64(stat.TotalConns()))
-	postgresPoolIdleConns.WithLabelValues(engine).Set(float64(stat.IdleConns()))
-	postgresPoolAcquiredConns.WithLabelValues(engine).Set(float64(stat.AcquiredConns()))
-	postgresPoolMaxConns.WithLabelValues(engine).Set(float64(stat.MaxConns()))
+	_ = provider()
 }

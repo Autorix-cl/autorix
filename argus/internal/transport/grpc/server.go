@@ -168,10 +168,6 @@ func (s *Server) Heartbeat(ctx context.Context, req *argusv1.HeartbeatRequest) (
 		return nil, status.Error(codes.Unauthenticated, "heartbeat timestamp is outside the allowed window")
 	}
 
-	if !s.nonces.checkAndRecord(id, req.GetNonce(), now) {
-		return nil, status.Error(codes.Unauthenticated, "heartbeat nonce has already been used")
-	}
-
 	cred, err := s.repo.GetInstanceCredential(ctx, id)
 	if err != nil {
 		if errors.Is(err, core.ErrNotFound) {
@@ -188,6 +184,13 @@ func (s *Server) Heartbeat(ctx context.Context, req *argusv1.HeartbeatRequest) (
 		return nil, status.Error(codes.Unauthenticated, "invalid heartbeat signature")
 	}
 
+	// Only check and record the nonce AFTER authenticating the instance and
+	// verifying its HMAC signature so unauthenticated requests cannot poison
+	// or exhaust nonce memory.
+	if !s.nonces.checkAndRecord(id, req.GetNonce(), now) {
+		return nil, status.Error(codes.Unauthenticated, "heartbeat nonce has already been used")
+	}
+
 	instance, err := s.repo.GetInstance(ctx, id)
 	if err != nil {
 		if errors.Is(err, core.ErrNotFound) {
@@ -196,9 +199,42 @@ func (s *Server) Heartbeat(ctx context.Context, req *argusv1.HeartbeatRequest) (
 		return nil, status.Error(codes.Internal, "looking up instance")
 	}
 
-	report := core.HeartbeatReport{Live: req.GetLive(), Ready: req.GetReady(), ReceivedAt: now}
+	deps := req.GetDependencies()
+	probes := make([]core.DependencyProbe, 0, len(deps))
+	for _, dep := range deps {
+		if dep.GetName() == "" {
+			continue
+		}
+		probes = append(probes, core.DependencyProbe{
+			EngineType: dep.GetName(),
+			Reachable:  dep.GetReachable(),
+			LatencyMs:  dep.GetLatencyMs(),
+		})
+	}
+
+	report := core.HeartbeatReport{
+		Live:         req.GetLive(),
+		Ready:        req.GetReady(),
+		Dependencies: probes,
+		ReceivedAt:   now,
+	}
 	if err := s.repo.RecordHeartbeat(ctx, id, report); err != nil {
 		return nil, status.Error(codes.Internal, "recording heartbeat")
+	}
+
+	for _, dep := range probes {
+		if _, err := s.repo.GetEngineType(ctx, dep.EngineType); err != nil {
+			if errors.Is(err, core.ErrNotFound) {
+				// Non-engine dependency probes (e.g. local postgres/redis checks)
+				// are not foreign-keyed in engine_types; skip persisting as a
+				// fleet engine edge.
+				continue
+			}
+			return nil, status.Error(codes.Internal, "looking up dependency engine type")
+		}
+		if err := s.repo.RecordDependencyProbe(ctx, id, dep.EngineType, dep.Reachable, dep.LatencyMs); err != nil {
+			return nil, status.Error(codes.Internal, "recording dependency probe")
+		}
 	}
 
 	// The state machine (already unit-tested in core/status.go) derives the
@@ -408,42 +444,85 @@ func (s *Server) ListInstances(ctx context.Context, req *argusv1.ListInstancesRe
 // Heartbeat replay protection (P2-S3-T4)
 // ---------------------------------------------------------------------
 
+const defaultMaxNoncesPerInstance = 1024
+
 // nonceStore remembers recently-seen heartbeat nonces per instance, bounded
-// by TTL expiry rather than an unbounded count: every checkAndRecord call
-// prunes entries older than ttl before checking, so memory use tracks
-// actual heartbeat traffic within the replay window instead of growing
-// forever.
+// both by TTL expiry and a per-instance cap, pruning empty instance buckets
+// so memory cannot grow unbounded over time.
 type nonceStore struct {
-	mu   sync.Mutex
-	seen map[uuid.UUID]map[string]time.Time
-	ttl  time.Duration
+	mu             sync.Mutex
+	seen           map[uuid.UUID]map[string]time.Time
+	ttl            time.Duration
+	maxPerInstance int
+	lastSweep      time.Time
 }
 
 func newNonceStore(ttl time.Duration) *nonceStore {
-	return &nonceStore{seen: make(map[uuid.UUID]map[string]time.Time), ttl: ttl}
+	return newNonceStoreWithCap(ttl, defaultMaxNoncesPerInstance)
+}
+
+func newNonceStoreWithCap(ttl time.Duration, maxPerInstance int) *nonceStore {
+	if maxPerInstance <= 0 {
+		maxPerInstance = defaultMaxNoncesPerInstance
+	}
+	return &nonceStore{
+		seen:           make(map[uuid.UUID]map[string]time.Time),
+		ttl:            ttl,
+		maxPerInstance: maxPerInstance,
+	}
+}
+
+func (n *nonceStore) pruneLocked(now time.Time) {
+	for instID, m := range n.seen {
+		for existing, expiresAt := range m {
+			if !now.Before(expiresAt) {
+				delete(m, existing)
+			}
+		}
+		if len(m) == 0 {
+			delete(n.seen, instID)
+		}
+	}
+	n.lastSweep = now
 }
 
 // checkAndRecord returns false if nonce was already recorded for instance
-// id and has not yet expired (a replay); otherwise it records it and
-// returns true.
+// id and has not yet expired (a replay), or if the per-instance nonce cap
+// has been reached; otherwise it records it and returns true.
 func (n *nonceStore) checkAndRecord(id uuid.UUID, nonce string, now time.Time) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	m, ok := n.seen[id]
-	if !ok {
-		m = make(map[string]time.Time)
-		n.seen[id] = m
+	if n.lastSweep.IsZero() || now.Sub(n.lastSweep) >= n.ttl {
+		n.pruneLocked(now)
 	}
-	for existing, expiresAt := range m {
-		if now.After(expiresAt) {
-			delete(m, existing)
+
+	m, ok := n.seen[id]
+	if ok {
+		for existing, expiresAt := range m {
+			if !now.Before(expiresAt) {
+				delete(m, existing)
+			}
+		}
+		if len(m) == 0 {
+			delete(n.seen, id)
+			ok = false
+			m = nil
 		}
 	}
 
-	if expiresAt, exists := m[nonce]; exists && now.Before(expiresAt) {
-		return false
+	if ok {
+		if expiresAt, exists := m[nonce]; exists && now.Before(expiresAt) {
+			return false
+		}
+		if len(m) >= n.maxPerInstance {
+			return false
+		}
+	} else {
+		m = make(map[string]time.Time)
+		n.seen[id] = m
 	}
+
 	m[nonce] = now.Add(n.ttl)
 	return true
 }

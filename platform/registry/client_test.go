@@ -604,6 +604,59 @@ func TestHeartbeat_ReportsDependencyStatus(t *testing.T) {
 	}
 }
 
+func TestHeartbeat_SignsWithHMACSHA256NotRawCredential(t *testing.T) {
+	srv := &fakeArgusServer{credential: "super-secret-instance-cred"}
+	c := newTestClient(t, srv)
+
+	fake := newFakeTicker()
+	c.newTicker = func(d time.Duration) tickerHandle { return fake }
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c.Start(ctx)
+	defer func() { _ = c.Stop(context.Background()) }()
+
+	fake.tick()
+	waitForCount(t, &srv.heartbeatCalls, 1)
+
+	req := srv.getLastHeartbeatReq()
+	if req == nil {
+		t.Fatalf("expected heartbeat request")
+	}
+	if req.GetSignature() == "super-secret-instance-cred" {
+		t.Fatalf("expected HMAC signature, not raw credential")
+	}
+	wantSig := heartbeatSignature(
+		"super-secret-instance-cred",
+		req.GetInstanceUuid(),
+		req.GetTimestampUnix(),
+		req.GetNonce(),
+		req.GetLive(),
+		req.GetReady(),
+	)
+	if req.GetSignature() != wantSig {
+		t.Fatalf("signature mismatch: got %q, want %q", req.GetSignature(), wantSig)
+	}
+}
+
+func TestStart_ClosesConnOnFailedRegistration(t *testing.T) {
+	srv := &fakeArgusServer{registerErr: status.Error(codes.PermissionDenied, "bad token")}
+	c := newTestClient(t, srv)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c.Start(ctx)
+	defer func() { _ = c.Stop(context.Background()) }()
+
+	c.mu.Lock()
+	conn := c.conn
+	rpc := c.rpc
+	c.mu.Unlock()
+	if conn != nil || rpc != nil {
+		t.Fatalf("expected conn and rpc to be closed and cleared on failed registration")
+	}
+}
+
 func TestPostgresDependencyTarget(t *testing.T) {
 	got := PostgresDependencyTarget("postgres://autorix:secret@db-host:5432/autorix_ego?sslmode=disable")
 	if got != "db-host:5432" {

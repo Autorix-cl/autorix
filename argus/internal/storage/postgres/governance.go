@@ -19,49 +19,107 @@ import (
 // Audit Log & Hash Chaining (P8-S1)
 // ---------------------------------------------------------------------
 
+const (
+	// auditChainAdvisoryLockID serializes audit chain head reads and inserts
+	// inside RecordAudit so concurrent writes never fork prev_hash.
+	auditChainAdvisoryLockID int64 = 0x6172677573617564
+	maxAuditExportLimit            = 10000
+)
+
+func decodeAuditStateJSON(raw []byte) (map[string]interface{}, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var out map[string]interface{}
+	if err := dec.Decode(&out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SanitizeCSVCell neutralizes spreadsheet formula injection prefixes (=, +, -, @, \t, \r)
+// by prepending a single quote before CSV encoding.
+func SanitizeCSVCell(value string) string {
+	if value == "" {
+		return value
+	}
+	switch value[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + value
+	}
+	trimmed := strings.TrimLeft(value, " \t\r\n")
+	if len(trimmed) > 0 {
+		switch trimmed[0] {
+		case '=', '+', '-', '@':
+			return "'" + value
+		}
+	}
+	return value
+}
+
 func (r *Repository) RecordAudit(ctx context.Context, record core.AuditRecord) (core.AuditRecord, error) {
 	if record.ID == uuid.Nil {
 		record.ID = uuid.New()
 	}
-	if record.CreatedAt.IsZero() {
-		record.CreatedAt = time.Now().UTC()
-	}
-	record.CreatedAt = record.CreatedAt.UTC().Truncate(time.Microsecond)
 	if record.Outcome == "" {
 		record.Outcome = "success"
 	}
 
-	// Fetch latest record_hash to form the hash chain
+	var beforeStateJSON, afterStateJSON []byte
+	var err error
+	if record.BeforeState != nil {
+		beforeStateJSON, err = json.Marshal(record.BeforeState)
+		if err != nil {
+			return core.AuditRecord{}, fmt.Errorf("marshaling before_state: %w", err)
+		}
+	}
+	if record.AfterState != nil {
+		afterStateJSON, err = json.Marshal(record.AfterState)
+		if err != nil {
+			return core.AuditRecord{}, fmt.Errorf("marshaling after_state: %w", err)
+		}
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return core.AuditRecord{}, fmt.Errorf("beginning audit transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, auditChainAdvisoryLockID); err != nil {
+		return core.AuditRecord{}, fmt.Errorf("acquiring audit chain lock: %w", err)
+	}
+
+	// Fetch latest record_hash under advisory lock to serialize the hash chain.
 	var prevHash string
-	err := r.pool.QueryRow(ctx, `
-		SELECT record_hash FROM audit_records
+	var prevCreatedAt *time.Time
+	err = tx.QueryRow(ctx, `
+		SELECT record_hash, created_at FROM audit_records
 		ORDER BY created_at DESC, id DESC
 		LIMIT 1
-	`).Scan(&prevHash)
+	`).Scan(&prevHash, &prevCreatedAt)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return core.AuditRecord{}, fmt.Errorf("fetching previous audit hash: %w", err)
 	}
 
+	if record.CreatedAt.IsZero() {
+		record.CreatedAt = time.Now().UTC().Truncate(time.Microsecond)
+		if prevCreatedAt != nil {
+			prevUTC := prevCreatedAt.UTC().Truncate(time.Microsecond)
+			if !record.CreatedAt.After(prevUTC) {
+				record.CreatedAt = prevUTC.Add(time.Microsecond)
+			}
+		}
+	} else {
+		record.CreatedAt = record.CreatedAt.UTC().Truncate(time.Microsecond)
+	}
+
 	record.PrevHash = prevHash
-	record.RecordHash = core.CalculateAuditRecordHash(
-		record.PrevHash,
-		record.ID,
-		record.Action,
-		record.ResourceType,
-		record.ResourceID,
-		record.Outcome,
-		record.CreatedAt,
-	)
+	record.RecordHash = core.CalculateAuditRecordHash(record)
 
-	var beforeStateJSON, afterStateJSON []byte
-	if record.BeforeState != nil {
-		beforeStateJSON, _ = json.Marshal(record.BeforeState)
-	}
-	if record.AfterState != nil {
-		afterStateJSON, _ = json.Marshal(record.AfterState)
-	}
-
-	_, err = r.pool.Exec(ctx, `
+	_, err = tx.Exec(ctx, `
 		INSERT INTO audit_records (
 			id, actor_id, actor_type, action, resource_type, resource_id, environment,
 			before_state, after_state, request_id, source_ip, user_agent, outcome,
@@ -78,6 +136,10 @@ func (r *Repository) RecordAudit(ctx context.Context, record core.AuditRecord) (
 	)
 	if err != nil {
 		return core.AuditRecord{}, fmt.Errorf("inserting audit record: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return core.AuditRecord{}, fmt.Errorf("committing audit record: %w", err)
 	}
 
 	return record, nil
@@ -158,12 +220,21 @@ func (r *Repository) ListAuditRecords(ctx context.Context, filter core.AuditReco
 			return nil, "", false, fmt.Errorf("scanning audit record: %w", err)
 		}
 		if len(beforeJSON) > 0 {
-			_ = json.Unmarshal(beforeJSON, &rec.BeforeState)
+			rec.BeforeState, err = decodeAuditStateJSON(beforeJSON)
+			if err != nil {
+				return nil, "", false, fmt.Errorf("decoding audit before_state: %w", err)
+			}
 		}
 		if len(afterJSON) > 0 {
-			_ = json.Unmarshal(afterJSON, &rec.AfterState)
+			rec.AfterState, err = decodeAuditStateJSON(afterJSON)
+			if err != nil {
+				return nil, "", false, fmt.Errorf("decoding audit after_state: %w", err)
+			}
 		}
 		records = append(records, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", false, fmt.Errorf("iterating audit records: %w", err)
 	}
 
 	hasMore := len(records) > limit
@@ -187,7 +258,7 @@ func (r *Repository) VerifyAuditChain(ctx context.Context) (bool, error) {
 func (r *Repository) VerifyAuditChainDetailed(ctx context.Context) (core.AuditVerificationResult, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, actor_id, actor_type, action, resource_type, resource_id, environment,
-		       outcome, prev_hash, record_hash, created_at
+		       before_state, after_state, source_ip, outcome, prev_hash, record_hash, created_at
 		FROM audit_records
 		ORDER BY created_at ASC, id ASC
 	`)
@@ -203,59 +274,74 @@ func (r *Repository) VerifyAuditChainDetailed(ctx context.Context) (core.AuditVe
 	now := time.Now().UTC()
 
 	for rows.Next() {
-		var id uuid.UUID
-		var actorID, actorType, action, resourceType, resourceID, environment, outcome, prevHash, recordHash string
-		var createdAt time.Time
+		var rec core.AuditRecord
+		var beforeJSON, afterJSON []byte
 
 		if err := rows.Scan(
-			&id, &actorID, &actorType, &action, &resourceType, &resourceID, &environment,
-			&outcome, &prevHash, &recordHash, &createdAt,
+			&rec.ID, &rec.ActorID, &rec.ActorType, &rec.Action, &rec.ResourceType, &rec.ResourceID, &rec.Environment,
+			&beforeJSON, &afterJSON, &rec.SourceIP, &rec.Outcome, &rec.PrevHash, &rec.RecordHash, &rec.CreatedAt,
 		); err != nil {
 			return core.AuditVerificationResult{}, fmt.Errorf("scanning audit chain row: %w", err)
 		}
 
-		if count == 0 {
-			genesisHash = recordHash
+		if len(beforeJSON) > 0 {
+			rec.BeforeState, err = decodeAuditStateJSON(beforeJSON)
+			if err != nil {
+				return core.AuditVerificationResult{}, fmt.Errorf("decoding audit chain before_state: %w", err)
+			}
+		}
+		if len(afterJSON) > 0 {
+			rec.AfterState, err = decodeAuditStateJSON(afterJSON)
+			if err != nil {
+				return core.AuditVerificationResult{}, fmt.Errorf("decoding audit chain after_state: %w", err)
+			}
 		}
 
-		if prevHash != expectedPrev {
+		if count == 0 {
+			genesisHash = rec.RecordHash
+		}
+
+		if rec.PrevHash != expectedPrev {
 			return core.AuditVerificationResult{
 				Verified:    false,
 				ChainLength: count,
 				HeadHash:    headHash,
 				GenesisHash: genesisHash,
 				BrokenLink: &core.BrokenLink{
-					ID:               id,
+					ID:               rec.ID,
 					Sequence:         count,
 					ExpectedPrevHash: expectedPrev,
-					ActualPrevHash:   prevHash,
+					ActualPrevHash:   rec.PrevHash,
 				},
 				VerifiedAt: now,
 				Algorithm:  "SHA-256",
 			}, nil
 		}
 
-		recalculated := core.CalculateAuditRecordHash(prevHash, id, action, resourceType, resourceID, outcome, createdAt)
-		if recordHash != recalculated {
+		recalculated := core.CalculateAuditRecordHash(rec)
+		if rec.RecordHash != recalculated {
 			return core.AuditVerificationResult{
 				Verified:    false,
 				ChainLength: count,
 				HeadHash:    headHash,
 				GenesisHash: genesisHash,
 				BrokenLink: &core.BrokenLink{
-					ID:               id,
+					ID:               rec.ID,
 					Sequence:         count,
 					ExpectedPrevHash: recalculated,
-					ActualPrevHash:   recordHash,
+					ActualPrevHash:   rec.RecordHash,
 				},
 				VerifiedAt: now,
 				Algorithm:  "SHA-256",
 			}, nil
 		}
 
-		expectedPrev = recordHash
-		headHash = recordHash
+		expectedPrev = rec.RecordHash
+		headHash = rec.RecordHash
 		count++
+	}
+	if err := rows.Err(); err != nil {
+		return core.AuditVerificationResult{}, fmt.Errorf("iterating audit chain: %w", err)
 	}
 
 	return core.AuditVerificationResult{
@@ -269,38 +355,88 @@ func (r *Repository) VerifyAuditChainDetailed(ctx context.Context) (core.AuditVe
 }
 
 func (r *Repository) ExportAuditRecords(ctx context.Context, format string) ([]byte, error) {
-	records, _, _, err := r.ListAuditRecords(ctx, core.AuditRecordFilter{Limit: 1000})
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, actor_id, actor_type, action, resource_type, resource_id, environment,
+		       before_state, after_state, request_id, source_ip, user_agent, outcome,
+		       prev_hash, record_hash, created_at
+		FROM audit_records
+		ORDER BY created_at DESC, id DESC
+		LIMIT $1
+	`, maxAuditExportLimit)
 	if err != nil {
-		return nil, fmt.Errorf("listing audit records for export: %w", err)
+		return nil, fmt.Errorf("querying audit records for export: %w", err)
+	}
+	defer rows.Close()
+
+	records := make([]core.AuditRecord, 0)
+	for rows.Next() {
+		var rec core.AuditRecord
+		var beforeJSON, afterJSON []byte
+		if err := rows.Scan(
+			&rec.ID, &rec.ActorID, &rec.ActorType, &rec.Action, &rec.ResourceType, &rec.ResourceID, &rec.Environment,
+			&beforeJSON, &afterJSON, &rec.RequestID, &rec.SourceIP, &rec.UserAgent, &rec.Outcome,
+			&rec.PrevHash, &rec.RecordHash, &rec.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning audit record for export: %w", err)
+		}
+		if len(beforeJSON) > 0 {
+			rec.BeforeState, err = decodeAuditStateJSON(beforeJSON)
+			if err != nil {
+				return nil, fmt.Errorf("decoding audit before_state for export: %w", err)
+			}
+		}
+		if len(afterJSON) > 0 {
+			rec.AfterState, err = decodeAuditStateJSON(afterJSON)
+			if err != nil {
+				return nil, fmt.Errorf("decoding audit after_state for export: %w", err)
+			}
+		}
+		records = append(records, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating audit records for export: %w", err)
 	}
 
 	if strings.ToLower(format) == "csv" {
-		var buf bytes.Buffer
-		w := csv.NewWriter(&buf)
-		_ = w.Write([]string{
-			"id", "actor_id", "actor_type", "action", "resource_type", "resource_id",
-			"environment", "outcome", "prev_hash", "record_hash", "created_at",
-		})
-		for _, rec := range records {
-			_ = w.Write([]string{
-				rec.ID.String(),
-				rec.ActorID,
-				rec.ActorType,
-				rec.Action,
-				rec.ResourceType,
-				rec.ResourceID,
-				rec.Environment,
-				rec.Outcome,
-				rec.PrevHash,
-				rec.RecordHash,
-				rec.CreatedAt.UTC().Format(time.RFC3339Nano),
-			})
-		}
-		w.Flush()
-		return buf.Bytes(), nil
+		return FormatAuditRecordsCSV(records)
 	}
 
 	return json.MarshalIndent(records, "", "  ")
+}
+
+// FormatAuditRecordsCSV serializes audit records to CSV while neutralizing
+// spreadsheet formula prefixes in cell values.
+func FormatAuditRecordsCSV(records []core.AuditRecord) ([]byte, error) {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	if err := w.Write([]string{
+		"id", "actor_id", "actor_type", "action", "resource_type", "resource_id",
+		"environment", "outcome", "prev_hash", "record_hash", "created_at",
+	}); err != nil {
+		return nil, fmt.Errorf("writing csv header: %w", err)
+	}
+	for _, rec := range records {
+		if err := w.Write([]string{
+			rec.ID.String(),
+			SanitizeCSVCell(rec.ActorID),
+			SanitizeCSVCell(rec.ActorType),
+			SanitizeCSVCell(rec.Action),
+			SanitizeCSVCell(rec.ResourceType),
+			SanitizeCSVCell(rec.ResourceID),
+			SanitizeCSVCell(rec.Environment),
+			SanitizeCSVCell(rec.Outcome),
+			SanitizeCSVCell(rec.PrevHash),
+			SanitizeCSVCell(rec.RecordHash),
+			rec.CreatedAt.UTC().Format(time.RFC3339Nano),
+		}); err != nil {
+			return nil, fmt.Errorf("writing csv row: %w", err)
+		}
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return nil, fmt.Errorf("flushing csv export: %w", err)
+	}
+	return buf.Bytes(), nil
 }
 
 // ---------------------------------------------------------------------
@@ -329,9 +465,12 @@ func (r *Repository) RecordConfigRevision(ctx context.Context, rev core.ConfigRe
 		rev.RevisionNum = nextRev
 	}
 
-	configJSON, _ := json.Marshal(rev.Config)
+	configJSON, err := json.Marshal(rev.Config)
+	if err != nil {
+		return core.ConfigRevision{}, fmt.Errorf("marshaling config revision: %w", err)
+	}
 
-	_, err := r.pool.Exec(ctx, `
+	_, err = r.pool.Exec(ctx, `
 		INSERT INTO config_revisions (
 			id, engine, resource_type, resource_id, revision_num, author, note, config, created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -387,9 +526,14 @@ func (r *Repository) ListConfigRevisions(ctx context.Context, engine, resourceTy
 			return nil, fmt.Errorf("scanning config revision: %w", err)
 		}
 		if len(configJSON) > 0 {
-			_ = json.Unmarshal(configJSON, &rev.Config)
+			if err := json.Unmarshal(configJSON, &rev.Config); err != nil {
+				return nil, fmt.Errorf("unmarshaling config revision: %w", err)
+			}
 		}
 		revisions = append(revisions, rev)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating config revisions: %w", err)
 	}
 
 	return revisions, nil
@@ -512,6 +656,9 @@ func (r *Repository) ListOrganisations(ctx context.Context) ([]core.Organisation
 		}
 		orgs = append(orgs, org)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating organisations: %w", err)
+	}
 	return orgs, nil
 }
 
@@ -598,6 +745,9 @@ func (r *Repository) ListProjects(ctx context.Context, orgID *uuid.UUID) ([]core
 		}
 		projects = append(projects, p)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating projects: %w", err)
+	}
 	return projects, nil
 }
 
@@ -625,9 +775,12 @@ func (r *Repository) CreateChangeRequest(ctx context.Context, req core.ChangeReq
 		req.Status = core.ChangeRequestStatusPending
 	}
 
-	payloadJSON, _ := json.Marshal(req.Payload)
+	payloadJSON, err := json.Marshal(req.Payload)
+	if err != nil {
+		return core.ChangeRequest{}, fmt.Errorf("marshaling change request payload: %w", err)
+	}
 
-	err := r.pool.QueryRow(ctx, `
+	err = r.pool.QueryRow(ctx, `
 		INSERT INTO change_requests (
 			id, requester_id, approver_id, action, target_resource, payload, status, expires_at, created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -690,38 +843,65 @@ func (r *Repository) ListChangeRequests(ctx context.Context, status core.ChangeR
 			return nil, fmt.Errorf("scanning change request: %w", err)
 		}
 		if len(payloadJSON) > 0 {
-			_ = json.Unmarshal(payloadJSON, &req.Payload)
+			if err := json.Unmarshal(payloadJSON, &req.Payload); err != nil {
+				return nil, fmt.Errorf("unmarshaling change request payload: %w", err)
+			}
 		}
 		reqs = append(reqs, req)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating change requests: %w", err)
 	}
 	return reqs, nil
 }
 
 func (r *Repository) ApproveChangeRequest(ctx context.Context, id uuid.UUID, approverID string) (core.ChangeRequest, error) {
+	approverID = strings.TrimSpace(approverID)
+	if approverID == "" {
+		return core.ChangeRequest{}, errors.New("approver_id is required")
+	}
+
 	req, err := r.GetChangeRequest(ctx, id)
 	if err != nil {
 		return core.ChangeRequest{}, err
 	}
+	if req.RequesterID == approverID {
+		return core.ChangeRequest{}, errors.New("requester cannot approve their own change request")
+	}
 	if req.Status != core.ChangeRequestStatusPending {
 		return core.ChangeRequest{}, fmt.Errorf("cannot approve change request in status %s", req.Status)
+	}
+	if req.ExpiresAt != nil && !time.Now().UTC().Before(req.ExpiresAt.UTC()) {
+		return core.ChangeRequest{}, errors.New("cannot approve expired change request")
 	}
 
 	req.Status = core.ChangeRequestStatusApproved
 	req.ApproverID = &approverID
 
-	_, err = r.pool.Exec(ctx, `
+	tag, err := r.pool.Exec(ctx, `
 		UPDATE change_requests
 		SET status = $1, approver_id = $2
 		WHERE id = $3
-	`, req.Status, req.ApproverID, req.ID)
+		  AND status = 'pending'
+		  AND requester_id <> $2
+		  AND (expires_at IS NULL OR expires_at > now())
+	`, req.Status, approverID, req.ID)
 	if err != nil {
 		return core.ChangeRequest{}, fmt.Errorf("approving change request: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return core.ChangeRequest{}, errors.New("change request is no longer pending, expired, or ineligible for approval")
 	}
 
 	return req, nil
 }
 
 func (r *Repository) RejectChangeRequest(ctx context.Context, id uuid.UUID, approverID string) (core.ChangeRequest, error) {
+	approverID = strings.TrimSpace(approverID)
+	if approverID == "" {
+		return core.ChangeRequest{}, errors.New("approver_id is required")
+	}
+
 	req, err := r.GetChangeRequest(ctx, id)
 	if err != nil {
 		return core.ChangeRequest{}, err
@@ -733,13 +913,16 @@ func (r *Repository) RejectChangeRequest(ctx context.Context, id uuid.UUID, appr
 	req.Status = core.ChangeRequestStatusRejected
 	req.ApproverID = &approverID
 
-	_, err = r.pool.Exec(ctx, `
+	tag, err := r.pool.Exec(ctx, `
 		UPDATE change_requests
 		SET status = $1, approver_id = $2
-		WHERE id = $3
-	`, req.Status, req.ApproverID, req.ID)
+		WHERE id = $3 AND status = 'pending'
+	`, req.Status, approverID, req.ID)
 	if err != nil {
 		return core.ChangeRequest{}, fmt.Errorf("rejecting change request: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return core.ChangeRequest{}, errors.New("change request is no longer pending")
 	}
 
 	return req, nil
@@ -803,6 +986,9 @@ func (r *Repository) ListMaintenanceWindows(ctx context.Context) ([]core.Mainten
 		}
 		windows = append(windows, mw)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating maintenance windows: %w", err)
+	}
 	return windows, nil
 }
 
@@ -824,30 +1010,48 @@ func (r *Repository) IsInMaintenanceWindow(ctx context.Context, at time.Time) (b
 // Compliance Evidence Aggregation (P8-S4)
 // ---------------------------------------------------------------------
 
-func (r *Repository) GetComplianceEvidence(ctx context.Context) (core.ComplianceEvidenceReport, error) {
-	now := time.Now().UTC()
+// ComplianceMetrics captures the live signals used to evaluate compliance controls.
+type ComplianceMetrics struct {
+	AuditVerification     core.AuditVerificationResult
+	TotalOperators        int64
+	ActiveOperators       int64
+	MFAEnabledOperators   int64
+	TotalInstances        int
+	HealthyInstances      int
+	DegradedInstances     int
+	UnreachableInstances  int
+	EvictedInstances      int
+	PendingInstances      int
+	RegisteringInstances  int
+	DeregisteredInstances int
+}
 
-	// 1. Audit Chain verification
-	auditVerification, err := r.VerifyAuditChainDetailed(ctx)
-	if err != nil {
-		return core.ComplianceEvidenceReport{}, fmt.Errorf("verifying audit chain: %w", err)
-	}
-
+// EvaluateComplianceEvidence computes honest control statuses from live signals.
+func EvaluateComplianceEvidence(metrics ComplianceMetrics, now time.Time) core.ComplianceEvidenceReport {
 	auditStatus := core.ComplianceStatusCompliant
-	if !auditVerification.Verified {
+	if !metrics.AuditVerification.Verified {
 		auditStatus = core.ComplianceStatusNonCompliant
+	} else if metrics.AuditVerification.ChainLength == 0 {
+		auditStatus = core.ComplianceStatusNeedsReview
 	}
 
-	// 2. Operators count
-	opCount, err := r.CountOperators(ctx)
-	if err != nil {
-		return core.ComplianceEvidenceReport{}, fmt.Errorf("counting operators: %w", err)
+	iamStatus := core.ComplianceStatusCompliant
+	switch {
+	case metrics.ActiveOperators == 0:
+		iamStatus = core.ComplianceStatusNonCompliant
+	case metrics.MFAEnabledOperators < metrics.ActiveOperators:
+		iamStatus = core.ComplianceStatusNeedsReview
 	}
 
-	// 3. Instances / Fleet status
-	instances, _, _, err := r.ListInstances(ctx, core.InstanceFilter{Limit: 100})
-	if err != nil {
-		return core.ComplianceEvidenceReport{}, fmt.Errorf("listing instances for compliance: %w", err)
+	opsStatus := core.ComplianceStatusCompliant
+	activeInstances := metrics.TotalInstances - metrics.DeregisteredInstances
+	switch {
+	case activeInstances <= 0:
+		opsStatus = core.ComplianceStatusNeedsReview
+	case metrics.UnreachableInstances > 0 || metrics.EvictedInstances > 0:
+		opsStatus = core.ComplianceStatusNonCompliant
+	case metrics.DegradedInstances > 0 || metrics.PendingInstances > 0 || metrics.RegisteringInstances > 0 || metrics.HealthyInstances == 0:
+		opsStatus = core.ComplianceStatusNeedsReview
 	}
 
 	items := []core.ComplianceEvidenceItem{
@@ -862,11 +1066,11 @@ func (r *Repository) GetComplianceEvidence(ctx context.Context) (core.Compliance
 			Engine:          "argus",
 			LastEvaluatedAt: now,
 			Evaluator:       "argus-compliance-engine",
-			ArtifactsCount:  auditVerification.ChainLength,
+			ArtifactsCount:  metrics.AuditVerification.ChainLength,
 			Details: map[string]interface{}{
-				"chain_length":   auditVerification.ChainLength,
-				"chain_verified": auditVerification.Verified,
-				"head_hash":      auditVerification.HeadHash,
+				"chain_length":   metrics.AuditVerification.ChainLength,
+				"chain_verified": metrics.AuditVerification.Verified,
+				"head_hash":      metrics.AuditVerification.HeadHash,
 				"algorithm":      "SHA-256",
 			},
 		},
@@ -875,15 +1079,17 @@ func (r *Repository) GetComplianceEvidence(ctx context.Context) (core.Compliance
 			Framework:       "SOC2",
 			ControlID:       "CC6.2",
 			ControlName:     "Administrative Operator Access Review",
-			Status:          core.ComplianceStatusCompliant,
+			Status:          iamStatus,
 			EvidenceType:    "operator_inventory",
-			Description:     "Operator accounts and privileged credentials enrolled in control plane.",
+			Description:     "Operator accounts and privileged credentials enrolled in control plane with MFA verification.",
 			Engine:          "argus",
 			LastEvaluatedAt: now,
 			Evaluator:       "argus-compliance-engine",
-			ArtifactsCount:  int(opCount),
+			ArtifactsCount:  int(metrics.ActiveOperators),
 			Details: map[string]interface{}{
-				"active_operators": opCount,
+				"total_operators":       metrics.TotalOperators,
+				"active_operators":      metrics.ActiveOperators,
+				"mfa_enabled_operators": metrics.MFAEnabledOperators,
 			},
 		},
 		{
@@ -891,15 +1097,22 @@ func (r *Repository) GetComplianceEvidence(ctx context.Context) (core.Compliance
 			Framework:       "SOC2",
 			ControlID:       "CC7.1",
 			ControlName:     "Fleet Infrastructure Health & Inventory",
-			Status:          core.ComplianceStatusCompliant,
+			Status:          opsStatus,
 			EvidenceType:    "instance_inventory",
 			Description:     "Continuous heartbeat monitoring and registry for all fleet instances.",
 			Engine:          "argus",
 			LastEvaluatedAt: now,
 			Evaluator:       "argus-compliance-engine",
-			ArtifactsCount:  len(instances),
+			ArtifactsCount:  metrics.TotalInstances,
 			Details: map[string]interface{}{
-				"registered_instances": len(instances),
+				"registered_instances":   metrics.TotalInstances,
+				"healthy_instances":      metrics.HealthyInstances,
+				"degraded_instances":     metrics.DegradedInstances,
+				"unreachable_instances":  metrics.UnreachableInstances,
+				"evicted_instances":      metrics.EvictedInstances,
+				"pending_instances":      metrics.PendingInstances,
+				"registering_instances":  metrics.RegisteringInstances,
+				"deregistered_instances": metrics.DeregisteredInstances,
 			},
 		},
 	}
@@ -924,5 +1137,66 @@ func (r *Repository) GetComplianceEvidence(ctx context.Context) (core.Compliance
 			ReviewRequired:    len(items) - compliantCount,
 			ScorePercent:      score,
 		},
-	}, nil
+	}
+}
+
+func (r *Repository) GetComplianceEvidence(ctx context.Context) (core.ComplianceEvidenceReport, error) {
+	now := time.Now().UTC()
+
+	// 1. Audit chain verification
+	auditVerification, err := r.VerifyAuditChainDetailed(ctx)
+	if err != nil {
+		return core.ComplianceEvidenceReport{}, fmt.Errorf("verifying audit chain: %w", err)
+	}
+
+	// 2. Real operator and MFA counts
+	var metrics ComplianceMetrics
+	metrics.AuditVerification = auditVerification
+	if err := r.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*) AS total_operators,
+			COUNT(*) FILTER (WHERE o.is_active = TRUE) AS active_operators,
+			COUNT(*) FILTER (WHERE o.is_active = TRUE AND COALESCE(c.totp_enabled, FALSE) = TRUE) AS mfa_enabled_operators
+		FROM operators o
+		LEFT JOIN operator_credentials c ON c.operator_id = o.id
+	`).Scan(&metrics.TotalOperators, &metrics.ActiveOperators, &metrics.MFAEnabledOperators); err != nil {
+		return core.ComplianceEvidenceReport{}, fmt.Errorf("counting operators for compliance: %w", err)
+	}
+
+	// 3. Real fleet instance health breakdown across all registered instances
+	rows, err := r.pool.Query(ctx, `SELECT status, COUNT(*) FROM instances GROUP BY status`)
+	if err != nil {
+		return core.ComplianceEvidenceReport{}, fmt.Errorf("counting instances by status for compliance: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var statusStr string
+		var cnt int
+		if err := rows.Scan(&statusStr, &cnt); err != nil {
+			return core.ComplianceEvidenceReport{}, fmt.Errorf("scanning instance compliance status count: %w", err)
+		}
+		metrics.TotalInstances += cnt
+		switch core.InstanceStatus(statusStr) {
+		case core.StatusHealthy:
+			metrics.HealthyInstances += cnt
+		case core.StatusDegraded:
+			metrics.DegradedInstances += cnt
+		case core.StatusUnreachable:
+			metrics.UnreachableInstances += cnt
+		case core.StatusEvicted:
+			metrics.EvictedInstances += cnt
+		case core.StatusPending:
+			metrics.PendingInstances += cnt
+		case core.StatusRegistering:
+			metrics.RegisteringInstances += cnt
+		case core.StatusDeregistered:
+			metrics.DeregisteredInstances += cnt
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return core.ComplianceEvidenceReport{}, fmt.Errorf("iterating instance compliance status counts: %w", err)
+	}
+
+	return EvaluateComplianceEvidence(metrics, now), nil
 }
