@@ -8,6 +8,17 @@ structure.
 
 ## [Unreleased]
 
+## [v0.2.1] - 2026-11-24
+
+### Fixed
+
+- Ignored Next.js generated `next-env.d.ts` in `console/eslint.config.mjs` to
+  prevent `@typescript-eslint/triple-slash-reference` lint failures after
+  upgrading to Next.js `15.5.29`.
+- Upgraded Node.js from `20` to `22` in
+  `.github/workflows/release-supply-chain.yml` to match CI and support Vitest 4
+  during release validation.
+
 ## [v0.2.0] - 2026-11-24
 
 ### Security
@@ -64,6 +75,7 @@ structure.
 - Console UX, accessibility, RBAC gating, and real-backend wiring across
   Explorer, Diagnostics, Fleet, Audit, Policies, and Vulcan screens.
 
-[Unreleased]: https://github.com/Autorix-cl/autorix/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Autorix-cl/autorix/compare/v0.2.1...HEAD
+[v0.2.1]: https://github.com/Autorix-cl/autorix/compare/v0.2.0...v0.2.1
 [v0.2.0]: https://github.com/Autorix-cl/autorix/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/Autorix-cl/autorix/releases/tag/v0.1.0
