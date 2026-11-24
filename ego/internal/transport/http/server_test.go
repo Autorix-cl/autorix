@@ -261,14 +261,14 @@ func TestHTTP_WebAuthn_Endpoints(t *testing.T) {
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusNotImplemented {
-			t.Fatalf("POST %s: expected 501 Not Implemented, got %d: %s", ep, rec.Code, rec.Body.String())
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("POST %s: expected 503 Service Unavailable without backing store, got %d: %s", ep, rec.Code, rec.Body.String())
 		}
 		var body map[string]string
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 			t.Fatalf("POST %s: invalid json: %v", ep, err)
 		}
-		if body["error"] != "webauthn is not yet configured" {
+		if body["error"] != "identity store is not configured" {
 			t.Fatalf("POST %s: unexpected error body %q", ep, body["error"])
 		}
 	}

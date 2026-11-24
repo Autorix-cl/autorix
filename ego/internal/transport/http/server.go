@@ -16,6 +16,7 @@ import (
 	"github.com/autorix/platform/httpx"
 	"github.com/autorix/platform/metrics"
 	"github.com/autorix/platform/paging"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -36,16 +37,8 @@ var (
 )
 
 func init() {
-	if err := prometheus.Register(egoActiveSessions); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			// ignore already registered in tests
-		}
-	}
-	if err := prometheus.Register(egoLoginsTotal); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			// ignore already registered in tests
-		}
-	}
+	_ = prometheus.Register(egoActiveSessions)
+	_ = prometheus.Register(egoLoginsTotal)
 }
 
 const (
@@ -63,15 +56,21 @@ type Server struct {
 	// is only for plain-HTTP local development, and must be set explicitly
 	// by the caller, never silently assumed.
 	secureCookies bool
+	wa            *webauthn.WebAuthn
+	waStore       webAuthnStore
+	waChallenges  *webAuthnChallengeStore
 }
 
 func NewServer(repo *postgres.Repository, hasher *credential.Hasher, sm *session.Manager, healthHandler *health.Handler, secureCookies bool) *Server {
+	wa, _ := newWebAuthnFromEnv()
 	return &Server{
 		repo:           repo,
 		hasher:         hasher,
 		sessionManager: sm,
 		healthHandler:  healthHandler,
 		secureCookies:  secureCookies,
+		wa:             wa,
+		waChallenges:   newWebAuthnChallengeStore(),
 	}
 }
 
@@ -323,7 +322,7 @@ func (s *Server) handleRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 
 	egoActiveSessions.Inc()
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure is set from s.secureCookies (config-driven, true by default)
 		Name:     SessionCookieName,
 		Value:    sess.Token,
 		Path:     "/",
@@ -889,20 +888,4 @@ func (s *Server) handleFetchRegistrationFlow(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, http.StatusOK, flow)
-}
-
-func (s *Server) handleWebAuthnRegistrationStart(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "webauthn is not yet configured")
-}
-
-func (s *Server) handleWebAuthnRegistrationFinish(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "webauthn is not yet configured")
-}
-
-func (s *Server) handleWebAuthnLoginStart(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "webauthn is not yet configured")
-}
-
-func (s *Server) handleWebAuthnLoginFinish(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "webauthn is not yet configured")
 }
