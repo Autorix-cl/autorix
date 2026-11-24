@@ -8,6 +8,7 @@ import { TokenInspector } from "./token-inspector";
 import { ScopeCatalogue } from "./scope-catalogue";
 import { KeyManager } from "./key-manager";
 import { ClientDetailDialog } from "./client-detail-dialog";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 vi.mock("@/lib/auth/use-permission", () => ({
   usePermission: () => ({
@@ -42,7 +43,9 @@ function renderWithClient(ui: React.ReactElement) {
   return render(
     <I18nProvider>
       <QueryClientProvider client={queryClient}>
-        {ui}
+        <TooltipProvider>
+          {ui}
+        </TooltipProvider>
       </QueryClientProvider>
     </I18nProvider>
   );

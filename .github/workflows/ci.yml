@@ -17,10 +17,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go 1.25
+      - name: Set up Go 1.24
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.24'
           cache: true
 
       - name: Check gofmt
@@ -55,10 +55,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go 1.25
+      - name: Set up Go 1.24
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.24'
           cache: true
 
       - name: Run unit tests
@@ -95,10 +95,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go 1.25
+      - name: Set up Go 1.24
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.24'
           cache: true
 
       - name: Run integration tests (testcontainers spins its own Postgres)
@@ -113,6 +113,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Generate secrets
+        run: ./scripts/generate-local-secrets.sh
       - name: Run smoke test
         run: bash scripts/ci/smoke_test.sh
 
@@ -127,7 +129,7 @@ jobs:
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: console/package-lock.json
 
@@ -192,10 +194,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go 1.25
+      - name: Set up Go 1.24
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.24'
           cache: true
 
       - name: Check coverage floor
@@ -211,7 +213,7 @@ jobs:
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: console/package-lock.json
 
@@ -267,7 +269,7 @@ jobs:
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: console/package-lock.json
 
@@ -307,7 +309,7 @@ jobs:
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: console/package-lock.json
 
