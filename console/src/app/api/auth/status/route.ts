@@ -6,9 +6,11 @@ export async function GET() {
     const argusUrl = getServiceUrl("argus");
     const res = await fetch(`${argusUrl}/v1/auth/status`, {
       cache: "no-store",
+      signal: AbortSignal.timeout(5_000),
     });
 
     if (!res.ok) {
+      await res.body?.cancel().catch(() => {});
       return NextResponse.json({ error: "Failed to check authentication status" }, { status: res.status });
     }
 

@@ -11,13 +11,14 @@ export async function POST() {
     if (token) {
       invalidateSessionCache(token);
       const argusUrl = getServiceUrl("argus");
-      await fetch(`${argusUrl}/v1/auth/session`, {
+      const res = await fetch(`${argusUrl}/v1/auth/session`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
         },
         signal: AbortSignal.timeout(5_000),
-      }).catch(() => {});
+      }).catch(() => null);
+      await res?.body?.cancel().catch(() => {});
     }
 
     const response = NextResponse.json(

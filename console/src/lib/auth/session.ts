@@ -5,11 +5,28 @@ import { getServiceUrl } from "../api-config";
 import { hasPermission, type Operator, type SessionResponse } from "./types";
 
 export const SESSION_COOKIE_NAME = "autorix_session";
-const SESSION_VALIDATION_TIMEOUT_MS = 4_000;
+const SESSION_VALIDATION_TIMEOUT_MS = 5_000;
 const SESSION_VALIDATION_MAX_ATTEMPTS = 3;
 const SESSION_VALIDATION_RETRY_DELAY_MS = 250;
 const SESSION_CACHE_TTL_MS = 15_000;
 const SESSION_CACHE_MAX_ENTRIES = 256;
+
+function formatFetchError(err: unknown): string {
+  if (!(err instanceof Error)) return "session validation request failed";
+  const cause = (err as Error & { cause?: unknown }).cause;
+  if (cause && typeof cause === "object") {
+    const code =
+      "code" in cause && typeof (cause as { code?: unknown }).code === "string" ? (cause as { code: string }).code : "";
+    const detail =
+      "message" in cause && typeof (cause as { message?: unknown }).message === "string"
+        ? (cause as { message: string }).message
+        : "";
+    if (code || detail) {
+      return `${err.message} (${[code, detail].filter(Boolean).join(": ")})`;
+    }
+  }
+  return err.message;
+}
 
 interface CachedSession {
   operator: Operator;
@@ -76,11 +93,13 @@ async function fetchSessionValidation(
       });
 
       if (res.status === 401 || res.status === 403) {
+        await res.body?.cancel().catch(() => {});
         sessionCache.delete(tokenKey);
         return { valid: false };
       }
 
       if (!res.ok) {
+        await res.body?.cancel().catch(() => {});
         lastError = `argus session validation returned HTTP ${res.status}`;
       } else {
         const data: SessionResponse = await res.json();
@@ -99,7 +118,7 @@ async function fetchSessionValidation(
         return { valid: data.valid, operator: data.operator };
       }
     } catch (err: unknown) {
-      lastError = err instanceof Error ? err.message : "session validation request failed";
+      lastError = formatFetchError(err);
     }
 
     if (attempt + 1 < SESSION_VALIDATION_MAX_ATTEMPTS) {

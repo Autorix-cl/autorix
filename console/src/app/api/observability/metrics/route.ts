@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServiceUrl } from "@/lib/api-config";
+import { getPrometheusUrl } from "@/lib/api-config";
 import { requireOperator } from "@/lib/auth/session";
 import { fleetMetricsSummarySchema, type EngineMetricSummary } from "@/lib/api/schemas/observability";
 
@@ -10,12 +10,15 @@ interface PrometheusResult {
   value: [number, string];
 }
 
-async function query(promQuery: string): Promise<PrometheusResult[]> {
-  const response = await fetch(`${getServiceUrl("prometheus")}/api/v1/query?query=${encodeURIComponent(promQuery)}`, {
+async function query(prometheusUrl: string, promQuery: string): Promise<PrometheusResult[]> {
+  const response = await fetch(`${prometheusUrl}/api/v1/query?query=${encodeURIComponent(promQuery)}`, {
     cache: "no-store",
     signal: AbortSignal.timeout(PROMETHEUS_TIMEOUT_MS),
   });
-  if (!response.ok) throw new Error(`Prometheus returned ${response.status}`);
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error(`Prometheus returned ${response.status}`);
+  }
   const body = await response.json();
   if (body.status !== "success" || !Array.isArray(body.data?.result))
     throw new Error("Prometheus returned an invalid query response");
@@ -40,15 +43,29 @@ export async function GET() {
   const auth = await requireOperator("observability:read");
   if (!auth.ok) return auth.response;
 
+  const prometheusUrl = getPrometheusUrl();
+  if (!prometheusUrl) {
+    return NextResponse.json(
+      {
+        error: "Prometheus metrics are not configured",
+        source: "prometheus",
+      },
+      { status: 503 },
+    );
+  }
+
   try {
     const [requests, qps, errors, p95, up, byEngine, qpsByEngine] = await Promise.all([
-      query("sum(autorix_http_requests_total)"),
-      query("sum(rate(autorix_http_requests_total[1m]))"),
-      query('sum(rate(autorix_http_requests_total{status=~"5.."}[1m]))'),
-      query("histogram_quantile(0.95, sum by (le) (rate(autorix_http_request_duration_seconds_bucket[5m]))) * 1000"),
-      query('up{job=~".*autorix.*"}'),
-      query("sum by (engine) (autorix_http_requests_total)"),
-      query("sum by (engine) (rate(autorix_http_requests_total[1m]))"),
+      query(prometheusUrl, "sum(autorix_http_requests_total)"),
+      query(prometheusUrl, "sum(rate(autorix_http_requests_total[1m]))"),
+      query(prometheusUrl, 'sum(rate(autorix_http_requests_total{status=~"5.."}[1m]))'),
+      query(
+        prometheusUrl,
+        "histogram_quantile(0.95, sum by (le) (rate(autorix_http_request_duration_seconds_bucket[5m]))) * 1000",
+      ),
+      query(prometheusUrl, 'up{job=~".*autorix.*"}'),
+      query(prometheusUrl, "sum by (engine) (autorix_http_requests_total)"),
+      query(prometheusUrl, "sum by (engine) (rate(autorix_http_requests_total[1m]))"),
     ]);
     const totalRequests = scalar(requests) ?? 0;
     const fleetQps = scalar(qps) ?? 0;

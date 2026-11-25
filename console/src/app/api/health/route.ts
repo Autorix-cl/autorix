@@ -43,6 +43,7 @@ async function probe(service: ServiceDescriptor): Promise<ServiceHealth> {
   try {
     const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
     const latencyMs = Date.now() - start;
+    await res.body?.cancel().catch(() => {});
     let status: EngineStatus;
     if (res.status === 200) status = "healthy";
     else if (res.status === 503) status = "degraded";
