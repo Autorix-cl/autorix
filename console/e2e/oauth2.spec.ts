@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Janus OAuth2 / OIDC Studio (Ory Hydra Protocol)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/oauth2");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
   });
 
   test("renders client management and JWKS cryptographic key set viewer", async ({ page }) => {

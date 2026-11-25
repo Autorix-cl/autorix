@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Argus Continuous Compliance Matrix", () => {
   test("renders compliance framework summary and controls matrix", async ({ page }) => {
     await page.goto("/compliance");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
       /continuous compliance|compliance matrix|compliance/i,
@@ -13,7 +13,7 @@ test.describe("Argus Continuous Compliance Matrix", () => {
 
   test("filters compliance controls by framework tabs", async ({ page }) => {
     await page.goto("/compliance");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     const soc2Tab = page.locator("button").filter({ hasText: /soc 2/i }).first();
     if (await soc2Tab.isVisible()) {

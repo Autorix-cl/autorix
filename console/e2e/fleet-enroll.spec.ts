@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Argus Fleet Engine Enrollment Wizard", () => {
   test("mints enrollment token through wizard and displays multi-runtime setup instructions", async ({ page }) => {
     await page.goto("/fleet/enroll");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/enroll iam engine|enroll engine/i);
 

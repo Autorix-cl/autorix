@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Argus Fleet & Engine Topology", () => {
   test("renders all 7 engine cards with real live status", async ({ page }) => {
     await page.goto("/fleet");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/fleet & engine topology|fleet/i);
     await expect(page.getByText(/ego \(identity\)/i)).toBeVisible();
@@ -17,7 +17,7 @@ test.describe("Argus Fleet & Engine Topology", () => {
 
   test("navigates to instances directory and shows registered instances", async ({ page }) => {
     await page.goto("/fleet/instances");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/fleet instances|instances/i);
     await expect(page.getByRole("table").or(page.locator("table"))).toBeVisible();
@@ -25,7 +25,7 @@ test.describe("Argus Fleet & Engine Topology", () => {
 
   test("renders engine topology graph view", async ({ page }) => {
     await page.goto("/fleet/topology");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/topology|network|graph/i);
   });

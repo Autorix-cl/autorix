@@ -137,6 +137,7 @@ func main() {
 		Addr:              ":" + c.HTTPPort,
 		Handler:           restHandler,
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	// 4. gRPC hot path (engine registration/heartbeat — P2-S3).

@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Cross-Engine Explorer (P6-S8)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/explorer");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
   });
 
   test("renders cross-engine explorer and tabs", async ({ page }) => {

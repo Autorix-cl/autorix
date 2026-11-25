@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Themis ABAC / CEL Studio", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/policies");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
   });
 
   test("renders policy creation form, CEL dry-run simulator and policies table across studio tabs", async ({

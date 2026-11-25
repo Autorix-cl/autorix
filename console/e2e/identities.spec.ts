@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Ego Identities Studio (Ory Kratos Trait Model)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/identities");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
   });
 
   test("renders identity lifecycle overview and schema definition", async ({ page }) => {
@@ -33,7 +33,7 @@ test.describe("Ego Identities Studio (Ory Kratos Trait Model)", () => {
     await seedIdentity({ email });
 
     await page.goto("/identities");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     const searchInput = page.locator("#searchQuery, input[placeholder*='Search identities']").first();
     await searchInput.fill(email);

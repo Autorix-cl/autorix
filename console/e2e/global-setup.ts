@@ -48,7 +48,7 @@ async function globalSetup(config: FullConfig) {
 
     // Fallback: Authenticate operator via UI
     await page.goto("/login");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     // If already redirected to dashboard (e.g. valid cookie retained), save state directly.
     // Never mistake an unbootstrapped /setup redirect for an authenticated session.

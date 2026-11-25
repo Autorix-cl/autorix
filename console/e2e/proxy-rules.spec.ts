@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Aegis Zero-Trust Proxy Studio (Ory Oathkeeper PEP)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/proxy-rules");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
   });
 
   test("renders proxy rules and rule matching simulator", async ({ page }) => {
@@ -16,7 +16,7 @@ test.describe("Aegis Zero-Trust Proxy Studio (Ory Oathkeeper PEP)", () => {
     const rule = await seedProxyRule();
 
     await page.goto("/proxy-rules");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     // Switch to Traffic Simulator tab
     await page.getByRole("tab", { name: /Simulator/i }).click();
@@ -58,8 +58,12 @@ test.describe("Aegis Zero-Trust Proxy Studio (Ory Oathkeeper PEP)", () => {
     });
 
     // Switch to Traffic Simulator tab
-    await page.getByRole("tab", { name: /Simulator/i }).click();
-    await expect(page.getByRole("heading", { name: "Pipeline Request Matcher" })).toBeVisible();
+    const simulatorTab = page.getByRole("tab", { name: /Simulator/i });
+    await expect(async () => {
+      await simulatorTab.click();
+      await expect(simulatorTab).toHaveAttribute("aria-selected", "true", { timeout: 1000 });
+    }).toPass({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Pipeline Request Matcher" })).toBeVisible({ timeout: 10_000 });
 
     // Capture screenshot of Simulator tab
     await page.screenshot({
@@ -67,8 +71,12 @@ test.describe("Aegis Zero-Trust Proxy Studio (Ory Oathkeeper PEP)", () => {
     });
 
     // Switch to Declarative Manifest tab
-    await page.getByRole("tab", { name: /Declarative Rules Configuration|Manifest/i }).click();
-    await expect(page.getByText("GET /rules (Aegis admin API, live)")).toBeVisible();
+    const manifestTab = page.getByRole("tab", { name: /Declarative Rules Configuration|Manifest/i });
+    await expect(async () => {
+      await manifestTab.click();
+      await expect(manifestTab).toHaveAttribute("aria-selected", "true", { timeout: 1000 });
+    }).toPass({ timeout: 15_000 });
+    await expect(page.getByText("GET /rules (Aegis admin API, live)")).toBeVisible({ timeout: 15_000 });
 
     // Capture screenshot of Declarative Manifest tab
     await page.screenshot({

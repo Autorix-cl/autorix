@@ -176,6 +176,12 @@ jobs:
           cd console
           npx playwright test
 
+      - name: Dump container diagnostics on failure
+        if: failure()
+        run: |
+          docker compose --profile core --profile extended ps || true
+          docker compose --profile core --profile extended logs --tail=80 argus ego console || true
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4

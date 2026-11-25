@@ -65,7 +65,7 @@ describe("Auth BFF Security Routes", () => {
 
     const res = await me();
     expect(res.status).toBe(503);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(res.headers.get("set-cookie")).toBeNull();
   });
 

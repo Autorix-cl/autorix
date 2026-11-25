@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Observability & Operations (Phase 7)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/observability");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
   });
 
   test("renders fleet observability overview with RED metrics", async ({ page }) => {

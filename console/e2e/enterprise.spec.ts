@@ -26,7 +26,7 @@ function generateTestCertificatePem(): string {
 test.describe("Hermes SAML & SCIM Enterprise Studio", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/enterprise");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
   });
 
   test("renders SAML SP metadata XML and SCIM directory overview across studio tabs", async ({ page }, testInfo) => {
@@ -42,18 +42,28 @@ test.describe("Hermes SAML & SCIM Enterprise Studio", () => {
     });
 
     // Tab 2: SCIM Directory Sync
-    await page.getByRole("tab", { name: /SCIM Directory Sync/i }).click();
-    await expect(page.getByText(/SCIM 2.0 Directory Management & Sync Monitor/i).first()).toBeVisible();
+    const scimTab = page.getByRole("tab", { name: /SCIM Directory Sync/i });
+    await expect(async () => {
+      await scimTab.click();
+      await expect(scimTab).toHaveAttribute("aria-selected", "true", { timeout: 1000 });
+    }).toPass({ timeout: 15_000 });
+    await expect(page.getByText(/SCIM 2.0 Directory Management & Sync Monitor/i).first()).toBeVisible({
+      timeout: 10_000,
+    });
     await page.screenshot({
       path: testInfo.outputPath("cloud-hermes-scim.png"),
       fullPage: true,
     });
 
     // Tab 3: SP Metadata & Endpoints
-    await page.getByRole("tab", { name: /SP Metadata & Endpoints/i }).click();
-    await expect(page.getByText(/Service Provider \(SP\) Metadata XML/i).first()).toBeVisible();
-    await expect(page.getByText(/LIVE SAML SP METADATA/i)).toBeVisible();
-    await expect(page.getByText("http://localhost:4477/saml/acs", { exact: true })).toBeVisible();
+    const metadataTab = page.getByRole("tab", { name: /SP Metadata & Endpoints/i });
+    await expect(async () => {
+      await metadataTab.click();
+      await expect(metadataTab).toHaveAttribute("aria-selected", "true", { timeout: 1000 });
+    }).toPass({ timeout: 15_000 });
+    await expect(page.getByText(/Service Provider \(SP\) Metadata XML/i).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/LIVE SAML SP METADATA/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("http://localhost:4477/saml/acs", { exact: true })).toBeVisible({ timeout: 10_000 });
     await page.screenshot({
       path: testInfo.outputPath("cloud-hermes-metadata.png"),
       fullPage: true,

@@ -11,7 +11,7 @@ test.describe("Multi-Environment Isolation", () => {
 
   test("environment switcher defaults to Production with active connected engines", async ({ page }) => {
     await page.goto("/");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     const envBtn = page
       .locator("header button")
@@ -23,7 +23,7 @@ test.describe("Multi-Environment Isolation", () => {
 
   test("switching to Staging activates non-production warning banner and degrades engine cards", async ({ page }) => {
     await page.goto("/");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     const envBtn = page
       .locator("header button")
@@ -42,7 +42,7 @@ test.describe("Multi-Environment Isolation", () => {
 
   test("switching to Development gates engine studio page with NotConnectedEngine banner", async ({ page }) => {
     await page.goto("/identities");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     const envBtn = page
       .locator("header button")

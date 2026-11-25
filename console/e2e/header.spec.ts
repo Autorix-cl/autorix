@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Global Header & Preferences", () => {
   test("toggles language between English and Spanish", async ({ page }) => {
     await page.goto("/");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     // Open language menu
     const langBtn = page
@@ -31,7 +31,7 @@ test.describe("Global Header & Preferences", () => {
 
   test("toggles theme between Dark, Light, and System modes", async ({ page }) => {
     await page.goto("/");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     const themeBtn = page.getByLabel("Toggle theme");
     await themeBtn.click();
@@ -47,7 +47,7 @@ test.describe("Global Header & Preferences", () => {
 
   test("opens command palette search dialog with ⌘K keyboard shortcut", async ({ page }) => {
     await page.goto("/");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("load");
 
     // Press Cmd+K or Ctrl+K
     await page.keyboard.press("Meta+k");

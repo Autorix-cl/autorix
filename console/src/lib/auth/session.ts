@@ -6,9 +6,9 @@ import { hasPermission, type Operator, type SessionResponse } from "./types";
 
 export const SESSION_COOKIE_NAME = "autorix_session";
 const SESSION_VALIDATION_TIMEOUT_MS = 10_000;
-const SESSION_VALIDATION_MAX_ATTEMPTS = 2;
-const SESSION_VALIDATION_RETRY_DELAY_MS = 200;
-const SESSION_CACHE_TTL_MS = 5_000;
+const SESSION_VALIDATION_MAX_ATTEMPTS = 3;
+const SESSION_VALIDATION_RETRY_DELAY_MS = 250;
+const SESSION_CACHE_TTL_MS = 15_000;
 const SESSION_CACHE_MAX_ENTRIES = 256;
 
 interface CachedSession {
@@ -16,8 +16,20 @@ interface CachedSession {
   expiresAt: number;
 }
 
-const sessionCache = new Map<string, CachedSession>();
-const inFlightValidations = new Map<string, Promise<{ valid: boolean; operator?: Operator }>>();
+type SessionValidationResult = { valid: boolean; operator?: Operator };
+
+// Store cache and single-flight map on globalThis so separate Next.js route
+// chunks share one validation state and logout invalidation is server-wide.
+const globalForSession = globalThis as typeof globalThis & {
+  __autorixSessionCache?: Map<string, CachedSession>;
+  __autorixInFlightValidations?: Map<string, Promise<SessionValidationResult>>;
+};
+
+const sessionCache = (globalForSession.__autorixSessionCache ??= new Map<string, CachedSession>());
+const inFlightValidations = (globalForSession.__autorixInFlightValidations ??= new Map<
+  string,
+  Promise<SessionValidationResult>
+>());
 
 function hashSessionToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -91,10 +103,11 @@ async function fetchSessionValidation(
     }
 
     if (attempt + 1 < SESSION_VALIDATION_MAX_ATTEMPTS) {
-      await new Promise((resolve) => setTimeout(resolve, SESSION_VALIDATION_RETRY_DELAY_MS));
+      await new Promise((resolve) => setTimeout(resolve, SESSION_VALIDATION_RETRY_DELAY_MS * (attempt + 1)));
     }
   }
 
+  console.error("[session] validation unavailable after retries:", lastError);
   throw new SessionValidationUnavailableError(lastError);
 }
 

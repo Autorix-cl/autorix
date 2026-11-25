@@ -8,6 +8,22 @@ structure.
 
 ## [Unreleased]
 
+## [v0.2.6] - 2026-11-25
+
+### Fixed
+
+- Passed `--repo "$GITHUB_REPOSITORY"` to `gh release view/upload/create` in
+  `.github/workflows/release-supply-chain.yml` so GitHub Release publication
+  succeeds without a `.git` checkout in the release asset job.
+- Shared Console session validation cache and single-flight map across Next.js
+  App Router route bundles via `globalThis` (15s TTL, immediate server-wide
+  invalidation on logout, 3 retries with backoff, and server-side error
+  logging).
+- Set explicit `IdleTimeout: 60s` on Argus HTTP server to avoid premature
+  keep-alive socket resets against Node.js `undici` connections.
+- Updated Playwright E2E waits from `domcontentloaded` to `load` with
+  hydration-safe tab selection and container log diagnostics on CI failure.
+
 ## [v0.2.5] - 2026-11-25
 
 ### Fixed
