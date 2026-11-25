@@ -157,6 +157,15 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           tags: ${{ env.LOCAL_IMAGE }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
+            org.opencontainers.image.documentation=https://github.com/${{ github.repository }}#readme
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.RELEASE_TAG }}
+            org.opencontainers.image.title=autorix-${{ matrix.service }}
+            org.opencontainers.image.description=Autorix ${{ matrix.service }} container image
           load: true
           push: false
           provenance: false
@@ -200,6 +209,11 @@ jobs:
           REMOTE_IMAGE="$(printf '%s' "$RAW_REMOTE_IMAGE" | tr '[:upper:]' '[:lower:]')"
           docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE"
           docker push "$REMOTE_IMAGE"
+          if [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            LATEST_IMAGE="${REMOTE_IMAGE%:*}:latest"
+            docker tag "$LOCAL_IMAGE" "$LATEST_IMAGE"
+            docker push "$LATEST_IMAGE"
+          fi
           digest="$(docker buildx imagetools inspect "$REMOTE_IMAGE" --format '{{.Manifest.Digest}}')"
           case "$digest" in
             sha256:????????????????????????????????????????????????????????????????) ;;

@@ -25,6 +25,7 @@ def main() -> None:
         "git describe --exact-match --tags HEAD",
         "needs: validate-release",
         "push: false",
+        "org.opencontainers.image.source=https://github.com/${{ github.repository }}",
         "ghcr.io/${{ github.repository_owner }}/autorix-",
         "REMOTE_IMAGE_DIGEST",
         "cosign sign --yes \"$REMOTE_IMAGE_DIGEST\"",
