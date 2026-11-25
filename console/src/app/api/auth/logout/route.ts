@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getServiceUrl } from "@/lib/api-config";
-import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
+import { invalidateSessionCache, SESSION_COOKIE_NAME } from "@/lib/auth/session";
 
 export async function POST() {
   try {
@@ -9,6 +9,7 @@ export async function POST() {
     const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
     if (token) {
+      invalidateSessionCache(token);
       const argusUrl = getServiceUrl("argus");
       await fetch(`${argusUrl}/v1/auth/session`, {
         method: "DELETE",

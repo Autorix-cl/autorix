@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Argus Audit & Governance Studio", () => {
   test("renders cryptographic audit log table and tamper verification status", async ({ page }) => {
     await page.goto("/audit");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/audit log|governance|audit/i);
     await expect(page.getByText(/hash chain|verified|tamper/i).first()).toBeVisible();
@@ -17,7 +17,7 @@ test.describe("Argus Audit & Governance Studio", () => {
 
   test("opens audit record detail dialog with structured JSON diff and secret redaction", async ({ page }) => {
     await page.goto("/audit");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     // Click on the view details action on the first audit row
     const viewBtn = page
@@ -32,7 +32,7 @@ test.describe("Argus Audit & Governance Studio", () => {
 
   test("filters audit entries by search keyword", async ({ page }) => {
     await page.goto("/audit");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     const searchInput = page.getByPlaceholder(/search audit logs/i);
     if (await searchInput.isVisible()) {

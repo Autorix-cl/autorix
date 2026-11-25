@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Nexus ReBAC Permissions Studio (Google Zanzibar)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/permissions");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
   });
 
   test("renders Zanzibar relation graph simulator and relation tuples table", async ({ page }) => {
@@ -24,7 +24,7 @@ test.describe("Nexus ReBAC Permissions Studio (Google Zanzibar)", () => {
     });
 
     await page.goto("/permissions");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     await page.locator("#namespace").fill(tuple.namespace);
     await page.locator("#object").fill(tuple.object);

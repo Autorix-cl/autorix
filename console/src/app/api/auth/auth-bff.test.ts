@@ -10,6 +10,7 @@ vi.mock("next/headers", () => ({
   })),
 }));
 
+import { clearSessionCache } from "@/lib/auth/session";
 import { GET as me } from "./me/route";
 import { POST as logout } from "./logout/route";
 import { GET as samlLogin } from "./saml/login/route";
@@ -19,11 +20,42 @@ import { GET as ssoCallback } from "./sso/callback/route";
 describe("Auth BFF Security Routes", () => {
   beforeEach(() => {
     cookieValues.clear();
+    clearSessionCache();
     vi.clearAllMocks();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("GET /api/auth/me caches valid sessions briefly and invalidates immediately on logout", async () => {
+    cookieValues.set("autorix_session", "sess-token-cache");
+    const validResponse = () =>
+      new Response(
+        JSON.stringify({
+          valid: true,
+          operator: { id: "op-1", email: "admin@autorix.local", name: "Admin", role: "owner", is_active: true },
+        }),
+        { status: 200 },
+      );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(validResponse())
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "expired" }), { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const [first, second] = await Promise.all([me(), me()]);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const logoutRes = await logout();
+    expect(logoutRes.status).toBe(200);
+
+    const afterLogout = await me();
+    expect(afterLogout.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("GET /api/auth/me returns 503 without deleting session cookie on transient Argus 5xx errors", async () => {

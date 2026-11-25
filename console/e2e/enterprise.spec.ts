@@ -26,7 +26,7 @@ function generateTestCertificatePem(): string {
 test.describe("Hermes SAML & SCIM Enterprise Studio", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/enterprise");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
   });
 
   test("renders SAML SP metadata XML and SCIM directory overview across studio tabs", async ({ page }, testInfo) => {

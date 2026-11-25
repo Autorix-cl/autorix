@@ -8,6 +8,21 @@ structure.
 
 ## [Unreleased]
 
+## [v0.2.5] - 2026-11-25
+
+### Fixed
+
+- Lowercased `REMOTE_IMAGE` in `.github/workflows/release-supply-chain.yml`
+  before `docker tag`/`docker push` so GHCR accepts mixed-case repository
+  owners (`Autorix-cl` -> `autorix-cl`).
+- Added short-lived (5s) single-flight session validation caching in
+  `console/src/lib/auth/session.ts` with immediate cache invalidation on
+  `POST /api/auth/logout`, cutting Argus session round-trips during parallel
+  BFF page loads by ~90%.
+- Replaced `waitForLoadState("networkidle")` with `domcontentloaded` across
+  Playwright E2E specs so background Console polling intervals do not stall
+  test setup on constrained CI runners.
+
 ## [v0.2.4] - 2026-11-24
 
 ### Fixed

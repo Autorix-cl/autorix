@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Argus Operator RBAC & Directory", () => {
   test("renders operators directory with master break-glass administrator", async ({ page }) => {
     await page.goto("/operators");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/console operators|operators/i);
     await expect(page.getByText(/break-glass sovereignty policy|break-glass/i).first()).toBeVisible();
@@ -12,7 +12,7 @@ test.describe("Argus Operator RBAC & Directory", () => {
 
   test("provisions a new operator with assigned role", async ({ page }) => {
     await page.goto("/operators");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     // Click Provision Operator button
     await page.getByRole("button", { name: /provision operator/i }).click();
@@ -51,7 +51,7 @@ test.describe("Argus Operator RBAC & Directory", () => {
 
   test("deactivates and permanently deletes an operator", async ({ page }) => {
     await page.goto("/operators");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     // 1. Provision a disposable operator
     const timestamp = Date.now();

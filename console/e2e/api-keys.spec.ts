@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Vulcan API Keys & Macaroons Studio", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/vulcan");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
   });
 
   test("renders API key generation and macaroon attenuation studio", async ({ page }) => {

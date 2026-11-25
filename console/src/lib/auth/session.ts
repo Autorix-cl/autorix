@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getServiceUrl } from "../api-config";
@@ -7,6 +8,30 @@ export const SESSION_COOKIE_NAME = "autorix_session";
 const SESSION_VALIDATION_TIMEOUT_MS = 10_000;
 const SESSION_VALIDATION_MAX_ATTEMPTS = 2;
 const SESSION_VALIDATION_RETRY_DELAY_MS = 200;
+const SESSION_CACHE_TTL_MS = 5_000;
+const SESSION_CACHE_MAX_ENTRIES = 256;
+
+interface CachedSession {
+  operator: Operator;
+  expiresAt: number;
+}
+
+const sessionCache = new Map<string, CachedSession>();
+const inFlightValidations = new Map<string, Promise<{ valid: boolean; operator?: Operator }>>();
+
+function hashSessionToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export function invalidateSessionCache(token?: string): void {
+  if (!token) return;
+  sessionCache.delete(hashSessionToken(token));
+}
+
+export function clearSessionCache(): void {
+  sessionCache.clear();
+  inFlightValidations.clear();
+}
 
 export class SessionValidationUnavailableError extends Error {
   constructor(message = "session validation backend temporarily unavailable") {
@@ -20,9 +45,10 @@ export async function getSessionToken(): Promise<string | undefined> {
   return cookieStore.get(SESSION_COOKIE_NAME)?.value;
 }
 
-export async function validateSessionToken(token: string): Promise<{ valid: boolean; operator?: Operator }> {
-  if (!token) return { valid: false };
-
+async function fetchSessionValidation(
+  token: string,
+  tokenKey: string,
+): Promise<{ valid: boolean; operator?: Operator }> {
   const argusUrl = getServiceUrl("argus");
   let lastError = "session validation backend unreachable";
 
@@ -38,6 +64,7 @@ export async function validateSessionToken(token: string): Promise<{ valid: bool
       });
 
       if (res.status === 401 || res.status === 403) {
+        sessionCache.delete(tokenKey);
         return { valid: false };
       }
 
@@ -45,6 +72,18 @@ export async function validateSessionToken(token: string): Promise<{ valid: bool
         lastError = `argus session validation returned HTTP ${res.status}`;
       } else {
         const data: SessionResponse = await res.json();
+        if (data.valid && data.operator) {
+          if (sessionCache.size >= SESSION_CACHE_MAX_ENTRIES) {
+            const oldestKey = sessionCache.keys().next().value;
+            if (oldestKey) sessionCache.delete(oldestKey);
+          }
+          sessionCache.set(tokenKey, {
+            operator: data.operator,
+            expiresAt: Date.now() + SESSION_CACHE_TTL_MS,
+          });
+        } else {
+          sessionCache.delete(tokenKey);
+        }
         return { valid: data.valid, operator: data.operator };
       }
     } catch (err: unknown) {
@@ -57,6 +96,30 @@ export async function validateSessionToken(token: string): Promise<{ valid: bool
   }
 
   throw new SessionValidationUnavailableError(lastError);
+}
+
+export async function validateSessionToken(token: string): Promise<{ valid: boolean; operator?: Operator }> {
+  if (!token) return { valid: false };
+
+  const tokenKey = hashSessionToken(token);
+  const cached = sessionCache.get(tokenKey);
+  if (cached) {
+    if (cached.expiresAt > Date.now()) {
+      return { valid: true, operator: cached.operator };
+    }
+    sessionCache.delete(tokenKey);
+  }
+
+  const pending = inFlightValidations.get(tokenKey);
+  if (pending) {
+    return pending;
+  }
+
+  const request = fetchSessionValidation(token, tokenKey).finally(() => {
+    inFlightValidations.delete(tokenKey);
+  });
+  inFlightValidations.set(tokenKey, request);
+  return request;
 }
 
 export async function getCurrentOperator(): Promise<Operator | null> {

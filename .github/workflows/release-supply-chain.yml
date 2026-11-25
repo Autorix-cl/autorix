@@ -195,8 +195,9 @@ jobs:
       - name: Push image and record immutable digest
         if: env.PUBLISH_ENABLED == 'true'
         env:
-          REMOTE_IMAGE: ghcr.io/${{ github.repository_owner }}/autorix-${{ matrix.service }}:${{ env.RELEASE_TAG }}
+          RAW_REMOTE_IMAGE: ghcr.io/${{ github.repository_owner }}/autorix-${{ matrix.service }}:${{ env.RELEASE_TAG }}
         run: |
+          REMOTE_IMAGE="$(printf '%s' "$RAW_REMOTE_IMAGE" | tr '[:upper:]' '[:lower:]')"
           docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE"
           docker push "$REMOTE_IMAGE"
           digest="$(docker buildx imagetools inspect "$REMOTE_IMAGE" --format '{{.Manifest.Digest}}')"

@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 test.describe("Aegis Zero-Trust Proxy Studio (Ory Oathkeeper PEP)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/proxy-rules");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
   });
 
   test("renders proxy rules and rule matching simulator", async ({ page }) => {
@@ -16,7 +16,7 @@ test.describe("Aegis Zero-Trust Proxy Studio (Ory Oathkeeper PEP)", () => {
     const rule = await seedProxyRule();
 
     await page.goto("/proxy-rules");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     // Switch to Traffic Simulator tab
     await page.getByRole("tab", { name: /Simulator/i }).click();
