@@ -8,6 +8,14 @@ structure.
 
 ## [Unreleased]
 
+## [v0.2.8] - 2026-11-25
+
+### Fixed
+
+- Made Prometheus telemetry genuinely opt-in via `PROMETHEUS_INTERNAL_URL` (`getPrometheusUrl()`), preventing Console observability and notification routes from issuing DNS lookups against an unconfigured `prometheus` host.
+- Drained/canceled unused `fetch` response bodies across Console health probes, diagnostics probes, notifications, and auth routes so Undici sockets are released immediately.
+- Removed the private Undici global dispatcher hook introduced in `v0.2.7`, set `UV_THREADPOOL_SIZE=16` in `console/Dockerfile`, and included underlying `err.cause` details in Console session validation logs.
+
 ## [v0.2.7] - 2026-11-25
 
 ### Fixed
