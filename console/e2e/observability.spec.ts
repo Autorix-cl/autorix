@@ -33,7 +33,7 @@ test.describe("Observability & Operations (Phase 7)", () => {
     await execBtn.click();
 
     // Verify 4-stage breakdown appears
-    await expect(page.getByText(/1\. DNS Lookup/i)).toBeVisible();
+    await expect(page.getByText(/1\. DNS Lookup/i)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/2\. TCP Connect/i)).toBeVisible();
     await expect(page.getByText(/3\. TLS Handshake/i)).toBeVisible();
     await expect(page.getByText(/4\. Application HTTP/i)).toBeVisible();

@@ -8,6 +8,41 @@ structure.
 
 ## [Unreleased]
 
+## [v0.2.4] - 2026-11-24
+
+### Fixed
+
+- Throttled Argus session activity writes (`TouchSession`) to once per minute
+  to prevent concurrent row-lock contention during parallel Console BFF calls.
+- Raised PostgreSQL `max_connections` to `300` in `docker-compose.yml` to cover
+  all 8 engine connection pools plus Console safely on constrained CI runners.
+- Updated Console session validation (`session.ts`, `proxy.ts`, `/api/auth/me`)
+  to retry once on transient Argus errors and return HTTP `503` without
+  deleting `autorix_session` instead of misclassifying backend timeouts as
+  `401` logouts.
+- Increased live connectivity probe assertion timeout in
+  `console/e2e/observability.spec.ts` to `15s` for slower CI runners.
+
+## [v0.2.3] - 2026-11-24
+
+### Security
+
+- Upgraded all 8 Go engine Dockerfiles to `golang:1.26-alpine` and
+  `alpine:3.24` with `apk upgrade --no-cache`, upgraded `console/Dockerfile`
+  runner packages, and bumped `golang.org/x/net` to `v0.60.0` across all 9 Go
+  modules (0 critical CVEs under Grype `v0.110.0`).
+
+### Fixed
+
+- Seeded default environments (`production`, `staging`, `development`) on empty
+  Argus boot and fixed `/fleet/enroll` enrollment token request payload
+  (`environment`, `expires_in_seconds`).
+- Added `./node_modules/@types` to `sdk/typescript/tsconfig.json` `typeRoots`
+  for clean isolated builds.
+- Aligned Console E2E global setup, full-stack Compose CI services, hardened
+  selectors, ephemeral X.509 test certificate generation, and portable
+  Playwright screenshot output paths.
+
 ## [v0.2.2] - 2026-11-24
 
 ### Fixed

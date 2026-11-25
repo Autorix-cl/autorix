@@ -10,6 +10,7 @@ vi.mock("next/headers", () => ({
   })),
 }));
 
+import { GET as me } from "./me/route";
 import { POST as logout } from "./logout/route";
 import { GET as samlLogin } from "./saml/login/route";
 import { POST as samlCallback } from "./saml/callback/route";
@@ -23,6 +24,17 @@ describe("Auth BFF Security Routes", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("GET /api/auth/me returns 503 without deleting session cookie on transient Argus 5xx errors", async () => {
+    cookieValues.set("autorix_session", "sess-token-123");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "db busy" }), { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await me();
+    expect(res.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(res.headers.get("set-cookie")).toBeNull();
   });
 
   it("POST /api/auth/logout sets Clear-Site-Data header and deletes session cookie", async () => {

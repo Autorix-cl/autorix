@@ -14,6 +14,9 @@ export async function GET() {
       operator,
     });
   } catch (error: unknown) {
+    if (error instanceof Error && error.name === "SessionValidationUnavailableError") {
+      return NextResponse.json({ error: "session validation temporarily unavailable" }, { status: 503 });
+    }
     const message = error instanceof Error ? error.message : "Internal server error";
     return NextResponse.json({ error: message }, { status: 500 });
   }

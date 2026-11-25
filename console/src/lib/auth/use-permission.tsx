@@ -48,6 +48,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setOperator(data.operator);
           return true;
         }
+      } else if (res.status >= 500) {
+        // Transient backend outage: keep existing client state and avoid forcing a logout redirect.
+        return false;
       }
       setOperator(null);
       const activePath = currentPathRef.current;

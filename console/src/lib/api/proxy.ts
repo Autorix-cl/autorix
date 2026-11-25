@@ -102,7 +102,18 @@ export async function proxyRequest<T>(
 
   // 3. Server-side Authentication & RBAC Enforcement (P3-S4-T2)
   // Every proxied engine call requires a validated operator session and baseline domain permission.
-  const operator = await getCurrentOperator();
+  let operator: Awaited<ReturnType<typeof getCurrentOperator>>;
+  try {
+    operator = await getCurrentOperator();
+  } catch (err) {
+    if (err instanceof Error && err.name === "SessionValidationUnavailableError") {
+      return NextResponse.json(
+        { error: "service unavailable: session validation temporarily unavailable" },
+        { status: 503, headers },
+      );
+    }
+    throw err;
+  }
   if (!operator) {
     const res = NextResponse.json({ error: "unauthorized: authentication required" }, { status: 401, headers });
     res.cookies.delete(SESSION_COOKIE_NAME);

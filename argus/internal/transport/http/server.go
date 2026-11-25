@@ -865,8 +865,10 @@ func (s *Server) handleValidateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	newExpiry := now.Add(core.DefaultSessionIdleTTL)
-	_ = s.repo.TouchSession(r.Context(), session.ID, now, newExpiry)
+	if session.LastActiveAt.IsZero() || now.Sub(session.LastActiveAt) >= time.Minute {
+		newExpiry := now.Add(core.DefaultSessionIdleTTL)
+		_ = s.repo.TouchSession(r.Context(), session.ID, now, newExpiry)
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"valid":    true,

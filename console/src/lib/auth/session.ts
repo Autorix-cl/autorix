@@ -4,7 +4,16 @@ import { getServiceUrl } from "../api-config";
 import { hasPermission, type Operator, type SessionResponse } from "./types";
 
 export const SESSION_COOKIE_NAME = "autorix_session";
-const SESSION_VALIDATION_TIMEOUT_MS = 8_000;
+const SESSION_VALIDATION_TIMEOUT_MS = 10_000;
+const SESSION_VALIDATION_MAX_ATTEMPTS = 2;
+const SESSION_VALIDATION_RETRY_DELAY_MS = 200;
+
+export class SessionValidationUnavailableError extends Error {
+  constructor(message = "session validation backend temporarily unavailable") {
+    super(message);
+    this.name = "SessionValidationUnavailableError";
+  }
+}
 
 export async function getSessionToken(): Promise<string | undefined> {
   const cookieStore = await cookies();
@@ -14,26 +23,40 @@ export async function getSessionToken(): Promise<string | undefined> {
 export async function validateSessionToken(token: string): Promise<{ valid: boolean; operator?: Operator }> {
   if (!token) return { valid: false };
 
-  try {
-    const argusUrl = getServiceUrl("argus");
-    const res = await fetch(`${argusUrl}/v1/auth/session`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      cache: "no-store",
-      signal: AbortSignal.timeout(SESSION_VALIDATION_TIMEOUT_MS),
-    });
+  const argusUrl = getServiceUrl("argus");
+  let lastError = "session validation backend unreachable";
 
-    if (!res.ok) {
-      return { valid: false };
+  for (let attempt = 0; attempt < SESSION_VALIDATION_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`${argusUrl}/v1/auth/session`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        cache: "no-store",
+        signal: AbortSignal.timeout(SESSION_VALIDATION_TIMEOUT_MS),
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        return { valid: false };
+      }
+
+      if (!res.ok) {
+        lastError = `argus session validation returned HTTP ${res.status}`;
+      } else {
+        const data: SessionResponse = await res.json();
+        return { valid: data.valid, operator: data.operator };
+      }
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : "session validation request failed";
     }
 
-    const data: SessionResponse = await res.json();
-    return { valid: data.valid, operator: data.operator };
-  } catch {
-    return { valid: false };
+    if (attempt + 1 < SESSION_VALIDATION_MAX_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, SESSION_VALIDATION_RETRY_DELAY_MS));
+    }
   }
+
+  throw new SessionValidationUnavailableError(lastError);
 }
 
 export async function getCurrentOperator(): Promise<Operator | null> {
@@ -49,7 +72,22 @@ export async function requireOperator(
   requiredPermission?: string,
   extraHeaders?: Record<string, string>,
 ): Promise<OperatorAuthResult> {
-  const operator = await getCurrentOperator();
+  let operator: Operator | null;
+  try {
+    operator = await getCurrentOperator();
+  } catch (err) {
+    if (err instanceof SessionValidationUnavailableError) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "service unavailable: session validation temporarily unavailable" },
+          { status: 503, headers: extraHeaders },
+        ),
+      };
+    }
+    throw err;
+  }
+
   if (!operator) {
     const response = NextResponse.json(
       { error: "unauthorized: authentication required" },
