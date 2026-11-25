@@ -15,8 +15,11 @@ vi.mock("@/lib/auth/session", () => ({
 }));
 
 describe("Observability BFF routes", () => {
+  const originalPrometheusUrl = process.env.PROMETHEUS_INTERNAL_URL;
+
   beforeEach(() => {
     vi.restoreAllMocks();
+    process.env.PROMETHEUS_INTERNAL_URL = "http://prometheus:9090";
     vi.mocked(requireOperator).mockResolvedValue({
       ok: true,
       operator: {
@@ -32,6 +35,11 @@ describe("Observability BFF routes", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    if (originalPrometheusUrl === undefined) {
+      delete process.env.PROMETHEUS_INTERNAL_URL;
+    } else {
+      process.env.PROMETHEUS_INTERNAL_URL = originalPrometheusUrl;
+    }
   });
 
   it("rejects unauthenticated requests with 401", async () => {
@@ -71,6 +79,22 @@ describe("Observability BFF routes", () => {
     const response = await getMetrics();
     expect(response.status).toBe(503);
     expect((await response.json()).source).toBe("prometheus");
+  });
+
+  it("short-circuits Prometheus endpoints without network calls when PROMETHEUS_INTERNAL_URL is unset", async () => {
+    delete process.env.PROMETHEUS_INTERNAL_URL;
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const metricsRes = await getMetrics();
+    const alertsRes = await getAlerts();
+    const rulesRes = await getAlertRules();
+
+    expect(metricsRes.status).toBe(503);
+    expect(alertsRes.status).toBe(503);
+    expect(rulesRes.status).toBe(503);
+    expect((await metricsRes.json()).source).toBe("prometheus");
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
   it("returns source unavailable for logs and traces without a backend", async () => {
     expect((await getLogs()).status).toBe(501);

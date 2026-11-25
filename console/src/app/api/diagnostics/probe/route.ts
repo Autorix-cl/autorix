@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
         signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
       });
       const totalMs = roundMs(performance.now() - start);
+      await res.body?.cancel().catch(() => {});
       const isHealthy = res.status === 200;
       const isDegraded = res.status === 503 || (res.status >= 400 && res.status < 500);
       const httpStatus = isHealthy ? "healthy" : isDegraded ? "degraded" : "failed";

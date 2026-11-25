@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServiceUrl } from "@/lib/api-config";
+import { getPrometheusUrl } from "@/lib/api-config";
 import { requireOperator } from "@/lib/auth/session";
 import { alertEventListSchema } from "@/lib/api/schemas/observability";
 
@@ -9,12 +9,26 @@ export async function GET() {
   const auth = await requireOperator("observability:read");
   if (!auth.ok) return auth.response;
 
+  const prometheusUrl = getPrometheusUrl();
+  if (!prometheusUrl) {
+    return NextResponse.json(
+      {
+        error: "Prometheus alerts are not configured",
+        source: "prometheus",
+      },
+      { status: 503 },
+    );
+  }
+
   try {
-    const response = await fetch(`${getServiceUrl("prometheus")}/api/v1/alerts`, {
+    const response = await fetch(`${prometheusUrl}/api/v1/alerts`, {
       cache: "no-store",
       signal: AbortSignal.timeout(PROMETHEUS_TIMEOUT_MS),
     });
-    if (!response.ok) throw new Error(`Prometheus returned ${response.status}`);
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
+      throw new Error(`Prometheus returned ${response.status}`);
+    }
     const body = await response.json();
     if (body.status !== "success" || !Array.isArray(body.data?.alerts))
       throw new Error("Prometheus returned an invalid alerts response");

@@ -19,6 +19,15 @@ export const BACKEND_URLS = {
   prometheus: process.env.PROMETHEUS_INTERNAL_URL || "http://prometheus:9090",
 };
 
+/**
+ * Returns the configured internal Prometheus URL, or null when Prometheus
+ * telemetry has not been explicitly configured for this deployment.
+ */
+export function getPrometheusUrl(): string | null {
+  const configured = process.env.PROMETHEUS_INTERNAL_URL?.trim();
+  return configured ? configured : null;
+}
+
 export function getServiceUrl(service: keyof typeof BACKEND_URLS): string {
   // If running on server inside Docker container
   if (typeof window === "undefined") {
