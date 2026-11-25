@@ -5,7 +5,7 @@ import { getServiceUrl } from "../api-config";
 import { hasPermission, type Operator, type SessionResponse } from "./types";
 
 export const SESSION_COOKIE_NAME = "autorix_session";
-const SESSION_VALIDATION_TIMEOUT_MS = 10_000;
+const SESSION_VALIDATION_TIMEOUT_MS = 4_000;
 const SESSION_VALIDATION_MAX_ATTEMPTS = 3;
 const SESSION_VALIDATION_RETRY_DELAY_MS = 250;
 const SESSION_CACHE_TTL_MS = 15_000;

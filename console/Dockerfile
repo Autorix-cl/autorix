@@ -19,6 +19,7 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS="--dns-result-order=ipv4first --no-network-family-autoselection"
 
 # Non-root user for Zero Trust security
 RUN apk upgrade --no-cache && addgroup -S autorix && adduser -S autorix -G autorix

@@ -8,6 +8,18 @@ structure.
 
 ## [Unreleased]
 
+## [v0.2.7] - 2026-11-25
+
+### Fixed
+
+- Added `console/src/instrumentation.ts` to configure Node.js 22 Undici's
+  global dispatcher with IPv4-first DNS resolution (with IPv6 fallback),
+  `autoSelectFamily: false`, and bounded keep-alive timeouts, preventing 10s
+  container bridge fetch stalls on `node:22-alpine` Linux runners.
+- Added `NODE_OPTIONS="--dns-result-order=ipv4first --no-network-family-autoselection"`
+  in `console/Dockerfile` and tightened Argus session validation timeout per
+  attempt from `10s` to `4s`.
+
 ## [v0.2.6] - 2026-11-25
 
 ### Fixed
